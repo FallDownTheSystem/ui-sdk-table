@@ -1,0 +1,11 @@
+{
+	"extends": "@vue/tsconfig/tsconfig.dom.json",
+	"include": ["src/**/*.ts"],
+	"compilerOptions": {
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"noUncheckedIndexedAccess": true,
+		// No ambient type packages: the core must not see Vue or Node types.
+		"types": [],
+		"tsBuildInfoFile": "../../node_modules/.tmp/tsconfig.core.tsbuildinfo"
+	}
+}

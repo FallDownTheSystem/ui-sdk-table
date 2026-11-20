@@ -1,0 +1,20 @@
+packages:
+  - packages/*
+  - apps/*
+
+# One place for the versions that every package must share.
+catalog:
+  '@ui-sdk/core': 0.1.0-beta.13
+  '@ui-sdk/vue': 0.1.0-beta.13
+  '@vitejs/plugin-vue': ^6.0.11
+  jsdom: ^31.0.1
+  '@types/jsdom': ^30.0.0
+  vite: npm:@voidzero-dev/vite-plus-core@latest
+  vite-plus: ^1.7.0
+  vue: ^3.5.46
+
+# Every package that asks for vite gets the Vite+ core, so one Vite runs. A
+# package with a Vite plugin must also list `vite` itself: pnpm resolves a
+# plugin's peer from the package that uses it, and falls back to plain vite.
+overrides:
+  vite: npm:@voidzero-dev/vite-plus-core@latest

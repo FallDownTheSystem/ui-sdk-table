@@ -1,0 +1,17 @@
+node_modules
+dist
+coverage
+*.log
+*.local
+*.tsbuildinfo
+.DS_Store
+
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+test-results/
+playwright-report/
+
+# The backlog is a link to a store outside the repository.
+.backlog

@@ -1,0 +1,24 @@
+{
+	"name": "docs",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vp dev --port 5180 --strictPort",
+		"build": "vp build",
+		"test:e2e": "playwright test"
+	},
+	"dependencies": {
+		"@ui-sdk/core": "catalog:",
+		"@ui-sdk/vue": "catalog:",
+		"ui-sdk-table-core": "workspace:*",
+		"ui-sdk-table-vue": "workspace:*",
+		"vue": "catalog:"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.65.1",
+		"@vitejs/plugin-vue": "catalog:",
+		"vite": "catalog:",
+		"vite-plus": "catalog:"
+	}
+}

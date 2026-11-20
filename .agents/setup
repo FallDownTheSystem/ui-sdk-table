@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+command -v pnpm >/dev/null || npm install -g pnpm@10.33.0
+pnpm install --frozen-lockfile
+
+# The browser tests need Chromium. Its system libraries need root; without root, the browser alone is installed.
+pnpm --filter docs exec playwright install --with-deps chromium ||
+	pnpm --filter docs exec playwright install chromium
