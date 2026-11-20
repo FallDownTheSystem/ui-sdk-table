@@ -6,8 +6,10 @@ import {
 	Table,
 	type CellSlotProps,
 	type ColumnDef,
+	type FilterState,
 	type GroupSlotProps,
 	type HeaderSlotProps,
+	type PageState,
 	type SortRule,
 } from './index'
 
@@ -123,19 +125,24 @@ test('a new selection renders one row, not the table', async () => {
 		},
 	})
 	let tableRenders = 0
+	let mark = 0
 	const controller = createTableController()
 	const rows = shallowRef(people)
-	const wrapper = mount(() => {
-		tableRenders++
-		return h(
-			Table<Person>,
-			{ rows: rows.value, columns, controller, selection: 'multiple' },
-			{
-				'col-name': ({ row, selected }: CellSlotProps<Person>) =>
-					h(Probe, { id: row.id, 'data-on': selected }),
-			},
-		)
-	})
+	const wrapper = mount(
+		() => {
+			tableRenders++
+			return h(
+				Table<Person>,
+				{ rows: rows.value, columns, controller, selection: 'multiple' },
+				{
+					// The mark is new at each call, so a cell that renders again always updates its probe.
+					'col-name': ({ row }: CellSlotProps<Person>) =>
+						h(Probe, { id: row.id, 'data-mark': ++mark }),
+				},
+			)
+		},
+		{ attachTo: document.body },
+	)
 
 	controller.select('b')
 	await nextTick()
@@ -143,6 +150,14 @@ test('a new selection renders one row, not the table', async () => {
 	expect(wrapper.findAll('tbody tr[aria-selected="true"]')).toHaveLength(1)
 	expect([...renders.keys()]).toEqual(['b'])
 	expect(tableRenders).toBe(1)
+
+	// A cell that gets focus renders that cell, and no other row.
+	renders.clear()
+	const cell = wrapper.findAll('tbody tr')[2]?.find('td').element
+	if (cell instanceof HTMLElement) cell.focus()
+	await nextTick()
+	expect(wrapper.findAll('tbody td[data-active]')).toHaveLength(1)
+	expect([...renders.keys()]).toEqual(['c'])
 	wrapper.unmount()
 })
 
@@ -272,4 +287,70 @@ test('a table without rows has one row that says so, and it is a row of the grid
 	)
 	expect(translated.get('tbody tr').text()).toBe('Ei rivejä.')
 	translated.unmount()
+})
+
+test('a page that arrives together with a new filter stays, also when a cell is active', async () => {
+	const many = Array.from({ length: 60 }, (_item, index) => ({
+		id: `p${index}`,
+		name: index < 30 ? `Aino ${index}` : `Eero ${index}`,
+		team: 'Design',
+		score: index,
+	}))
+	const filter = shallowRef<FilterState>({})
+	const page = shallowRef<PageState | undefined>({ page: 1, pageSize: 25 })
+	const wrapper = mount(
+		() =>
+			h(Table<Person>, {
+				rows: many,
+				columns,
+				filter: filter.value,
+				page: page.value,
+				'onUpdate:page': (value) => (page.value = value),
+			}),
+		{ attachTo: document.body },
+	)
+	// The active cell is on a row that the next list does not have.
+	const cell = wrapper.findAll('tbody tr')[20]?.find('td').element as HTMLElement
+	cell.focus()
+	await nextTick()
+
+	filter.value = { search: 'Aino' }
+	page.value = { page: 2, pageSize: 25 }
+	await nextTick()
+	await nextTick()
+	expect(page.value).toEqual({ page: 2, pageSize: 25 })
+	expect(wrapper.findAll('tbody tr')).toHaveLength(5)
+	wrapper.unmount()
+})
+
+test('a new column width renders no row', async () => {
+	let rowRenders = 0
+	const Probe = defineComponent({
+		setup() {
+			onUpdated(() => rowRenders++)
+			return () => h('span', 'x')
+		},
+	})
+	const controller = createTableController()
+	const wrapper = mount(() =>
+		h(
+			Table<Person>,
+			{ rows: people, columns: nested, controller },
+			{ 'col-name': () => h(Probe, { 'data-at': Math.random() }) },
+		),
+	)
+	controller.setColumnWidth('name', 200)
+	await nextTick()
+	const style = () => wrapper.get('table').attributes('style')?.replaceAll(' ', '')
+	expect(style()).toContain('--table-width:380px')
+	expect(wrapper.get('col[data-column="name"]').attributes('style')).toContain('200px')
+	expect(rowRenders).toBe(0)
+	// A change that renders the table leaves the width as the state has it.
+	controller.setColumnVisibility('score', false)
+	await nextTick()
+	expect(style()).toContain('--table-width:300px')
+	controller.resetColumnWidths()
+	await nextTick()
+	expect(style()).toContain('--table-width:220px')
+	wrapper.unmount()
 })

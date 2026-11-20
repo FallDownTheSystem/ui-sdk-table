@@ -18,7 +18,12 @@ export type ColumnResizeDetails = {
 	source?: 'mouse' | 'touch' | 'pen'
 }
 
-type Drag = { before: unknown; source?: 'mouse' | 'touch' | 'pen' }
+type Drag = {
+	before: unknown
+	source?: 'mouse' | 'touch' | 'pen'
+	/** Whether a step of the drag went through. */
+	accepted?: boolean
+}
 
 export type ColumnResize<State> = {
 	/** Starts a drag of the resize handle of a column. `from` is the width the column has on the screen. */
@@ -62,7 +67,9 @@ export function createColumnResize<State extends object>(
 		restore: (snapshot: unknown, details: ColumnResizeDetails) => void
 		min: (columnId: string) => number
 		max: (columnId: string) => number | undefined
+		/** The pixels that one arrow key changes a width by. Defaults to 1. */
 		step?: () => number
+		/** The pixels for an arrow key with Shift. Defaults to 1. */
 		largeStep?: () => number
 		label?: (columnId: string) => string | undefined
 		message?: (message: { columnId: string; label: string; width: number }) => string
@@ -86,10 +93,11 @@ export function createColumnResize<State extends object>(
 			if (!box) return false
 			const ended = drag
 			drag = undefined
-			const report = { ...details, source: ended?.source }
+			const report = ended?.source ? { ...details, source: ended.source } : details
 			// After a drag, the last step already holds this width. Then the change
-			// says "same value", and the drag still ended well.
-			const changed = options.set(current.columnId, box.width, report) || !!ended
+			// says "same value", and the drag still ended well. A drag whose every
+			// step was refused changed nothing, so it ends without a report.
+			const changed = options.set(current.columnId, box.width, report) || !!ended?.accepted
 			if (changed) options.commit(report)
 			return changed
 		},
@@ -98,8 +106,9 @@ export function createColumnResize<State extends object>(
 			const width = options.max(columnId)
 			return width === undefined ? undefined : { width, height: 1 }
 		},
-		step: options.step,
-		largeStep: options.largeStep,
+		// No `step` here: for `createResize` a step is also the grid that a drag
+		// lands on, and a column must end on the pixel where the pointer is. The
+		// arrow keys take their steps from `keydown` below.
 		label: options.label,
 		message: (event) => {
 			const width = Math.round(event.box.width)
@@ -115,7 +124,8 @@ export function createColumnResize<State extends object>(
 			const draft = context.store.get()[options.draft] as ResizeDraft | null
 			if (draft) {
 				drag ??= pressed ?? { before: options.snapshot() }
-				options.set(draft.key, draft.box.width, { reason: 'drag', source: drag.source })
+				const step = { reason: 'drag' as const, source: drag.source }
+				if (options.set(draft.key, draft.box.width, step)) drag.accepted = true
 				return
 			}
 			const ended = drag
@@ -130,6 +140,21 @@ export function createColumnResize<State extends object>(
 		}),
 	)
 
+	function resizeBy(
+		columnId: string,
+		delta: number,
+		from: number,
+		details: ColumnResizeDetails,
+	): boolean {
+		current = { columnId, from }
+		drag = undefined
+		pressed = undefined
+		return resize.resizeBy(columnId, 'e', delta, 0, {
+			reason: details.reason === 'escape-key' ? 'imperative' : details.reason,
+			event: details.event,
+		})
+	}
+
 	// The handle is on the side where the text ends, and the compass points are physical.
 	const edge = (el: HTMLElement): ResizeHandle => (isRTL(el) ? 'w' : 'e')
 	const pointerKind = (event: PointerEvent) =>
@@ -143,20 +168,14 @@ export function createColumnResize<State extends object>(
 			resize.pointerdown(event, columnId, edge(handle), handle)
 		},
 		keydown(event, columnId, handle, from) {
-			current = { columnId, from }
-			drag = undefined
-			pressed = undefined
-			return resize.keydown(event, columnId, edge(handle))
+			if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return false
+			if (event.altKey || event.ctrlKey || event.metaKey) return false
+			event.preventDefault()
+			const step = (event.shiftKey ? options.largeStep?.() : options.step?.()) ?? 1
+			const wider = (event.key === 'ArrowRight') !== isRTL(handle)
+			return resizeBy(columnId, wider ? step : -step, from, { reason: 'resize-key', event })
 		},
-		resizeBy(columnId, delta, from, details) {
-			current = { columnId, from }
-			drag = undefined
-			pressed = undefined
-			return resize.resizeBy(columnId, 'e', delta, 0, {
-				reason: details.reason === 'escape-key' ? 'imperative' : details.reason,
-				event: details.event,
-			})
-		},
+		resizeBy,
 		dragging: (state, columnId) => resize.dragging(state, columnId) !== undefined,
 		handleAttrs: () => ({ style: resize.handleAttrs('e').style }),
 	}

@@ -4,7 +4,7 @@ import {
 	createCommit,
 	createSelection,
 	definePrimitive,
-	elements,
+	direct,
 	isRTL,
 	live,
 	selects,
@@ -579,28 +579,19 @@ export const table = definePrimitive({
 		const maxWidthOf = (columnId: string) =>
 			layout().byId.get(columnId)?.maxWidth ?? options().columnMaxWidth
 
-		/** The width on the screen of each visible column whose header cell is rendered. */
-		function measureColumns(): Map<string, number> {
-			const widths = new Map<string, number>()
-			type Place = { header?: boolean; row: number; col: number }
-			for (const cell of elements<Place>(context, 'cell')) {
-				if (!cell.props.header) continue
-				const header = headerAt(cell.props.row, cell.props.col)
-				if (!header?.leaf) continue
-				const width = cell.el.getBoundingClientRect().width
-				if (width > 0) widths.set(header.column.id, width)
-			}
-			return widths
-		}
-
 		// The widths on the screen when a resize starts. A column that never had a
 		// width gets the one it has on the screen, so the other columns hold their
 		// place while one column changes.
 		let frozen: ColumnWidths = NO_WIDTHS
+		// The widths that the last step of a resize asked for. When the caller
+		// owns the widths, the state does not hold them yet at the end of the
+		// resize, and the commit must report what the person did.
+		let asked: ColumnWidths | undefined
 
 		/** Prepares a resize of a column and returns the width it starts from. */
 		function startResize(columnId: string): number {
-			const measured = measureColumns()
+			asked = undefined
+			const measured = pins.widths()
 			const widths: Record<string, number> = {}
 			for (const leaf of layout().leaves) {
 				const width = measured.get(leaf.id)
@@ -614,14 +605,14 @@ export const table = definePrimitive({
 
 		const resize = createColumnResize(context, {
 			draft: 'columnResize',
-			set: (columnId, width, details) =>
-				change(
-					'columnWidths',
-					{ ...frozen, ...state().columnWidths, [columnId]: Math.round(width) },
-					details,
-				),
+			set: (columnId, width, details) => {
+				const next = { ...frozen, ...state().columnWidths, [columnId]: Math.round(width) }
+				const accepted = change('columnWidths', next, details)
+				if (accepted) asked = next
+				return accepted
+			},
 			commit: (details) =>
-				commit('columnWidths', state().columnWidths, {
+				commit('columnWidths', asked ?? state().columnWidths, {
 					reason: details.reason,
 					event: details.event,
 				}),
@@ -684,11 +675,13 @@ export const table = definePrimitive({
 		context.onDestroy(
 			context.store.subscribe((liveOnly, _delivered, changed) => {
 				if (liveOnly) return
-				followColumns()
 				const next = list()
 				const newList =
 					next.sort !== seen.sort || next.filter !== seen.filter || next.groupBy !== seen.groupBy
 				seen = next
+				// After `seen`: this can move the active cell, which runs this function
+				// again inside itself, and that run must not see a new list a second time.
+				followColumns()
 				const page = state().page
 				if (!page || (!newList && !changed.includes('revision'))) return
 				// A page that arrives together with the list is the page the caller wants,
@@ -729,6 +722,50 @@ export const table = definePrimitive({
 			// The options are not in place yet when this runs, so the check waits one turn.
 			queueMicrotask(followColumns)
 		})
+
+		function columnOrGroup(id: string, purpose: string): ColumnDef {
+			const columns = layout()
+			const found = columns.groups.get(id) ?? columns.byId.get(id)
+			if (found) return found
+			const groups = columns.groups.size ? ` Header groups: ${listed(columns.groups.keys())}.` : ''
+			throw new Error(
+				`No column "${id}" to ${purpose}. Columns: ${listed(columns.byId.keys())}.${groups}`,
+			)
+		}
+
+		/** The first column under some header groups that cannot be hidden. */
+		function fixedLeaf(columns: readonly ColumnDef[]): ColumnDef | undefined {
+			for (const item of columns) {
+				const found = item.columns?.length
+					? fixedLeaf(item.columns)
+					: item.hideable === false
+						? item
+						: undefined
+				if (found) return found
+			}
+			return undefined
+		}
+
+		/** The header groups above a column or a group, from the outside in. */
+		function parentsOf(id: string): ColumnDef[] {
+			const find = (list: readonly ColumnDef[], path: ColumnDef[]): ColumnDef[] | undefined => {
+				for (const item of list) {
+					if (item.id === id) return path
+					const found = item.columns?.length ? find(item.columns, [...path, item]) : undefined
+					if (found) return found
+				}
+				return undefined
+			}
+			return find(definitions(), []) ?? []
+		}
+
+		function requireShownParents(id: string): void {
+			const hidden = parentsOf(id).find((group) => state().columnVisibility[group.id] === false)
+			if (!hidden) return
+			throw new Error(
+				`Column "${id}" stays hidden while header group "${hidden.id}" is hidden. Show "${hidden.id}" first.`,
+			)
+		}
 
 		function requireVisible(columnId: string, purpose: string): void {
 			column(columnId, purpose)
@@ -863,14 +900,19 @@ export const table = definePrimitive({
 				change('selected', [], { reason: 'imperative' })
 			},
 			setColumnVisibility(columnId, visible) {
-				const columns = layout()
-				const group = columns.groups.get(columnId)
-				const found = group ?? column(columnId, visible ? 'show' : 'hide')
+				const found = columnOrGroup(columnId, visible ? 'show' : 'hide')
 				if (typeof visible !== 'boolean') {
 					throw new Error('`setColumnVisibility` takes a column id and true or false.')
 				}
-				if (!visible) {
+				if (visible) requireShownParents(columnId)
+				else {
 					if (found.hideable === false) throw new Error(`Column "${columnId}" cannot be hidden.`)
+					const fixed = found.columns?.length ? fixedLeaf(found.columns) : undefined
+					if (fixed) {
+						throw new Error(
+							`Column "${fixed.id}" cannot be hidden, so header group "${columnId}" cannot be hidden.`,
+						)
+					}
 					const next = layoutColumns(definitions(), {
 						visibility: { ...state().columnVisibility, [columnId]: false },
 					})
@@ -889,8 +931,9 @@ export const table = definePrimitive({
 				}
 			},
 			toggleColumnVisibility(columnId) {
-				const group = layout().groups.get(columnId)
-				if (!group) column(columnId, 'show or hide')
+				columnOrGroup(columnId, 'show or hide')
+				// Under a hidden group, a toggle would write a second "hidden" and show nothing.
+				requireShownParents(columnId)
 				controller.setColumnVisibility(columnId, state().columnVisibility[columnId] === false)
 			},
 			showAllColumns() {
@@ -917,6 +960,8 @@ export const table = definePrimitive({
 				if (!Array.isArray(columnIds))
 					throw new Error('`setColumnOrder` takes a list of column ids.')
 				for (const id of columnIds) column(String(id), 'order')
+				const twice = columnIds.find((id, position) => columnIds.indexOf(id) !== position)
+				if (twice !== undefined) throw new Error(`Column "${twice}" is in the order twice.`)
 				if (!sameContent(columnIds, state().columnOrder)) {
 					change('columnOrder', [...columnIds], { reason: 'imperative' })
 				}
@@ -932,14 +977,16 @@ export const table = definePrimitive({
 					throw new Error('A column width is a number of pixels above 0, or null for no width.')
 				}
 				if (sameContent(next, state().columnWidths)) return
+				// The commit holds the widths that were asked for: when the caller owns
+				// the widths, the state does not have them yet.
 				if (change('columnWidths', next, { reason: 'imperative' })) {
-					commit('columnWidths', state().columnWidths, { reason: 'imperative' })
+					commit('columnWidths', next, { reason: 'imperative' })
 				}
 			},
 			resetColumnWidths() {
 				if (!Object.keys(state().columnWidths).length) return
 				if (change('columnWidths', NO_WIDTHS, { reason: 'imperative' })) {
-					commit('columnWidths', state().columnWidths, { reason: 'imperative' })
+					commit('columnWidths', NO_WIDTHS, { reason: 'imperative' })
 				}
 			},
 			pinColumn(columnId, side) {
@@ -950,6 +997,8 @@ export const table = definePrimitive({
 					)
 				}
 				const current = state().columnPinning
+				// A column that is pinned there already keeps its place among the pinned columns.
+				if (side && current[side]?.includes(columnId)) return
 				const without = (ids: readonly string[] = []) => ids.filter((id) => id !== columnId)
 				const next = {
 					start: side === 'start' ? [...without(current.start), columnId] : without(current.start),
@@ -1047,6 +1096,10 @@ export const table = definePrimitive({
 			bind: (el, { api }) => api.grid.bindRoot(el),
 			// Selection and cell focus change one row or two cells. The root must not render for them.
 			selects: selects({ selected: [], active: [], columnTrack: [], columnResize: [] }),
+			// A resize changes the width of the table at each step, and the rows must
+			// not render for it. So the two attributes that follow the widths are
+			// kept current on the element, without a render of the root.
+			direct: direct(['style', 'data-sized']),
 			attrs: (_state, { api }) => {
 				const columns = api.columns()
 				// With a width for every column, the table has a width of its own: the
@@ -1187,6 +1240,8 @@ export const table = definePrimitive({
 			focus: 'roving',
 			keys: [...GRID_KEYS, 'Enter', 'F2', 'Escape', ' ', 'alt+ArrowLeft', 'alt+ArrowRight'],
 			selects: selects({ ...QUIET, active: byCell, expanded: [] }),
+			// A move of focus changes these two on the cell it leaves and on the cell
+			// it reaches. Neither cell has to render its content again for that.
 			attrs: (state, { props, api }) => {
 				const header = props.header ? api.headerAt(props.row, props.col) : undefined
 				const column = props.header ? header?.column : api.columns()[props.col]
@@ -1195,8 +1250,16 @@ export const table = definePrimitive({
 				const leaf = !!header?.leaf
 				const sortable = leaf && !!column?.sortable
 				const sort = sortable && column ? api.sortOf(column.id) : undefined
-				const pin = column && !(wide && !props.header) ? api.columnPin(column.id) : undefined
-				const offset = pin && column ? api.pins.offset(column.id) : undefined
+				// A header group is pinned with the columns under it. It starts at its
+				// column that is nearest to the edge, and its other end is the one that
+				// can be next to the columns that scroll.
+				const leaves = api.columns()
+				const first = header ? leaves[header.col] : column
+				const last = header ? leaves[header.col + header.colSpan - 1] : column
+				const pin = header ? header.pin : wide || !column ? undefined : api.columnPin(column.id)
+				const near = pin === 'end' ? last : first
+				const far = pin === 'end' ? first : last
+				const offset = pin && near ? api.pins.offset(near.id) : undefined
 				return {
 					tabindex: api.grid.tabIndex(state, props),
 					colspan: wide ? String(props.colspan) : undefined,
@@ -1213,7 +1276,7 @@ export const table = definePrimitive({
 					'data-active': api.grid.isActive(state, props) ? '' : undefined,
 					'data-sorted': sort,
 					'data-pinned': pin,
-					'data-pinned-edge': pin && column && api.isPinEdge(column.id) ? '' : undefined,
+					'data-pinned-edge': pin && far && api.isPinEdge(far.id) ? '' : undefined,
 					'data-moving': leaf && column && api.reorder.moving(state, column.id) ? '' : undefined,
 					'data-grabbed': leaf && column && api.reorder.dragging(state, column.id) ? '' : undefined,
 					style: offset ? `--table-pin-offset:${offset}` : undefined,
@@ -1289,7 +1352,9 @@ export const table = definePrimitive({
 					}
 					// The whole header cell is the grip of its column. A drag starts only
 					// after the pointer moves, so a press on a sort button stays a press.
-					if (header?.leaf) api.reorder.pointerdown(event, header.column.id)
+					// A press in a text field selects text or moves the caret there.
+					const field = target?.closest('input, select, textarea, [contenteditable]')
+					if (header?.leaf && !field) api.reorder.pointerdown(event, header.column.id)
 				},
 			},
 			bind: (el, { api, props }) => {
@@ -1324,6 +1389,12 @@ export const table = definePrimitive({
 				'aria-orientation': 'vertical',
 				'aria-label': api.message('resizeColumn')(api.columnLabel(key)),
 				'aria-valuenow': String(Math.round(api.columnWidth(key) ?? DEFAULT_COLUMN_WIDTH)),
+				// A width in pixels is outside the range from 0 to 100 that a separator
+				// has without a maximum, so the handle also says its value in words.
+				'aria-valuetext': api.message('columnResized')({
+					column: api.columnLabel(key),
+					width: Math.round(api.columnWidth(key) ?? DEFAULT_COLUMN_WIDTH),
+				}),
 				'aria-valuemin': String(api.columnMinWidth(key)),
 				'aria-valuemax':
 					api.columnMaxWidth(key) === undefined ? undefined : String(api.columnMaxWidth(key)),
@@ -1346,6 +1417,7 @@ export const table = definePrimitive({
 					if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
 					// The arrow belongs to the handle, not to the grid around it.
 					event.stopPropagation()
+					if (event.altKey || event.ctrlKey || event.metaKey) return
 					api.resize.keydown(event, key, el, api.startResize(key))
 				},
 			},

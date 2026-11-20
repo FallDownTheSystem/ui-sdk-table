@@ -22,6 +22,8 @@ import {
 import {
 	defineComponent,
 	h,
+	onBeforeUnmount,
+	shallowRef,
 	type ComponentObjectPropsOptions,
 	type PropType,
 	type PublicProps,
@@ -57,6 +59,20 @@ const MODELS = [
 	'columnPinning',
 ] as const
 type Model = (typeof MODELS)[number]
+
+/** The keys of the state that decide which rows and columns the table has. */
+const STRUCTURE = [
+	'revision',
+	'sort',
+	'filter',
+	'groupBy',
+	'page',
+	'expanded',
+	'columnVisibility',
+	'columnOrder',
+	'columnPinning',
+	'columnDrag',
+] as const
 
 const OPTIONS = [
 	'rows',
@@ -400,25 +416,30 @@ const TableImpl = defineComponent(
 			)
 		}
 
-		return () => {
-			// The rows and the columns come from the api, so the render must name the state it depends on.
-			const state = handle.state
-			void state.revision
-			void state.sort
-			void state.filter
-			void state.groupBy
-			void state.page
-			void state.expanded
-			void state.columnVisibility
-			void state.columnOrder
-			void state.columnPinning
-			void state.columnDrag
+		// The rows and the columns come from the api, and the api is not reactive.
+		// So this number goes up when a key of the state changes that decides
+		// which rows and columns there are, and the render reads the number. A
+		// read of `handle.state` would render every row again for each row that
+		// is selected and for each step of a resize: it follows the state as a whole.
+		const structure = shallowRef(0)
+		const read = () => {
+			const state = handle.instance.get()
+			return STRUCTURE.map((key) => state[key])
+		}
+		let seen = read()
+		onBeforeUnmount(
+			handle.instance.subscribe(() => {
+				const next = read()
+				if (next.some((value, index) => value !== seen[index])) structure.value++
+				seen = next
+			}),
+		)
 
+		function content() {
 			const columns = api.columns()
 			const rows = api.rows()
 			const head = api.headerRowCount()
-
-			return h(RootPart, { handle, ...attrs }, () => [
+			return [
 				h('colgroup', null, [
 					columns.map((column) => h(TableCol, { key: column.id, value: column.id })),
 				]),
@@ -434,7 +455,17 @@ const TableImpl = defineComponent(
 						: emptyRow(head, columns.length),
 				),
 				footRow(columns, head + Math.max(1, rows.length)),
-			])
+			]
+		}
+
+		return () => {
+			// An option can change what a part shows without a change of state: a
+			// locale, a message, whether columns resize. So every option is read here,
+			// and a new value renders the table again.
+			for (const name of OPTIONS) void props[name]
+			void structure.value
+			// A new function at each render: the root part then renders its content again.
+			return h(RootPart, { handle, ...attrs }, () => content())
 		}
 	},
 	{ name: 'Table', inheritAttrs: false, props: PROPS },

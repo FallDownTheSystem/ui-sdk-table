@@ -351,3 +351,35 @@ test('all column features work together with the keyboard grid', async ({ page }
 	await page.keyboard.press('ArrowUp')
 	await expect(cell(table, 42, 4)).toBeFocused()
 })
+
+test('Page Down and Page Up move through header cells that span', async ({ page }) => {
+	const table = await open(page)
+	await page.getByRole('checkbox', { name: 'Narrow frame' }).focus()
+	await page.keyboard.press('Tab')
+	await page.keyboard.press('ArrowRight')
+	await expect(header(table, 'work')).toBeFocused()
+	// A page is 10 rows, counted from the last row of the cell that has focus.
+	await page.keyboard.press('PageDown')
+	await expect(cell(table, 11, 2)).toBeFocused()
+	await page.keyboard.press('PageUp')
+	await expect(header(table, 'work')).toBeFocused()
+	await page.keyboard.press('ArrowLeft')
+	await expect(header(table, 'name')).toBeFocused()
+	// The Name header covers both header rows, so a page starts from its second row.
+	await page.keyboard.press('PageDown')
+	await expect(cell(table, 12, 1)).toBeFocused()
+	await page.keyboard.press('PageUp')
+	await expect(header(table, 'name')).toBeFocused()
+})
+
+test('the header group above a pinned column stays at the edge with it', async ({ page }) => {
+	const table = await open(page)
+	const scroller = page.getByTestId('scroller')
+	await page.getByRole('button', { name: 'Pin team to the start' }).click()
+	const group = table.locator('thead th[data-column="work"][data-pinned="start"]')
+	await expect(group).toHaveCount(1)
+	const before = await left(group)
+	await scroller.evaluate((el) => (el.scrollLeft = 200))
+	expect(await left(group)).toBe(before)
+	expect(await left(header(table, 'team'))).toBe(before)
+})

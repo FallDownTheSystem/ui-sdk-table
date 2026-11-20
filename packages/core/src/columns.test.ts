@@ -483,3 +483,171 @@ describe('column pinning', () => {
 		}
 	})
 })
+
+describe('column widths that the caller owns', () => {
+	test('the commit holds the widths that were asked for, not the widths of the state', async () => {
+		const changes: unknown[] = []
+		const commits: unknown[] = []
+		const view = setup(flat, {
+			resizable: true,
+			columnWidths: { name: 180, team: 100, role: 100, score: 80 },
+			onColumnWidthsChange: (value) => changes.push(value),
+			onColumnWidthsCommit: (value) => commits.push(value),
+		})
+		try {
+			const cell = view.part('cell', 'h|name') as HTMLElement
+			cell.getBoundingClientRect = () => ({ width: 180, height: 20 }) as DOMRect
+			await view.keys('Tab', 'Alt+ArrowRight')
+			const asked = { name: 190, team: 100, role: 100, score: 80 }
+			expect(changes).toEqual([asked])
+			expect(commits).toEqual([asked])
+			// The owner did not pass the value back, so the state is as before.
+			expect(view.state.columnWidths.name).toBe(180)
+
+			view.api.setColumnWidth('name', 200)
+			expect(commits.at(-1)).toEqual({ ...asked, name: 200 })
+			view.api.resetColumnWidths()
+			expect(commits.at(-1)).toEqual({})
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a drag that the caller refuses at every step ends without a commit', async () => {
+		const commits: unknown[] = []
+		const view = setup(flat, {
+			resizable: true,
+			onColumnWidthsChange: (_value, details) => details.cancel(),
+			onColumnWidthsCommit: (value) => commits.push(value),
+		})
+		try {
+			await view.drag(view.part('resizer', 'name') as HTMLElement, { by: { x: 30, y: 0 } })
+			expect(view.state.columnWidths).toEqual({})
+			expect(commits).toEqual([])
+			expect(view.announced).toEqual([])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a pointer resize ends on the pixel where the pointer is', async () => {
+		const view = setup(flat, { resizable: true })
+		try {
+			const handle = view.part('resizer', 'name') as HTMLElement
+			await view.drag(handle, { by: { x: 33, y: 0 } })
+			expect(view.state.columnWidths.name).toBe(153)
+			expect(handle.getAttribute('aria-valuetext')).toBe('Name, 153 pixels wide.')
+			expect(view.changes.at(-1)).toMatchObject({ key: 'columnWidths', source: 'mouse' })
+			handle.focus()
+			await view.keys('ArrowRight')
+			expect(view.changes.at(-1)).toMatchObject({ reason: 'resize-key', source: 'keyboard' })
+		} finally {
+			view.unmount()
+		}
+	})
+})
+
+describe('column rules at the edges', () => {
+	const grouped: ColumnDef<Person>[] = [
+		{ id: 'name' },
+		{ id: 'work', columns: [{ id: 'team', hideable: false }, { id: 'role' }] },
+		{ id: 'score' },
+	]
+
+	test('a header group cannot hide a column that cannot be hidden', () => {
+		const view = setup(grouped)
+		try {
+			expect(() => view.api.setColumnVisibility('work', false)).toThrow(
+				'Column "team" cannot be hidden, so header group "work" cannot be hidden.',
+			)
+			expect(() => view.api.toggleColumnVisibility('work')).toThrow('cannot be hidden')
+			expect(ids(view.api.columns())).toEqual(['name', 'team', 'role', 'score'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a column under a hidden header group cannot show alone, and the error says why', () => {
+		const view = setup(nested, { defaultColumnVisibility: { work: false } })
+		try {
+			expect(() => view.api.setColumnVisibility('team', true)).toThrow(
+				'Column "team" stays hidden while header group "work" is hidden. Show "work" first.',
+			)
+			expect(() => view.api.toggleColumnVisibility('team')).toThrow('Show "work" first')
+			expect(view.state.columnVisibility).toEqual({ work: false })
+			// A header group is a valid id for these two methods, so the error lists the groups too.
+			expect(() => view.api.setColumnVisibility('nope', false)).toThrow('Header groups: work.')
+			view.api.setColumnVisibility('work', true)
+			expect(ids(view.api.columns())).toEqual(['name', 'team', 'role', 'score'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a column that is pinned again keeps its place, and an order cannot name a column twice', () => {
+		const view = setup(flat, { defaultColumnPinning: { start: ['name', 'team'] } })
+		try {
+			view.api.pinColumn('name', 'start')
+			expect(view.state.columnPinning).toEqual({ start: ['name', 'team'] })
+			expect(view.changes).toEqual([])
+			expect(() => view.api.setColumnOrder(['role', 'score', 'role'])).toThrow(
+				'Column "role" is in the order twice.',
+			)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('`moveColumn` moves a column also when a person cannot', () => {
+		const view = setup()
+		try {
+			view.api.moveColumn('score', 0)
+			expect(ids(view.api.columns())).toEqual(['score', 'name', 'team', 'role'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('the header group above a pinned column is pinned with it', () => {
+		const pinning = { start: ['role'], end: ['team'] }
+		const view = setup(nested, { defaultColumnPinning: pinning })
+		try {
+			const groups = layoutColumns(nested, { pinning }).headerRows[0]?.filter(
+				(cell) => cell.column.id === 'work',
+			)
+			expect(groups?.map((cell) => cell.pin)).toEqual(['start', 'end'])
+			for (const cell of groups ?? []) {
+				const el = view.part('cell', `h|${cell.key}`)
+				expect(el?.getAttribute('data-pinned')).toBe(cell.pin)
+				expect(el?.hasAttribute('data-pinned-edge')).toBe(true)
+				expect(style(el)).toContain(`--table-pin-offset:var(--table-pin-${cell.pin}-0,0px)`)
+			}
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a press in a text field of a header does not pick the column up', async () => {
+		const view = setup(flat, { reorderable: true })
+		try {
+			const cell = view.part('cell', 'h|team') as HTMLElement
+			const field = document.createElement('input')
+			cell.append(field)
+			const press = () => new PointerEvent('pointerdown', { bubbles: true, button: 0 })
+			const move = () =>
+				new PointerEvent('pointermove', { bubbles: true, clientX: 300, clientY: 0 })
+			field.dispatchEvent(press())
+			field.dispatchEvent(move())
+			expect(view.state.columnDrag).toBeNull()
+			document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+			// The same press on the header itself picks the column up.
+			cell.dispatchEvent(press())
+			cell.dispatchEvent(move())
+			expect(view.state.columnDrag).not.toBeNull()
+			document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+			await view.settle()
+		} finally {
+			view.unmount()
+		}
+	})
+})

@@ -9,6 +9,8 @@ export type ColumnPins = {
 	bindGroup(group: HTMLElement): () => void
 	/** The offset of a pinned column from its edge, as a CSS value, or `undefined` for a free column. */
 	offset(columnId: string): string | undefined
+	/** The width on the screen of each column whose header cell joined, by column id. */
+	widths(): Map<string, number>
 }
 
 /**
@@ -126,6 +128,14 @@ export function createColumnPins<State extends object>(
 			const place = places().find((column) => column.id === columnId)
 			if (!place) return undefined
 			return `var(${name(place.side, place.index)}, ${sum(place.before, options.width)}px)`
+		},
+		widths() {
+			const widths = new Map<string, number>()
+			for (const [columnId, el] of cells) {
+				const width = el.getBoundingClientRect().width
+				if (width > 0) widths.set(columnId, width)
+			}
+			return widths
 		},
 	}
 }

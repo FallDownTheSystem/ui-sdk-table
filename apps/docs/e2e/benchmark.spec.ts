@@ -118,3 +118,23 @@ test('after a sort, the arrow keys move from the place the cell has now', async 
 	await page.keyboard.press('ArrowUp')
 	await expect(cell(3, 2)).toBeFocused()
 })
+
+test('the row that says "no rows" is a row of the keyboard grid', async ({ page }) => {
+	await page.goto('/')
+	const table = page.getByRole('grid', { name: 'People' })
+	await page.getByRole('searchbox', { name: 'Search' }).fill('no such person')
+	const empty = table.locator('tbody td')
+	await expect(empty).toHaveText('No person matches the search.')
+	const header = table.locator('thead th')
+
+	await header.nth(2).focus()
+	await page.keyboard.press('ArrowDown')
+	await expect(empty).toBeFocused()
+	await expect(empty.locator('xpath=..')).toHaveAttribute('aria-rowindex', '2')
+	// The row is one wide cell, so the arrows to the side have no other cell to go to.
+	await page.keyboard.press('ArrowRight')
+	await expect(empty).toBeFocused()
+	// The person came down the third column, and goes back up the same column.
+	await page.keyboard.press('ArrowUp')
+	await expect(header.nth(2)).toBeFocused()
+})
