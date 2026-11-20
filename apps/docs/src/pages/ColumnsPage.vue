@@ -129,6 +129,7 @@ function togglePin(id: string, side: 'start' | 'end') {
 			:controller="controller"
 			resizable
 			reorderable
+			sticky-header
 			aria-label="People"
 			@column-widths-commit="commits++"
 		>

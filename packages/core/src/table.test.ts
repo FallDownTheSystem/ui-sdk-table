@@ -28,7 +28,7 @@ function markup(ids: string[]): string {
 	const rows = ids.map(
 		(id, index) => `<row value="${id}" index="${index + 1}">${cells(index + 1)}</row>`,
 	)
-	return `<root aria-label="People"><headerRow index="0">${cells(0, true)}</headerRow>${rows.join('')}</root>`
+	return `<root aria-label="People"><header-row index="0">${cells(0, true)}</header-row>${rows.join('')}</root>`
 }
 
 function setup(options: Partial<TableOptions<Person>> = {}, ids = ['a', 'b', 'c']) {

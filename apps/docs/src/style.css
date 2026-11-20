@@ -38,12 +38,6 @@ body {
 	white-space: nowrap;
 }
 
-[data-slot='table'] thead th {
-	position: sticky;
-	inset-block-start: 0;
-	background: Canvas;
-}
-
 .pages {
 	display: flex;
 	gap: 1rem;
@@ -83,10 +77,6 @@ body {
 	text-overflow: ellipsis;
 }
 
-[data-slot='table'] thead th {
-	z-index: 1;
-}
-
 [data-slot='table-cell'][data-pinned] {
 	position: sticky;
 	z-index: 1;
@@ -98,8 +88,65 @@ body {
 	scroll-margin-inline: var(--table-pin-start-size, 0) var(--table-pin-end-size, 0);
 }
 
-[data-slot='table'] thead [data-slot='table-cell'][data-pinned] {
+/*
+ * Rows that stay in view: the header rows, the pinned rows and the footer row.
+ * The cells stick, because a row of a table cannot. Each row has the offset
+ * that puts it under, or over, the sticky rows before it.
+ */
+[data-slot='table'] tr[data-sticky] > * {
+	position: sticky;
 	z-index: 2;
+	background: Canvas;
+}
+
+[data-slot='table'] tr[data-sticky='top'] > * {
+	inset-block-start: var(--table-sticky-offset, 0);
+}
+
+[data-slot='table'] tr[data-sticky='bottom'] > * {
+	inset-block-end: var(--table-sticky-offset, 0);
+}
+
+[data-slot='table'] tr[data-sticky] > [data-pinned] {
+	z-index: 3;
+}
+
+/* A cell that gets focus scrolls into view, and it must stop beside the sticky rows, not under them. */
+[data-slot='table'] tr:not([data-sticky]) > [data-slot='table-cell'] {
+	scroll-margin-block: var(--table-sticky-top-size, 0) var(--table-sticky-bottom-size, 0);
+}
+
+[data-slot='table'] tr[data-pinned] > * {
+	background: color-mix(in srgb, Highlight 12%, Canvas);
+}
+
+/* A spacer stands in for the rows that the row window does not render. */
+[data-slot='table-spacer'] {
+	block-size: var(--table-spacer-size);
+}
+
+/* With one height for every row, each row has exactly that height. */
+[data-slot='table'][data-row-window] tbody tr:not([data-slot='table-spacer']) {
+	block-size: var(--table-row-height);
+}
+
+.scroller.tall {
+	block-size: 70vh;
+}
+
+.lines-2,
+.lines-3 {
+	display: inline-block;
+	padding-block-end: 1.25rem;
+}
+
+.lines-3 {
+	padding-block-end: 2.5rem;
+}
+
+.detail {
+	padding-block: 0.5rem;
+	white-space: normal;
 }
 
 [data-slot='table-cell'][data-pinned='start'] {
@@ -129,7 +176,7 @@ body {
 
 [data-slot='table-cell'][data-grabbed] {
 	transform: translateX(var(--drag-x, 0));
-	z-index: 3;
+	z-index: 4;
 }
 
 [data-slot='table-resizer'] {

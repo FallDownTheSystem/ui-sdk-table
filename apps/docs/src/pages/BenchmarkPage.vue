@@ -94,6 +94,7 @@ function search(event: Event) {
 			:group-by="groupBy"
 			:controller="controller"
 			selection="multiple"
+			sticky-header
 			aria-label="People"
 		>
 			<template #col-name="{ text, selected: isSelected, toggleSelected }">

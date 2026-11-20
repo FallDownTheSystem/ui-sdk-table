@@ -3,7 +3,7 @@ import { createRowPredicate, filterRows } from './filter'
 import { flattenRows, type FlatRow } from './flatten'
 import { groupRows } from './group'
 import { memo } from './memo'
-import { createRowNodes, walkRows, type RowNodeOptions, type RowNodes } from './nodes'
+import { createRowNodes, omitRows, walkRows, type RowNodeOptions, type RowNodes } from './nodes'
 import { clampPage, pageCount, paginate } from './paginate'
 import { sortRows } from './sort'
 import type {
@@ -44,6 +44,14 @@ export type RowModelOptions<Row> = RowNodeOptions<Row> & {
 	isExpanded?: (node: TableRow<Row>) => boolean
 	/** A value that changes when the answers of `isExpanded` change, such as the expansion state itself. */
 	expansion?: () => unknown
+	/** Whether a data row without children has a detail row. Return the same function while its answers are the same. */
+	hasDetail?: () => ((row: Row) => boolean) | undefined
+	/**
+	 * The ids of rows that leave the list after the filter, such as rows that
+	 * are pinned and shown in a place of their own. Groups, pages and the
+	 * visible rows do not hold them. `filtered` and the totals still do.
+	 */
+	omit?: () => ReadonlySet<string> | undefined
 }
 
 export type RowModel<Row> = {
@@ -53,6 +61,8 @@ export type RowModel<Row> = {
 	sorted: () => readonly DataRow<Row>[]
 	/** The sorted rows that pass the search and the column filters. */
 	filtered: () => readonly DataRow<Row>[]
+	/** The filtered rows without the rows of `omit`. */
+	listed: () => readonly DataRow<Row>[]
 	grouped: () => readonly TableRow<Row>[]
 	paged: () => readonly TableRow<Row>[]
 	/** The visible rows in order, with expanded children in place. */
@@ -72,7 +82,7 @@ export type RowModel<Row> = {
 }
 
 /**
- * The row pipeline: source, sort, filter, group, page, flatten. Each stage
+ * The row pipeline: source, sort, filter, omit, group, page, flatten. Each stage
  * keeps its last result and runs again only when its input or its own state
  * changed, so a page change does not filter or sort again.
  *
@@ -128,8 +138,16 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 			page === undefined || pageSize === undefined ? rows : paginate(rows, { page, pageSize }),
 	)
 
-	const flatStage = memo((rows: readonly TableRow<Row>[], _expansion: unknown) =>
-		flattenRows(rows, options.isExpanded ?? (() => false)),
+	const omitStage = memo((rows: readonly DataRow<Row>[], ids: ReadonlySet<string> | undefined) =>
+		ids?.size ? omitRows(rows, ids) : rows,
+	)
+
+	const flatStage = memo(
+		(
+			rows: readonly TableRow<Row>[],
+			_expansion: unknown,
+			hasDetail: ((row: Row) => boolean) | undefined,
+		) => flattenRows(rows, options.isExpanded ?? (() => false), hasDetail),
 	)
 
 	if (options.isExpanded && !options.expansion) {
@@ -170,8 +188,10 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 				)
 			: sorted()
 
+	const listed = () => (options.omit ? omitStage(filtered(), options.omit()) : filtered())
+
 	const grouped = (): readonly TableRow<Row>[] =>
-		options.groupBy ? groupStage(filtered(), options.groupBy(), options.columns()) : filtered()
+		options.groupBy ? groupStage(listed(), options.groupBy(), options.columns()) : listed()
 
 	const paged = () => {
 		const page = options.page?.()
@@ -182,9 +202,10 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 		source: () => source(options.rows()),
 		sorted,
 		filtered,
+		listed,
 		grouped,
 		paged,
-		flat: () => flatStage(paged(), options.expansion?.()),
+		flat: () => flatStage(paged(), options.expansion?.(), options.hasDetail?.()),
 		rowById: (id) => source(options.rows()).byId.get(id),
 		rowCount: () => grouped().length,
 		pageCount: () => {

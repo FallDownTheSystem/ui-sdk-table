@@ -2,12 +2,14 @@
 import type { Component } from 'vue'
 import BenchmarkPage from './pages/BenchmarkPage.vue'
 import ColumnsPage from './pages/ColumnsPage.vue'
+import WindowPage from './pages/WindowPage.vue'
 
 // The demo app has no router: a page is one query parameter, so a browser
 // test opens a page with one address.
 const pages: Record<string, { title: string; component: Component }> = {
 	benchmark: { title: 'Rows', component: BenchmarkPage },
 	columns: { title: 'Columns', component: ColumnsPage },
+	window: { title: 'Row window', component: WindowPage },
 }
 
 const requested = new URLSearchParams(location.search).get('page') ?? 'benchmark'

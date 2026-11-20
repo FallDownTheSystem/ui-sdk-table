@@ -70,3 +70,31 @@ export function walkRows<Row>(
 		if (row.children) walkRows(row.children, visit)
 	}
 }
+
+/**
+ * The rows without the rows of `ids`, at any depth. A row that goes takes
+ * its tree children with it. When no row goes, the result is `rows` itself.
+ */
+export function omitRows<Row>(
+	rows: readonly DataRow<Row>[],
+	ids: ReadonlySet<string>,
+): readonly DataRow<Row>[] {
+	if (!ids.size) return rows
+	let changed = false
+	const kept: DataRow<Row>[] = []
+	for (const node of rows) {
+		if (ids.has(node.id)) {
+			changed = true
+			continue
+		}
+		const children = node.children && omitRows(node.children, ids)
+		if (children === node.children) kept.push(node)
+		else {
+			changed = true
+			// A new node around the same row: the caller's row object is not touched.
+			const { children: _before, ...rest } = node
+			kept.push(children?.length ? { ...rest, children } : rest)
+		}
+	}
+	return changed ? kept : rows
+}

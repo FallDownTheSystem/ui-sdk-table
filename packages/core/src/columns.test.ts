@@ -36,7 +36,7 @@ function markup(columns: readonly ColumnDef<Person>[], options: Partial<TableOpt
 			const resizer = cell.leaf ? `<resizer value="${cell.column.id}"></resizer>` : ''
 			return `<cell value="h|${cell.key}" row="${cell.row}" col="${cell.col}" colspan="${cell.colSpan}" rowspan="${cell.rowSpan}" header>${cell.column.id}${resizer}</cell>`
 		})
-		return `<headerRow index="${index}">${content.join('')}</headerRow>`
+		return `<header-row index="${index}">${content.join('')}</header-row>`
 	})
 	const first = layout.headerRows.length
 	const rows = people.map((person, position) => {

@@ -15,6 +15,13 @@ import { createTableGrid, GRID_KEYS, type GridArea, type GridCell } from './beha
 import { createColumnPins } from './behaviors/pin'
 import { createColumnReorder, type ReorderDraft } from './behaviors/reorder'
 import { createColumnResize, type ResizeDraft } from './behaviors/resize'
+import { createStickyRows } from './behaviors/sticky'
+import {
+	createRowWindow,
+	firstRowWindow,
+	type RowAlign,
+	type RowWindowState,
+} from './behaviors/window'
 import {
 	fullColumnOrder,
 	headerCellMap,
@@ -65,6 +72,10 @@ export type ColumnWidths = Readonly<Record<string, number>>
 
 export type SortDirection = 'asc' | 'desc'
 
+export type RowPin = 'top' | 'bottom'
+/** The ids of the rows that stay at the top or the bottom edge while the other rows scroll. */
+export type RowPinning = { top?: readonly string[]; bottom?: readonly string[] }
+
 /** The methods of a table that code outside it, or an agent, can call. */
 export type TableController = {
 	sortBy(columnId: string, direction?: SortDirection | null, options?: { append?: boolean }): void
@@ -100,6 +111,10 @@ export type TableController = {
 	resetColumnWidths(): void
 	/** Pins a column to the start or the end of the table. `null` frees it. */
 	pinColumn(columnId: string, side: ColumnPin | null): void
+	/** Pins a row to the top or the bottom of the rows. `null` frees it. */
+	pinRow(rowId: string, edge: RowPin | null): void
+	/** Scrolls a row into view, in one step, also when the row is not rendered yet. */
+	scrollToRow(rowId: string, align?: RowAlign): void
 }
 
 export type TableOptions<Row = unknown> = {
@@ -178,6 +193,33 @@ export type TableOptions<Row = unknown> = {
 	columnPinning?: ColumnPinning
 	defaultColumnPinning?: ColumnPinning
 	onColumnPinningChange?: (value: ColumnPinning, details: TableChangeDetails) => void
+
+	/**
+	 * Render only the rows near the scroll frame, with a spacer for the rest.
+	 * The frame is the nearest parent that scrolls, or the page. Defaults to false.
+	 */
+	rowWindow?: boolean
+	/** One height for every row, in pixels. Without it, the row window measures each row. */
+	rowHeight?: number
+	/** The height of a row that the row window did not measure yet, in pixels. Defaults to 36. */
+	estimatedRowHeight?: number
+	/** How many rows more than the frame shows the row window renders on each side. Defaults to 8. */
+	overscan?: number
+	/** Whether the header rows stay at the top of the scroll frame. Defaults to false. */
+	stickyHeader?: boolean
+	/** Whether the footer row stays at the bottom of the scroll frame. Defaults to false. */
+	stickyFooter?: boolean
+	/**
+	 * Which rows have a detail row: one wide row under the row, which opens and
+	 * closes as a tree row does. Pass the same function while its answers are
+	 * the same: a new function makes the table list its rows again.
+	 */
+	hasDetail?: (row: Row) => boolean
+
+	/** The rows that stay at the top or the bottom edge. A filter or a page does not hide them. */
+	rowPinning?: RowPinning
+	defaultRowPinning?: RowPinning
+	onRowPinningChange?: (value: RowPinning, details: TableChangeDetails) => void
 }
 
 type TableState = {
@@ -191,6 +233,9 @@ type TableState = {
 	columnOrder: readonly string[]
 	columnWidths: ColumnWidths
 	columnPinning: ColumnPinning
+	rowPinning: RowPinning
+	/** The rows of the list that the row window renders. */
+	rowWindow: RowWindowState
 	/**
 	 * The ids of the columns that a person can move, in display order: the
 	 * visible columns that are not pinned. The reorder behavior moves this list.
@@ -217,6 +262,12 @@ const NO_IDS: readonly string[] = []
 const NO_VISIBILITY: ColumnVisibility = {}
 const NO_WIDTHS: ColumnWidths = {}
 const NO_PINNING: ColumnPinning = {}
+const NO_ROW_PINNING: RowPinning = {}
+const NO_FLAT: FlatRow<unknown>[] = []
+
+const DEFAULT_ROW_HEIGHT = 36
+const DEFAULT_OVERSCAN = 8
+const ROW_ALIGNS: readonly RowAlign[] = ['start', 'center', 'end', 'nearest']
 
 const DEFAULT_COLUMN_WIDTH = 150
 const DEFAULT_COLUMN_MIN_WIDTH = 48
@@ -235,7 +286,30 @@ const QUIET = {
 	columnWidths: [],
 	columnTrack: [],
 	columnResize: [],
+	rowWindow: [],
 } as const
+
+/** For a part that reads no state at all. */
+const SILENT = {
+	...QUIET,
+	revision: [],
+	sort: [],
+	filter: [],
+	groupBy: [],
+	page: [],
+	expanded: [],
+	columnVisibility: [],
+	columnOrder: [],
+	columnPinning: [],
+	columnDrag: [],
+	rowPinning: [],
+} as const
+
+/** One cleanup for several. */
+const together =
+	(...cleanups: (() => void)[]) =>
+	() =>
+		cleanups.forEach((cleanup) => cleanup())
 
 function listed(ids: Iterable<string>): string {
 	const list = [...ids]
@@ -294,6 +368,16 @@ export const table = definePrimitive({
 		columnPinning: 'value',
 		defaultColumnPinning: 'value',
 		onColumnPinningChange: 'callback',
+		rowWindow: 'boolean',
+		rowHeight: 'number',
+		estimatedRowHeight: 'number',
+		overscan: 'number',
+		stickyHeader: 'boolean',
+		stickyFooter: 'boolean',
+		hasDetail: 'value',
+		rowPinning: 'value',
+		defaultRowPinning: 'value',
+		onRowPinningChange: 'callback',
 	},
 	controlled: [
 		'sort',
@@ -306,6 +390,7 @@ export const table = definePrimitive({
 		'columnOrder',
 		'columnWidths',
 		'columnPinning',
+		'rowPinning',
 	],
 	commits: ['columnWidths'],
 	live: ['columnResize'],
@@ -325,6 +410,11 @@ export const table = definePrimitive({
 			columnOrder,
 			columnWidths: options.columnWidths ?? options.defaultColumnWidths ?? NO_WIDTHS,
 			columnPinning,
+			rowPinning: options.rowPinning ?? options.defaultRowPinning ?? NO_ROW_PINNING,
+			rowWindow: firstRowWindow(
+				options.rowHeight ?? options.estimatedRowHeight ?? DEFAULT_ROW_HEIGHT,
+				options.overscan ?? DEFAULT_OVERSCAN,
+			),
 			columnTrack: columnTrack(
 				layoutColumns(options.columns ?? NO_COLUMNS, {
 					visibility: columnVisibility,
@@ -350,6 +440,7 @@ export const table = definePrimitive({
 		if (options.columnOrder !== undefined) synced.columnOrder = options.columnOrder
 		if (options.columnWidths !== undefined) synced.columnWidths = options.columnWidths
 		if (options.columnPinning !== undefined) synced.columnPinning = options.columnPinning
+		if (options.rowPinning !== undefined) synced.rowPinning = options.rowPinning
 		return synced
 	},
 	api: (context) => {
@@ -449,6 +540,12 @@ export const table = definePrimitive({
 			groupBy: stableGroupBy(state().groupBy),
 		})
 
+		const stableRowPinning = stabilize<RowPinning>()
+		const rowPinning = () => stableRowPinning(state().rowPinning)
+		const pinnedIds = memo(
+			(pinning: RowPinning) => new Set([...(pinning.top ?? []), ...(pinning.bottom ?? [])]),
+		)
+
 		const model = createRowModel<unknown>({
 			rows: () => options().rows ?? NO_ROWS,
 			columns: definitions,
@@ -471,7 +568,51 @@ export const table = definePrimitive({
 			page: () => state().page,
 			isExpanded: (node) => idSet(state().expanded).has(node.id),
 			expansion: () => state().expanded,
+			hasDetail: () => options().hasDetail,
+			// A pinned row has a place of its own, so it leaves the list.
+			omit: () => pinnedIds(rowPinning()),
 		})
+
+		// The pinned rows that exist, for each edge. A row that is named for both edges is at the top.
+		const pinnedRows = memo((pinning: RowPinning, source: ReturnType<typeof model.source>) => {
+			const seen = new Set<string>()
+			const at = (edge: RowPin): FlatRow<unknown>[] => {
+				const nodes = (pinning[edge] ?? []).flatMap((id) => {
+					const node = source.byId.get(id)
+					if (!node || seen.has(id)) return []
+					seen.add(id)
+					return [node]
+				})
+				return nodes.map((node, position) => ({
+					id: node.id,
+					node,
+					level: 0,
+					parentId: null,
+					position: position + 1,
+					setSize: nodes.length,
+					expandable: false,
+					expanded: false,
+					pinned: edge,
+				}))
+			}
+			const top = at('top')
+			const bottom = at('bottom')
+			return top.length || bottom.length ? { top, bottom } : { top: NO_FLAT, bottom: NO_FLAT }
+		})
+		const pinned = () => pinnedRows(rowPinning(), model.source())
+		/**
+		 * Every row of the body in order: the rows pinned to the top, the rows of
+		 * the list, the rows pinned to the bottom. The grid counts its rows in
+		 * this list.
+		 */
+		const joinRows = memo(
+			(
+				top: readonly FlatRow<unknown>[],
+				list: FlatRow<unknown>[],
+				bottom: readonly FlatRow<unknown>[],
+			) => (top.length || bottom.length ? [...top, ...list, ...bottom] : list),
+		)
+		const bodyRows = () => joinRows(pinned().top, model.flat(), pinned().bottom)
 
 		const flatIndex = memo(
 			(flat: readonly FlatRow<unknown>[]) => new Map(flat.map((row, index) => [row.id, index])),
@@ -513,7 +654,7 @@ export const table = definePrimitive({
 
 		const headerRowCount = () => layout().headerRows.length
 		/** Without rows, the body holds one row that says so. */
-		const bodyRowCount = () => model.flat().length || 1
+		const bodyRowCount = () => bodyRows().length || 1
 		const hasTotals = memo((columns: readonly ColumnDef[]) =>
 			columns.some((column) => column.aggregate !== undefined),
 		)
@@ -536,8 +677,10 @@ export const table = definePrimitive({
 				}
 			}
 			// A group row is one cell as wide as the table, and so is the row that says "no rows".
-			const flat = model.flat()
-			const wide = flat.length ? flat[cell.row - head]?.node.kind === 'group' : cell.row === head
+			// So is a detail row.
+			const flat = bodyRows()
+			const at = flat[cell.row - head]
+			const wide = flat.length ? at?.node.kind === 'group' || !!at?.detail : cell.row === head
 			if (wide) {
 				return { row: cell.row, col: 0, rowSpan: 1, colSpan: Math.max(1, columns.leaves.length) }
 			}
@@ -550,6 +693,35 @@ export const table = definePrimitive({
 			cols: () => layout().leaves.length,
 			pageSize: () => state().page?.pageSize ?? 10,
 			area,
+			// A key can move focus to a row that the row window does not render.
+			reveal: (cell) => {
+				const row = bodyRows()[cell.row - headerRowCount()]
+				if (row && !row.pinned && (options().rowWindow ?? false)) rowWindow.scrollTo(row.id)
+			},
+		})
+
+		const stickyRows = memo((rows: { top: FlatRow<unknown>[]; bottom: FlatRow<unknown>[] }) =>
+			[...rows.top, ...rows.bottom].flatMap((row) =>
+				row.pinned ? [{ key: row.id, edge: row.pinned }] : [],
+			),
+		)
+		const sticky = createStickyRows(context, { keyed: () => stickyRows(pinned()) })
+
+		/** The row of the list that holds the active cell. It stays rendered, so the table keeps its tab stop. */
+		const activeRow = (): readonly string[] => {
+			const active = state().active
+			const row = active ? bodyRows()[active.row - headerRowCount()] : undefined
+			return row && !row.pinned ? [row.id] : NO_IDS
+		}
+		const rowWindow = createRowWindow(context, {
+			key: 'rowWindow',
+			enabled: () => options().rowWindow ?? false,
+			rows: () => model.flat(),
+			rowHeight: () => options().rowHeight,
+			estimate: () => options().estimatedRowHeight ?? DEFAULT_ROW_HEIGHT,
+			overscan: () => options().overscan ?? DEFAULT_OVERSCAN,
+			keep: activeRow,
+			cover: (frame) => sticky.cover(frame),
 		})
 
 		const reorderable = (columnId: string) =>
@@ -661,6 +833,10 @@ export const table = definePrimitive({
 		function requireExpandable(id: string): void {
 			const ids = expandable(model.grouped())
 			if (ids.has(id)) return
+			// A row with a detail row opens too. A pinned row is outside the list and has none.
+			const node = model.rowById(id)
+			const detail = node && !node.children?.length && options().hasDetail?.(node.row)
+			if (detail && !pinnedIds(rowPinning()).has(id)) return
 			throw new Error(`No row or group "${id}" that can expand. They are: ${listed(ids)}.`)
 		}
 
@@ -721,6 +897,9 @@ export const table = definePrimitive({
 		context.onOptions(() => {
 			// The options are not in place yet when this runs, so the check waits one turn.
 			queueMicrotask(followColumns)
+			// Whether the header and the footer stick is an option, and so is the row window.
+			sticky.refresh()
+			queueMicrotask(() => rowWindow.refresh())
 		})
 
 		function columnOrGroup(id: string, purpose: string): ColumnDef {
@@ -803,7 +982,7 @@ export const table = definePrimitive({
 			change('page', { ...current, page: clamped }, { reason })
 		}
 
-		const controller: TableController = {
+		const controller: Omit<TableController, 'pinRow' | 'scrollToRow'> = {
 			sortBy(columnId, direction = 'asc', { append = false } = {}) {
 				column(columnId, 'sort by')
 				if (direction !== null && direction !== 'asc' && direction !== 'desc') {
@@ -1010,6 +1189,52 @@ export const table = definePrimitive({
 			},
 		}
 
+		const rowIndex = () => flatIndex(bodyRows())
+
+		const rowActions: Pick<TableController, 'pinRow' | 'scrollToRow'> = {
+			pinRow(rowId, edge) {
+				const node = requireRow(rowId, 'pin')
+				if (edge !== null && edge !== 'top' && edge !== 'bottom') {
+					throw new Error(
+						`A row is pinned to "top" or "bottom", or freed with null, not "${String(edge)}".`,
+					)
+				}
+				// The children of a pinned row would leave the list with it, and no place shows them.
+				if (edge && node.children?.length) {
+					throw new Error(
+						`Row "${rowId}" has child rows. Only a row without child rows can be pinned.`,
+					)
+				}
+				const current = state().rowPinning
+				if (edge && current[edge]?.includes(rowId)) return
+				const without = (ids: readonly string[] = []) => ids.filter((id) => id !== rowId)
+				const next = {
+					top: edge === 'top' ? [...without(current.top), rowId] : without(current.top),
+					bottom: edge === 'bottom' ? [...without(current.bottom), rowId] : without(current.bottom),
+				}
+				const same =
+					sameContent(next.top, current.top ?? []) && sameContent(next.bottom, current.bottom ?? [])
+				if (!same) change('rowPinning', next, { reason: 'imperative' })
+			},
+			scrollToRow(rowId, align = 'nearest') {
+				if (!ROW_ALIGNS.includes(align)) {
+					throw new Error(
+						`A row scrolls to "start", "center", "end" or "nearest", not "${String(align)}".`,
+					)
+				}
+				const index = rowIndex().get(rowId)
+				if (index === undefined) {
+					requireRow(rowId, 'scroll to')
+					throw new Error(
+						`Row "${rowId}" is not in the list now: a filter, a page or a closed parent row hides it.`,
+					)
+				}
+				// A pinned row is in view at all times.
+				if (bodyRows()[index]?.pinned) return
+				rowWindow.scrollTo(rowId, align)
+			},
+		}
+
 		/** Changes the width of a column by a number of pixels, as a key on its header does. */
 		function resizeColumnBy(columnId: string, delta: number, event?: Event): boolean {
 			requireVisible(columnId, 'resize')
@@ -1021,6 +1246,20 @@ export const table = definePrimitive({
 
 		return {
 			...controller,
+			...rowActions,
+			sticky,
+			rowWindow,
+			/** What the body renders of the rows of the list, or `undefined` when it renders them all. */
+			windowParts: () => rowWindow.parts(),
+			/** The rows of the list, without the pinned rows. The row window counts its rows in this list. */
+			listRows: () => model.flat(),
+			/** The rows that are pinned to each edge. */
+			pinnedRows: pinned,
+			rowPin: (id: string): RowPin | undefined => bodyRows()[rowIndex().get(id) ?? -1]?.pinned,
+			stickyHeader: () => options().stickyHeader ?? false,
+			stickyFooter: () => options().stickyFooter ?? false,
+			rowHeight: () => options().rowHeight,
+			windowed: () => options().rowWindow ?? false,
 			model,
 			grid,
 			selection,
@@ -1029,14 +1268,11 @@ export const table = definePrimitive({
 			pins,
 			message,
 			/**
-			 * The visible rows in order. The header rows come first in the grid, so
-			 * grid row `n` is `rows()[n - headerRowCount()]`.
+			 * The rows of the body in order, pinned rows too. The header rows come
+			 * first in the grid, so grid row `n` is `rows()[n - headerRowCount()]`.
 			 */
-			rows: () => model.flat(),
-			row: (id: string): FlatRow<unknown> | undefined => {
-				const index = flatIndex(model.flat()).get(id)
-				return index === undefined ? undefined : model.flat()[index]
-			},
+			rows: bodyRows,
+			row: (id: string): FlatRow<unknown> | undefined => bodyRows()[rowIndex().get(id) ?? -1],
 			/** The visible columns in display order. */
 			columns: () => layout().leaves,
 			/** A column by id, also when it is hidden. */
@@ -1095,7 +1331,13 @@ export const table = definePrimitive({
 			keys: { none: 'Focus stays on a cell, and the keydown of the cell handles the keys.' },
 			bind: (el, { api }) => api.grid.bindRoot(el),
 			// Selection and cell focus change one row or two cells. The root must not render for them.
-			selects: selects({ selected: [], active: [], columnTrack: [], columnResize: [] }),
+			selects: selects({
+				selected: [],
+				active: [],
+				columnTrack: [],
+				columnResize: [],
+				rowWindow: [],
+			}),
 			// A resize changes the width of the table at each step, and the rows must
 			// not render for it. So the two attributes that follow the widths are
 			// kept current on the element, without a render of the root.
@@ -1107,12 +1349,18 @@ export const table = definePrimitive({
 				const widths = columns.map((column) => api.columnWidth(column.id))
 				const sized = columns.length > 0 && widths.every((width) => width !== undefined)
 				const total = widths.reduce<number>((sum, width) => sum + (width ?? 0), 0)
+				const height = api.rowHeight()
+				const variables = [
+					sized ? `--table-width:${total}px` : '',
+					height === undefined ? '' : `--table-row-height:${height}px`,
+				].filter(Boolean)
 				return {
 					'aria-rowcount': String(api.gridRowCount()),
 					'aria-colcount': String(columns.length),
 					'aria-multiselectable': api.selectionMode() === 'multiple' ? 'true' : undefined,
 					'data-sized': sized ? '' : undefined,
-					style: sized ? `--table-width:${total}px` : undefined,
+					'data-row-window': api.windowed() ? '' : undefined,
+					style: variables.length ? variables.join(';') : undefined,
 				}
 			},
 			state: (state, { api }) => ({
@@ -1132,9 +1380,20 @@ export const table = definePrimitive({
 			}),
 		}),
 		// The head, the body and the foot hold the offsets of the pinned columns.
-		head: slot({ role: 'rowgroup', bind: (el, { api }) => api.pins.bindGroup(el) }),
-		body: slot({ role: 'rowgroup', bind: (el, { api }) => api.pins.bindGroup(el) }),
-		foot: slot({ role: 'rowgroup', bind: (el, { api }) => api.pins.bindGroup(el) }),
+		// They also hold the heights of the rows that stick to the top and the bottom.
+		head: slot({
+			role: 'rowgroup',
+			bind: (el, { api }) => together(api.pins.bindGroup(el), api.sticky.bindGroup(el)),
+		}),
+		body: slot({
+			role: 'rowgroup',
+			bind: (el, { api }) =>
+				together(api.pins.bindGroup(el), api.sticky.bindGroup(el), api.rowWindow.bindBody(el)),
+		}),
+		foot: slot({
+			role: 'rowgroup',
+			bind: (el, { api }) => together(api.pins.bindGroup(el), api.sticky.bindGroup(el)),
+		}),
 		/** A `col` element. It gives its column a width, and it holds no cell. */
 		col: slot<{ value: string }>({
 			props: { value: 'string' },
@@ -1158,16 +1417,49 @@ export const table = definePrimitive({
 			},
 		}),
 		// The header rows are a slot of their own, so no row id of the data can be mistaken for one.
-		headerRow: slot<{ index: number }>({
+		'header-row': slot<{ index: number }>({
 			props: { index: 'number' },
 			role: 'row',
-			attrs: (_state, { props }) => ({ 'aria-rowindex': String(props.index + 1) }),
+			attrs: (_state, { props, api }) => ({
+				'aria-rowindex': String(props.index + 1),
+				'data-sticky': api.stickyHeader() ? 'top' : undefined,
+			}),
+			bind: (el, { api }) => api.sticky.bind(el, () => (api.stickyHeader() ? 'top' : undefined)),
 		}),
-		/** A row that holds no data row: the footer row, or the row that says "no rows". */
-		plainRow: slot<{ index: number }>({
-			props: { index: 'number' },
+		/**
+		 * A row that stands in for the rows that the row window does not render.
+		 * `size` is their height in pixels, which the row gets as
+		 * `--table-spacer-size`. `value` is the key of the gap; the first gap is
+		 * the place where the list starts.
+		 */
+		spacer: slot<{ value: string; size: number }>({
+			props: { value: 'string', size: 'number' },
+			selects: selects(SILENT),
+			attrs: (_state, { props }) => ({
+				'aria-hidden': 'true',
+				'data-empty': props.size > 0 ? undefined : '',
+				style: `--table-spacer-size:${props.size}px`,
+			}),
+			bind: (el, { key, api }) => (key === 'gap-0' ? api.rowWindow.bindOrigin(el) : () => {}),
+		}),
+		/**
+		 * A row that holds no data row: the footer row, or the row that says "no
+		 * rows". `footer` marks the footer row, which can stick to the bottom.
+		 */
+		'plain-row': slot<{ index: number; footer?: boolean }>({
+			props: { index: 'number', footer: 'boolean' },
 			role: 'row',
-			attrs: (_state, { props }) => ({ 'aria-rowindex': String(props.index + 1) }),
+			attrs: (_state, { props, api }) => ({
+				'aria-rowindex': String(props.index + 1),
+				'data-kind': props.footer ? 'footer' : undefined,
+				'data-sticky': props.footer && api.stickyFooter() ? 'bottom' : undefined,
+			}),
+			// Whether the row is the footer row is read once: the index of a row
+			// changes with the rows, and what the row is does not.
+			bind: (el, { props, api }) => {
+				const footer = !!props.footer
+				return api.sticky.bind(el, () => (footer && api.stickyFooter() ? 'bottom' : undefined))
+			},
 		}),
 		// Rows and cells take their key from `value`, not from `id`: an `id` is
 		// written to the element, and two tables on a page can hold the same row id.
@@ -1185,9 +1477,10 @@ export const table = definePrimitive({
 				const row = api.row(key)
 				const index = { 'aria-rowindex': String(props.index + 1) }
 				if (!row) return index
-				const isRow = row.node.kind === 'row'
+				// A detail row belongs to a data row, and it is not that row.
+				const isRow = row.node.kind === 'row' && !row.detail
 				const selected = isRow && api.isSelected(key)
-				const tree = api.isTree()
+				const tree = api.isTree() && !row.pinned
 				return {
 					...index,
 					'aria-selected': isRow && api.canSelect(key) ? String(selected) : undefined,
@@ -1195,11 +1488,16 @@ export const table = definePrimitive({
 					'aria-level': tree ? String(row.level + 1) : undefined,
 					'aria-posinset': tree ? String(row.position) : undefined,
 					'aria-setsize': tree ? String(row.setSize) : undefined,
-					'data-kind': row.node.kind,
+					'data-kind': row.detail ? 'detail' : row.node.kind,
 					'data-selected': selected ? '' : undefined,
 					'data-expanded': row.expanded ? '' : undefined,
+					'data-pinned': row.pinned,
+					// A pinned row stays in view, so it sticks to its edge.
+					'data-sticky': row.pinned,
 				}
 			},
+			bind: (el, { key, api }) =>
+				together(api.rowWindow.bindRow(el, key), api.sticky.bindKeyed(el, key)),
 			state: (_state, { key, api }) => {
 				const row = api.row(key)
 				return {
@@ -1454,6 +1752,8 @@ export const table = definePrimitive({
 			'setColumnWidth',
 			'resetColumnWidths',
 			'pinColumn',
+			'pinRow',
+			'scrollToRow',
 		],
 	},
 })

@@ -12,6 +12,8 @@ import {
 	type FlatRow,
 	type GroupRow,
 	type PageState,
+	type RowPin,
+	type RowPinning,
 	type SortDirection,
 	type SortRule,
 	type TableChangeDetails,
@@ -42,6 +44,7 @@ import {
 	TablePlainRow,
 	TableResizer,
 	TableRow,
+	TableSpacer,
 } from './parts'
 
 type Handle = PrimitiveHandle<typeof tablePrimitive>
@@ -57,6 +60,7 @@ const MODELS = [
 	'columnOrder',
 	'columnWidths',
 	'columnPinning',
+	'rowPinning',
 ] as const
 type Model = (typeof MODELS)[number]
 
@@ -72,6 +76,8 @@ const STRUCTURE = [
 	'columnOrder',
 	'columnPinning',
 	'columnDrag',
+	'rowPinning',
+	'rowWindow',
 ] as const
 
 const OPTIONS = [
@@ -92,6 +98,13 @@ const OPTIONS = [
 	'columnMaxWidth',
 	'messages',
 	'controller',
+	'rowWindow',
+	'rowHeight',
+	'estimatedRowHeight',
+	'overscan',
+	'stickyHeader',
+	'stickyFooter',
+	'hasDetail',
 	...MODELS,
 	'defaultSort',
 	'defaultFilter',
@@ -103,11 +116,19 @@ const OPTIONS = [
 	'defaultColumnOrder',
 	'defaultColumnWidths',
 	'defaultColumnPinning',
+	'defaultRowPinning',
 ] as const
 
 // Vue must know which options are booleans, or the short form `<Table
 // resizable>` passes an empty text, which reads as false.
-const BOOLEANS: readonly string[] = ['sortChildren', 'resizable', 'reorderable']
+const BOOLEANS: readonly string[] = [
+	'sortChildren',
+	'resizable',
+	'reorderable',
+	'rowWindow',
+	'stickyHeader',
+	'stickyFooter',
+]
 
 export type TableProps<Row> = Omit<TableOptions<Row>, `on${string}`>
 
@@ -129,6 +150,7 @@ export type TableEmits = {
 	'update:columnOrder': (value: readonly string[]) => void
 	'update:columnWidths': (value: ColumnWidths) => void
 	'update:columnPinning': (value: ColumnPinning) => void
+	'update:rowPinning': (value: RowPinning) => void
 	sortChange: (value: readonly SortRule[], details: TableChangeDetails) => void
 	filterChange: (value: FilterState, details: TableChangeDetails) => void
 	groupByChange: (value: readonly string[], details: TableChangeDetails) => void
@@ -140,6 +162,7 @@ export type TableEmits = {
 	columnWidthsChange: (value: ColumnWidths, details: TableChangeDetails) => void
 	columnWidthsCommit: (value: ColumnWidths, details: TableCommitDetails) => void
 	columnPinningChange: (value: ColumnPinning, details: TableChangeDetails) => void
+	rowPinningChange: (value: RowPinning, details: TableChangeDetails) => void
 }
 
 export type HeaderSlotProps<Row> = {
@@ -165,7 +188,16 @@ export type CellSlotProps<Row> = {
 	expandable: boolean
 	/** Tree and group levels above this row, from 0. */
 	level: number
+	/** The edge that the row is pinned to. */
+	pinned: RowPin | undefined
 	toggleSelected: (event?: Event) => void
+	toggleExpanded: (event?: Event) => void
+}
+
+export type DetailSlotProps<Row> = {
+	row: Row
+	node: DataRow<Row>
+	/** Closes the detail row. */
 	toggleExpanded: (event?: Event) => void
 }
 
@@ -199,6 +231,8 @@ export type TableSlots<Row> = {
 	cell?: (props: CellSlotProps<Row>) => VNodeChild
 	foot?: (props: FootSlotProps<Row>) => VNodeChild
 	group?: (props: GroupSlotProps<Row>) => VNodeChild
+	/** The detail row of a row, for the rows that `hasDetail` names. */
+	detail?: (props: DetailSlotProps<Row>) => VNodeChild
 	/** Shown in place of the rows when no row passes the filters. */
 	empty?: () => VNodeChild
 }
@@ -236,6 +270,7 @@ const TableImpl = defineComponent(
 			onColumnOrderChange: report('columnOrder'),
 			onColumnWidthsChange: report('columnWidths'),
 			onColumnPinningChange: report('columnPinning'),
+			onRowPinningChange: report('rowPinning'),
 			onColumnWidthsCommit: (value: ColumnWidths, details: TableCommitDetails) =>
 				(emit as (name: string, ...args: unknown[]) => void)('columnWidthsCommit', value, details),
 		}
@@ -253,6 +288,7 @@ const TableImpl = defineComponent(
 		const headerKey = (columnId: string) => `h|${columnId}`
 		const cellId = (rowId: string, columnId: string) => `r|${rowId}|${columnId}`
 		const groupKey = (rowId: string) => `g|${rowId}`
+		const detailKey = (rowId: string) => `d|${rowId}`
 		const footKey = (columnId: string) => `f|${columnId}`
 
 		function headerRows() {
@@ -366,6 +402,7 @@ const TableImpl = defineComponent(
 											expanded: state.expanded,
 											expandable: flat.expandable,
 											level: flat.level,
+											pinned: flat.pinned,
 											toggleSelected,
 											toggleExpanded,
 										})
@@ -389,11 +426,68 @@ const TableImpl = defineComponent(
 			)
 		}
 
+		function detailRow(
+			flat: FlatRow<unknown>,
+			node: DataRow<unknown>,
+			index: number,
+			span: number,
+		) {
+			return h(TableRow, { key: flat.id, value: flat.id, index }, () =>
+				h(TableCell, { value: detailKey(node.id), row: index, col: 0, colspan: span }, () =>
+					slots.detail?.({
+						row: node.row,
+						node,
+						toggleExpanded: (event?: Event) => api.toggleExpanded(node.id, event),
+					}),
+				),
+			)
+		}
+
+		function bodyRow(flat: FlatRow<unknown>, index: number, columns: readonly ColumnDef[]) {
+			if (flat.node.kind === 'group') return groupRow(flat, flat.node, index, columns.length)
+			if (flat.detail) return detailRow(flat, flat.node, index, columns.length)
+			return dataRow(flat, flat.node, index, columns)
+		}
+
+		/**
+		 * The rows of the body. With a row window, the rows of the list that are
+		 * not near the scroll frame give way to spacers; the pinned rows are
+		 * always there.
+		 */
+		function bodyRows(
+			rows: readonly FlatRow<unknown>[],
+			head: number,
+			columns: readonly ColumnDef[],
+		) {
+			const parts = api.windowParts()
+			if (!parts) return rows.map((flat, position) => bodyRow(flat, head + position, columns))
+			const { top, bottom } = api.pinnedRows()
+			const list = api.listRows()
+			const first = head + top.length
+			const rendered: VNodeChild[] = top.map((flat, position) =>
+				bodyRow(flat, head + position, columns),
+			)
+			for (const part of parts) {
+				if (part.kind === 'gap') {
+					rendered.push(h(TableSpacer, { key: part.key, value: part.key, size: part.size }))
+					continue
+				}
+				for (let position = part.from; position < part.to; position++) {
+					const flat = list[position]
+					if (flat) rendered.push(bodyRow(flat, first + position, columns))
+				}
+			}
+			bottom.forEach((flat, position) =>
+				rendered.push(bodyRow(flat, first + list.length + position, columns)),
+			)
+			return rendered
+		}
+
 		function footRow(columns: readonly ColumnDef[], index: number) {
 			if (!api.footerRowCount()) return null
 			const totals = api.totals()
 			return h(TableFoot, null, () =>
-				h(TablePlainRow, { index }, () =>
+				h(TablePlainRow, { index, footer: true }, () =>
 					columns.map((column, col) => {
 						const value = totals[column.id]
 						const text = column.aggregate ? api.totalText(column, value) : ''
@@ -445,14 +539,7 @@ const TableImpl = defineComponent(
 				]),
 				h(TableHead, null, headerRows),
 				h(TableBody, null, () =>
-					rows.length
-						? rows.map((flat, position) => {
-								const index = head + position
-								return flat.node.kind === 'group'
-									? groupRow(flat, flat.node, index, columns.length)
-									: dataRow(flat, flat.node, index, columns)
-							})
-						: emptyRow(head, columns.length),
+					rows.length ? bodyRows(rows, head, columns) : emptyRow(head, columns.length),
 				),
 				footRow(columns, head + Math.max(1, rows.length)),
 			]

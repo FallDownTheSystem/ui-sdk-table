@@ -5,9 +5,11 @@ import {
 	createRowPredicate,
 	dateRange,
 	dayEnd,
+	detailRowId,
 	filterRows,
 	flattenRows,
 	isEmptyFilter,
+	omitRows,
 	sortRows,
 	toTime,
 	uniqueValues,
@@ -188,5 +190,66 @@ describe('row model', () => {
 			['k2', 1, 2, 2],
 			['q', 0, 2, 2],
 		])
+	})
+})
+
+describe('detail rows and omitted rows', () => {
+	const items: Item[] = [
+		{ id: 'a', n: 1 },
+		{ id: 'b', n: 2, kids: [{ id: 'b1', n: 3 }] },
+		{ id: 'c', n: 4 },
+	]
+
+	test('an expanded row with a detail row is followed by it, and a tree row has none', () => {
+		const list = nodes(items)
+		const open = new Set(['a', 'b'])
+		const flat = flattenRows(
+			list,
+			(node) => open.has(node.id),
+			(row) => row.id !== 'c',
+		)
+		expect(ids(flat)).toEqual(['a', detailRowId('a'), 'b', 'b1', 'c'])
+		const detail = flat[1]
+		expect(detail).toMatchObject({ detail: true, parentId: 'a', level: 1, expandable: false })
+		// The detail row holds the node of its data row, not a copy of the row.
+		expect(detail?.node).toBe(list[0])
+		expect(flat[0]).toMatchObject({ expandable: true, expanded: true })
+		// A row with children opens its children. A row that `hasDetail` refuses cannot open.
+		expect(flat[2]?.detail).toBeUndefined()
+		expect(flat[4]).toMatchObject({ expandable: false, expanded: false })
+	})
+
+	test('`omitRows` takes rows out at any depth and makes no new row', () => {
+		const list = nodes(items)
+		expect(omitRows(list, new Set())).toBe(list)
+		expect(omitRows(list, new Set(['nope']))).toBe(list)
+		const without = omitRows(list, new Set(['a', 'b1']))
+		expect(ids(without)).toEqual(['b', 'c'])
+		// The parent is a new node around the same row, and the row that did not change is the same node.
+		expect(without[0]).not.toBe(list[1])
+		expect(without[0]?.row).toBe(items[1])
+		expect(without[0]?.children).toBeUndefined()
+		expect(without[1]).toBe(list[2])
+		expect(items[1]?.kids).toHaveLength(1)
+	})
+
+	test('the row model lists no omitted row, and still counts it in the totals', () => {
+		let omit = new Set<string>(['c'])
+		const model = createRowModel<Item>({
+			rows: () => items,
+			columns: () => [{ id: 'n', aggregate: 'sum' }],
+			getChildren: (row) => row.kids,
+			omit: () => omit,
+		})
+		expect(ids(model.flat())).toEqual(['a', 'b'])
+		expect(ids(model.filtered())).toEqual(['a', 'b', 'c'])
+		expect(model.rowCount()).toBe(2)
+		expect(model.aggregate()).toEqual({ n: 10 })
+		const before = model.flat()
+		expect(model.flat()).toBe(before)
+		omit = new Set()
+		expect(ids(model.flat())).toEqual(['a', 'b', 'c'])
+		// With no row to omit, the stage hands its input on.
+		expect(model.listed()).toBe(model.filtered())
 	})
 })

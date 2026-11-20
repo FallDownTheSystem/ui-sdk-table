@@ -6,10 +6,12 @@ import {
 	Table,
 	type CellSlotProps,
 	type ColumnDef,
+	type DetailSlotProps,
 	type FilterState,
 	type GroupSlotProps,
 	type HeaderSlotProps,
 	type PageState,
+	type RowPinning,
 	type SortRule,
 } from './index'
 
@@ -352,5 +354,110 @@ test('a new column width renders no row', async () => {
 	controller.resetColumnWidths()
 	await nextTick()
 	expect(style()).toContain('--table-width:220px')
+	wrapper.unmount()
+})
+
+test('with a row window, the body holds the rows of the window and a spacer for the rest', async () => {
+	const many = Array.from({ length: 500 }, (_item, index) => ({
+		id: `p${index}`,
+		name: `Person ${index}`,
+		team: 'Design',
+		score: index,
+	}))
+	const pinning = ref<RowPinning>({})
+	const controller = createTableController()
+	const wrapper = mount(
+		() =>
+			h(Table<Person>, {
+				rows: many,
+				columns,
+				controller,
+				rowWindow: true,
+				rowHeight: 20,
+				overscan: 2,
+				rowPinning: pinning.value,
+				'onUpdate:rowPinning': (value) => (pinning.value = value),
+			}),
+		{ attachTo: document.body },
+	)
+	await nextTick()
+	const body = () =>
+		wrapper.findAll('tbody tr').map((row) => {
+			if (row.attributes('data-slot') === 'table-spacer') return 'spacer'
+			return row.find('td').text()
+		})
+	const table = wrapper.get('table')
+	expect(table.attributes('aria-rowcount')).toBe('502')
+	expect(table.attributes('data-row-window')).toBe('')
+	const rendered = body()
+	expect(rendered[0]).toBe('spacer')
+	expect(rendered[1]).toBe('Person 0')
+	expect(rendered.at(-1)).toBe('spacer')
+	expect(rendered.length).toBeLessThan(60)
+	const last = wrapper.findAll('tbody tr').at(-1)
+	expect(last?.attributes('aria-hidden')).toBe('true')
+	expect(last?.attributes('style')).toMatch(/--table-spacer-size:\s*\d+px/)
+	expect(last?.findAll('td')).toHaveLength(0)
+
+	// A pinned row comes before the first spacer, with the next row index after the header.
+	controller.pinRow('p400', 'top')
+	// The caller owns the state, so the next change waits until the value came back.
+	await nextTick()
+	controller.pinRow('p401', 'bottom')
+	await nextTick()
+	expect(pinning.value).toEqual({ top: ['p400'], bottom: ['p401'] })
+	const rows = body()
+	expect(rows.slice(0, 3)).toEqual(['Person 400', 'spacer', 'Person 0'])
+	expect(rows.slice(-2)).toEqual(['spacer', 'Person 401'])
+	const first = wrapper.get('tbody tr')
+	expect(first.attributes('aria-rowindex')).toBe('2')
+	expect(first.attributes('data-pinned')).toBe('top')
+	expect(wrapper.findAll('tbody tr')[2]?.attributes('aria-rowindex')).toBe('3')
+	expect(wrapper.findAll('tbody tr').at(-1)?.attributes('aria-rowindex')).toBe('501')
+	expect(table.attributes('aria-rowcount')).toBe('502')
+	wrapper.unmount()
+})
+
+test('a detail row renders the `detail` slot in one wide cell, and sticky rows are marked', async () => {
+	const expanded = ref<readonly string[]>([])
+	const hasDetail = (row: Person) => row.id !== 'c'
+	const wrapper = mount(() =>
+		h(
+			Table<Person>,
+			{
+				rows: people,
+				columns,
+				hasDetail,
+				stickyHeader: '' as unknown as boolean,
+				stickyFooter: true,
+				expanded: expanded.value,
+				'onUpdate:expanded': (value) => (expanded.value = value),
+			},
+			{
+				'col-name': ({ text, expandable, toggleExpanded }: CellSlotProps<Person>) =>
+					expandable ? h('button', { onClick: toggleExpanded }, text) : text,
+				detail: ({ row }: DetailSlotProps<Person>) => h('p', `More about ${row.name}`),
+			},
+		),
+	)
+	expect(wrapper.get('thead tr').attributes('data-sticky')).toBe('top')
+	expect(wrapper.get('tfoot tr').attributes('data-sticky')).toBe('bottom')
+	expect(wrapper.get('tfoot tr').attributes('data-kind')).toBe('footer')
+	expect(wrapper.findAll('tbody button')).toHaveLength(2)
+
+	await wrapper.get('tbody button').trigger('click')
+	expect(expanded.value).toEqual(['a'])
+	const detail = wrapper.get('tbody tr[data-kind="detail"]')
+	expect(detail.attributes('aria-rowindex')).toBe('3')
+	expect(detail.findAll('td')).toHaveLength(1)
+	expect(detail.get('td').attributes('colspan')).toBe('3')
+	expect(detail.text()).toBe('More about Aino')
+	expect(wrapper.get('tbody tr').attributes('aria-expanded')).toBe('true')
+	expect(wrapper.get('table').attributes('aria-rowcount')).toBe('6')
+	// A table with detail rows and no tree rows stays a grid.
+	expect(wrapper.get('table').attributes('role')).toBe('grid')
+
+	await wrapper.get('tbody button').trigger('click')
+	expect(wrapper.findAll('tbody tr[data-kind="detail"]')).toHaveLength(0)
 	wrapper.unmount()
 })

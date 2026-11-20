@@ -130,7 +130,36 @@ describe.runIf(requested)('row pipeline with 50,000 rows', () => {
 			pages.model.flat()
 		})
 
+		// A pinned row leaves the list. No page here: all 50,000 rows are flattened again.
+		let omit = new Set<string>()
+		const pinned = createRowModel<Person>({
+			rows: () => people,
+			columns: () => columns,
+			omit: () => omit,
+		})
+		pinned.flat()
+		results['pin one row, all rows listed'] = median((round) => {
+			omit = new Set([`p${round * 1000}`])
+			pinned.flat()
+		})
+
+		// A detail row opens: the visible rows are listed again.
+		let open = new Set<string>()
+		const everyRow = () => true
+		const details = createRowModel<Person>({
+			rows: () => people,
+			columns: () => columns,
+			isExpanded: (node) => open.has(node.id),
+			expansion: () => open,
+			hasDetail: () => everyRow,
+		})
+		details.flat()
+		results['open a detail row, all rows listed'] = median((round) => {
+			open = new Set([`p${round * 1000}`])
+			details.flat()
+		})
+
 		console.table(results)
-		expect(Object.keys(results)).toHaveLength(8)
+		expect(Object.keys(results)).toHaveLength(10)
 	})
 })

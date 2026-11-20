@@ -10,10 +10,12 @@ export {
 	TableResizer,
 	TableRoot,
 	TableRow,
+	TableSpacer,
 } from './parts'
 export {
 	Table,
 	type CellSlotProps,
+	type DetailSlotProps,
 	type FootSlotProps,
 	type GroupSlotProps,
 	type HeaderSlotProps,
@@ -30,6 +32,9 @@ export type {
 	ColumnWidths,
 	FilterState,
 	PageState,
+	RowAlign,
+	RowPin,
+	RowPinning,
 	SortRule,
 	TableChangeDetails,
 	TableCommitDetails,

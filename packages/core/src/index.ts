@@ -12,10 +12,13 @@ export {
 	type HeaderCell,
 } from './columns/layout'
 export { defaultMessages, type TableMessages } from './messages'
+export type { RowAlign } from './behaviors/window'
 export {
 	table,
 	type ColumnVisibility,
 	type ColumnWidths,
+	type RowPin,
+	type RowPinning,
 	type SortDirection,
 	type TableChangeDetails,
 	type TableCommitDetails,
