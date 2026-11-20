@@ -4,6 +4,9 @@ import {
 	table as tablePrimitive,
 	toText,
 	type ColumnDef,
+	type ColumnPinning,
+	type ColumnVisibility,
+	type ColumnWidths,
 	type DataRow,
 	type FilterState,
 	type FlatRow,
@@ -12,6 +15,7 @@ import {
 	type SortDirection,
 	type SortRule,
 	type TableChangeDetails,
+	type TableCommitDetails,
 	type TableController,
 	type TableOptions,
 } from 'ui-sdk-table-core'
@@ -28,16 +32,30 @@ import {
 import {
 	TableBody,
 	TableCell,
+	TableCol,
 	TableFoot,
 	TableHead,
 	TableHeaderCell,
 	TableHeaderRow,
+	TablePlainRow,
+	TableResizer,
 	TableRow,
 } from './parts'
 
 type Handle = PrimitiveHandle<typeof tablePrimitive>
 
-const MODELS = ['sort', 'filter', 'groupBy', 'page', 'expanded', 'selected'] as const
+const MODELS = [
+	'sort',
+	'filter',
+	'groupBy',
+	'page',
+	'expanded',
+	'selected',
+	'columnVisibility',
+	'columnOrder',
+	'columnWidths',
+	'columnPinning',
+] as const
 type Model = (typeof MODELS)[number]
 
 const OPTIONS = [
@@ -52,6 +70,11 @@ const OPTIONS = [
 	'canGroup',
 	'selection',
 	'canSelect',
+	'resizable',
+	'reorderable',
+	'columnMinWidth',
+	'columnMaxWidth',
+	'messages',
 	'controller',
 	...MODELS,
 	'defaultSort',
@@ -60,16 +83,22 @@ const OPTIONS = [
 	'defaultPage',
 	'defaultExpanded',
 	'defaultSelected',
+	'defaultColumnVisibility',
+	'defaultColumnOrder',
+	'defaultColumnWidths',
+	'defaultColumnPinning',
 ] as const
+
+// Vue must know which options are booleans, or the short form `<Table
+// resizable>` passes an empty text, which reads as false.
+const BOOLEANS: readonly string[] = ['sortChildren', 'resizable', 'reorderable']
 
 export type TableProps<Row> = Omit<TableOptions<Row>, `on${string}`>
 
-// `sortChildren` is the one boolean option. Vue must know that, or the short
-// form `<Table sort-children>` passes an empty text, which reads as false.
 const PROPS = Object.fromEntries(
 	OPTIONS.map((name) => [
 		name,
-		name === 'sortChildren' ? { type: Boolean, default: undefined } : null,
+		BOOLEANS.includes(name) ? { type: Boolean, default: undefined } : null,
 	]),
 ) as ComponentObjectPropsOptions<TableProps<unknown>>
 
@@ -80,20 +109,32 @@ export type TableEmits = {
 	'update:page': (value: PageState | undefined) => void
 	'update:expanded': (value: readonly string[]) => void
 	'update:selected': (value: string[]) => void
+	'update:columnVisibility': (value: ColumnVisibility) => void
+	'update:columnOrder': (value: readonly string[]) => void
+	'update:columnWidths': (value: ColumnWidths) => void
+	'update:columnPinning': (value: ColumnPinning) => void
 	sortChange: (value: readonly SortRule[], details: TableChangeDetails) => void
 	filterChange: (value: FilterState, details: TableChangeDetails) => void
 	groupByChange: (value: readonly string[], details: TableChangeDetails) => void
 	pageChange: (value: PageState | undefined, details: TableChangeDetails) => void
 	expandedChange: (value: readonly string[], details: TableChangeDetails) => void
 	selectedChange: (value: string[], details: TableChangeDetails) => void
+	columnVisibilityChange: (value: ColumnVisibility, details: TableChangeDetails) => void
+	columnOrderChange: (value: readonly string[], details: TableChangeDetails) => void
+	columnWidthsChange: (value: ColumnWidths, details: TableChangeDetails) => void
+	columnWidthsCommit: (value: ColumnWidths, details: TableCommitDetails) => void
+	columnPinningChange: (value: ColumnPinning, details: TableChangeDetails) => void
 }
 
 export type HeaderSlotProps<Row> = {
 	column: ColumnDef<Row>
 	/** The header text: `column.header`, or the column id. */
 	label: string
+	/** False for a header group, which holds columns and no cells. */
+	leaf: boolean
 	sort: SortDirection | undefined
 	toggleSort: (event?: Event) => void
+	pin: 'start' | 'end' | undefined
 }
 
 export type CellSlotProps<Row> = {
@@ -175,6 +216,12 @@ const TableImpl = defineComponent(
 			onPageChange: report('page'),
 			onExpandedChange: report('expanded'),
 			onSelectedChange: report('selected'),
+			onColumnVisibilityChange: report('columnVisibility'),
+			onColumnOrderChange: report('columnOrder'),
+			onColumnWidthsChange: report('columnWidths'),
+			onColumnPinningChange: report('columnPinning'),
+			onColumnWidthsCommit: (value: ColumnWidths, details: TableCommitDetails) =>
+				(emit as (name: string, ...args: unknown[]) => void)('columnWidthsCommit', value, details),
 		}
 
 		const handle = usePrimitive(
@@ -189,27 +236,51 @@ const TableImpl = defineComponent(
 		// cell of a row that has the id "header".
 		const headerKey = (columnId: string) => `h|${columnId}`
 		const cellId = (rowId: string, columnId: string) => `r|${rowId}|${columnId}`
+		const groupKey = (rowId: string) => `g|${rowId}`
+		const footKey = (columnId: string) => `f|${columnId}`
 
-		function headerRow(columns: readonly ColumnDef[]) {
-			return h(TableHeaderRow, { key: 'header', index: 0 }, () =>
-				columns.map((column, col) =>
-					h(
-						TableHeaderCell,
-						{ key: column.id, value: headerKey(column.id), row: 0, col, header: true },
-						() => {
-							const label = column.header ?? column.id
-							const toggleSort = (event?: Event) =>
-								api.toggleSort(column.id, {
-									append: event instanceof MouseEvent && event.shiftKey,
-									event,
-								})
-							const slot = slots[`header-${column.id}`] ?? slots.header
-							if (slot) return slot({ column, label, sort: api.sortOf(column.id), toggleSort })
-							return column.sortable
-								? h('button', { type: 'button', onClick: toggleSort }, label)
-								: label
-						},
-					),
+		function headerRows() {
+			return api.headerRows().map((cells, index) =>
+				h(TableHeaderRow, { key: `header-${index}`, index }, () =>
+					cells.map((cell) => {
+						const column = cell.column
+						return h(
+							TableHeaderCell,
+							{
+								// The key is the column, so the element stays with its column when the order changes.
+								key: cell.key,
+								value: headerKey(cell.key),
+								row: cell.row,
+								col: cell.col,
+								colspan: cell.colSpan,
+								rowspan: cell.rowSpan,
+								header: true,
+							},
+							() => {
+								const label = column.header ?? column.id
+								const toggleSort = (event?: Event) =>
+									api.toggleSort(column.id, {
+										append: event instanceof MouseEvent && event.shiftKey,
+										event,
+									})
+								const slot = slots[`header-${column.id}`] ?? slots.header
+								const content = slot
+									? slot({
+											column,
+											label,
+											leaf: cell.leaf,
+											sort: cell.leaf ? api.sortOf(column.id) : undefined,
+											toggleSort,
+											pin: cell.pin,
+										})
+									: cell.leaf && column.sortable
+										? h('button', { type: 'button', onClick: toggleSort }, label)
+										: label
+								if (!cell.leaf || !api.canResize(column.id)) return content
+								return [content, h(TableResizer, { key: 'resizer', value: column.id })]
+							},
+						)
+					}),
 				),
 			)
 		}
@@ -221,7 +292,7 @@ const TableImpl = defineComponent(
 			span: number,
 		) {
 			return h(TableRow, { key: flat.id, value: flat.id, index }, () =>
-				h(TableCell, { value: `g|${flat.id}`, row: index, col: 0, colspan: span }, () => {
+				h(TableCell, { value: groupKey(flat.id), row: index, col: 0, colspan: span }, () => {
 					const column = api.column(group.columnId)
 					const sample = group.leaves[0]
 					const text = column && sample ? api.text(sample.row, column) : toText(group.value)
@@ -302,27 +373,35 @@ const TableImpl = defineComponent(
 			)
 		}
 
-		function footRow(columns: readonly ColumnDef[]) {
-			if (!columns.some((column) => column.aggregate)) return null
+		function footRow(columns: readonly ColumnDef[], index: number) {
+			if (!api.footerRowCount()) return null
 			const totals = api.totals()
 			return h(TableFoot, null, () =>
-				h('tr', { role: 'row' }, [
-					columns.map((column) => {
+				h(TablePlainRow, { index }, () =>
+					columns.map((column, col) => {
 						const value = totals[column.id]
 						const text = column.aggregate ? api.totalText(column, value) : ''
 						const slot = slots[`foot-${column.id}`] ?? slots.foot
 						return h(
-							'td',
-							{ key: column.id, role: 'gridcell', 'data-column': column.id },
-							slot ? [slot({ column, value, text })] : text,
+							TableCell,
+							{ key: column.id, value: footKey(column.id), row: index, col },
+							() => (slot ? slot({ column, value, text }) : text),
 						)
 					}),
-				]),
+				),
+			)
+		}
+
+		function emptyRow(index: number, span: number) {
+			return h(TablePlainRow, { key: 'empty', index, 'data-kind': 'empty' }, () =>
+				h(TableCell, { value: 'empty', row: index, col: 0, colspan: span }, () =>
+					slots.empty ? slots.empty({}) : api.message('noRows')(),
+				),
 			)
 		}
 
 		return () => {
-			// The list of rows comes from the api, so the render must name the state it depends on.
+			// The rows and the columns come from the api, so the render must name the state it depends on.
 			const state = handle.state
 			void state.revision
 			void state.sort
@@ -330,25 +409,31 @@ const TableImpl = defineComponent(
 			void state.groupBy
 			void state.page
 			void state.expanded
+			void state.columnVisibility
+			void state.columnOrder
+			void state.columnPinning
+			void state.columnDrag
 
 			const columns = api.columns()
 			const rows = api.rows()
+			const head = api.headerRowCount()
 
 			return h(RootPart, { handle, ...attrs }, () => [
-				h(TableHead, null, () => headerRow(columns)),
+				h('colgroup', null, [
+					columns.map((column) => h(TableCol, { key: column.id, value: column.id })),
+				]),
+				h(TableHead, null, headerRows),
 				h(TableBody, null, () =>
-					rows.length || !slots.empty
+					rows.length
 						? rows.map((flat, position) => {
-								const index = position + 1
+								const index = head + position
 								return flat.node.kind === 'group'
 									? groupRow(flat, flat.node, index, columns.length)
 									: dataRow(flat, flat.node, index, columns)
 							})
-						: h('tr', { role: 'row' }, [
-								h('td', { role: 'gridcell', colspan: columns.length }, [slots.empty({})]),
-							]),
+						: emptyRow(head, columns.length),
 				),
-				footRow(columns),
+				footRow(columns, head + Math.max(1, rows.length)),
 			])
 		}
 	},

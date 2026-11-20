@@ -5,8 +5,8 @@ test('the table sorts, searches and pages 50,000 rows', async ({ page }) => {
 
 	const table = page.getByRole('grid', { name: 'People' })
 	await expect(table).toHaveAttribute('data-slot', 'table')
-	// One header row and one page of 25 rows.
-	await expect(table).toHaveAttribute('aria-rowcount', '26')
+	// One header row, one page of 25 rows, and the footer row with the mean score.
+	await expect(table).toHaveAttribute('aria-rowcount', '27')
 	await expect(table.locator('tbody tr')).toHaveCount(25)
 
 	await page.getByRole('button', { name: '50,000 rows' }).click()
@@ -96,4 +96,25 @@ test('groups open and close, and a group row is one wide cell', async ({ page })
 	await expect(table.locator('tbody tr').nth(1).getByRole('gridcell').first()).toBeFocused()
 	await page.keyboard.press('ArrowUp')
 	await expect(billing.getByRole('gridcell')).toBeFocused()
+})
+
+test('after a sort, the arrow keys move from the place the cell has now', async ({ page }) => {
+	await page.goto('/')
+	const table = page.getByRole('grid', { name: 'People' })
+	const cell = (row: number, col: number) =>
+		table.locator(`tr[aria-rowindex="${row}"] > [aria-colindex="${col}"]`)
+
+	// The row with this cell is somewhere else after the sort, in the same row element.
+	await cell(3, 2).focus()
+	await page.getByRole('button', { name: 'Highest score first' }).click()
+	await expect(table.getByRole('columnheader', { name: 'Score' })).toHaveAttribute(
+		'aria-sort',
+		'descending',
+	)
+	await cell(4, 2).focus()
+	await page.keyboard.press('ArrowDown')
+	await expect(cell(5, 2)).toBeFocused()
+	await page.keyboard.press('ArrowUp')
+	await page.keyboard.press('ArrowUp')
+	await expect(cell(3, 2)).toBeFocused()
 })

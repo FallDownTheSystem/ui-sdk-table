@@ -1,10 +1,13 @@
 export {
 	TableBody,
 	TableCell,
+	TableCol,
 	TableFoot,
 	TableHead,
 	TableHeaderCell,
 	TableHeaderRow,
+	TablePlainRow,
+	TableResizer,
 	TableRoot,
 	TableRow,
 } from './parts'
@@ -21,9 +24,15 @@ export {
 export { createTableController } from './controller'
 export type {
 	ColumnDef,
+	ColumnPin,
+	ColumnPinning,
+	ColumnVisibility,
+	ColumnWidths,
 	FilterState,
 	PageState,
 	SortRule,
 	TableChangeDetails,
+	TableCommitDetails,
 	TableController,
+	TableMessages,
 } from 'ui-sdk-table-core'

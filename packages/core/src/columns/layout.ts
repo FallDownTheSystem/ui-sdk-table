@@ -33,6 +33,8 @@ export type ColumnLayout<Row = unknown> = {
 	/** Every column that holds cells, hidden ones too, in definition order. */
 	all: ColumnDef<Row>[]
 	byId: Map<string, ColumnDef<Row>>
+	/** Every header group, by id. */
+	groups: Map<string, ColumnDef<Row>>
 	/** The position of a visible column, from 0. */
 	index: Map<string, number>
 	pins: Map<string, ColumnPin>
@@ -53,11 +55,13 @@ export function layoutColumns<Row>(
 	const { visibility = {}, order = [], pinning = {} } = state
 	const found: Leaf<Row>[] = []
 	const shown: Leaf<Row>[] = []
+	const groups = new Map<string, ColumnDef<Row>>()
 
 	const walk = (list: readonly ColumnDef<Row>[], path: ColumnDef<Row>[], hidden: boolean) => {
 		for (const column of list) {
 			const off = hidden || visibility[column.id] === false
 			if (column.columns?.length) {
+				groups.set(column.id, column)
 				walk(column.columns, [...path, column], off)
 				continue
 			}
@@ -141,6 +145,7 @@ export function layoutColumns<Row>(
 		leaves,
 		all,
 		byId: new Map(all.map((column) => [column.id, column])),
+		groups,
 		index: new Map(leaves.map((column, position) => [column.id, position])),
 		pins,
 		headerRows,
@@ -157,4 +162,30 @@ export function fullColumnOrder<Row>(
 	const listed = order.filter((id, position) => known.has(id) && order.indexOf(id) === position)
 	const rest = new Set(listed)
 	return [...listed, ...all.filter((id) => !rest.has(id))]
+}
+
+/**
+ * A full column order after a move among some of its columns. The columns of
+ * `track` take the places that they hold in `order` now, in the sequence of
+ * `track`; every other column keeps its place.
+ */
+export function mergeColumnTrack(order: readonly string[], track: readonly string[]): string[] {
+	const moving = new Set(track)
+	let next = 0
+	return order.map((id) => (moving.has(id) ? (track[next++] ?? id) : id))
+}
+
+/** The header cell that covers each place of the header, by header row and column. */
+export function headerCellMap<Row>(layout: ColumnLayout<Row>): (HeaderCell<Row> | undefined)[][] {
+	const map: (HeaderCell<Row> | undefined)[][] = layout.headerRows.map(() => [])
+	for (const cells of layout.headerRows) {
+		for (const cell of cells) {
+			for (let row = cell.row; row < cell.row + cell.rowSpan; row++) {
+				const places = map[row]
+				if (!places) continue
+				for (let col = cell.col; col < cell.col + cell.colSpan; col++) places[col] = cell
+			}
+		}
+	}
+	return map
 }

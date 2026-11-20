@@ -28,6 +28,16 @@ export type ColumnDef<Row = unknown> = {
 	/** How the cell value becomes text. Without it, the value is shown as it is. */
 	format?: FormatName
 	formatOptions?: FormatOptions
+	/** The width in pixels that the column asks for. A resize by a person wins over it. */
+	width?: number
+	minWidth?: number
+	maxWidth?: number
+	/** Whether a person can resize the column. Without it, the `resizable` option of the table decides. */
+	resizable?: boolean
+	/** Whether a person can move the column. Without it, the `reorderable` option of the table decides. */
+	reorderable?: boolean
+	/** Whether the column can be hidden. Defaults to true. */
+	hideable?: boolean
 	meta?: unknown
 }
 

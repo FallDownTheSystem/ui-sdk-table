@@ -43,3 +43,102 @@ body {
 	inset-block-start: 0;
 	background: Canvas;
 }
+
+.pages {
+	display: flex;
+	gap: 1rem;
+	margin-block-end: 1rem;
+}
+
+.pages [aria-current='page'] {
+	font-weight: 600;
+}
+
+.scroller.narrow {
+	max-inline-size: 30rem;
+}
+
+.link {
+	border: 0;
+	padding: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-decoration: underline;
+}
+
+/* A column takes its width from its `col` element. */
+[data-slot='table-col'] {
+	inline-size: var(--table-column-width);
+}
+
+/* With a width for every column, the table is as wide as their sum, and a resize moves one column only. */
+[data-slot='table'][data-sized] {
+	table-layout: fixed;
+	inline-size: var(--table-width);
+}
+
+[data-slot='table'][data-sized] :is(th, td) {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+[data-slot='table'] thead th {
+	z-index: 1;
+}
+
+[data-slot='table-cell'][data-pinned] {
+	position: sticky;
+	z-index: 1;
+	background: Canvas;
+}
+
+/* A cell that gets focus scrolls into view, and it must stop beside the pinned columns, not under them. */
+[data-slot='table-cell']:not([data-pinned]) {
+	scroll-margin-inline: var(--table-pin-start-size, 0) var(--table-pin-end-size, 0);
+}
+
+[data-slot='table'] thead [data-slot='table-cell'][data-pinned] {
+	z-index: 2;
+}
+
+[data-slot='table-cell'][data-pinned='start'] {
+	inset-inline-start: var(--table-pin-offset);
+}
+
+[data-slot='table-cell'][data-pinned='end'] {
+	inset-inline-end: var(--table-pin-offset);
+}
+
+[data-slot='table-cell'][data-pinned-edge][data-pinned='start'] {
+	border-inline-end: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+}
+
+[data-slot='table-cell'][data-pinned-edge][data-pinned='end'] {
+	border-inline-start: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+}
+
+[data-slot='table-cell'][data-active]:focus-visible {
+	outline: 2px solid Highlight;
+	outline-offset: -2px;
+}
+
+[data-slot='table-cell'][data-moving] {
+	background: color-mix(in srgb, Highlight 25%, Canvas);
+}
+
+[data-slot='table-cell'][data-grabbed] {
+	transform: translateX(var(--drag-x, 0));
+	z-index: 3;
+}
+
+[data-slot='table-resizer'] {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-end: 0;
+	inline-size: 0.5rem;
+}
+
+[data-slot='table-resizer']:is(:hover, :focus-visible, [data-dragging]) {
+	background: Highlight;
+}

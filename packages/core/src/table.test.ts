@@ -38,12 +38,13 @@ function setup(options: Partial<TableOptions<Person>> = {}, ids = ['a', 'b', 'c'
 const ids = (rows: readonly { id: string }[]) => rows.map((row) => row.id)
 
 describe('table primitive', () => {
-	test('the root is a grid that counts the header row', () => {
+	test('the root is a grid that counts the header row and the footer row', () => {
 		const view = setup()
 		try {
 			expect(view.root.getAttribute('role')).toBe('grid')
 			expect(view.root.getAttribute('data-slot')).toBe('table')
-			expect(view.root.getAttribute('aria-rowcount')).toBe('4')
+			// One header row, three rows, and the footer row with the total of `score`.
+			expect(view.root.getAttribute('aria-rowcount')).toBe('5')
 			expect(view.root.getAttribute('aria-colcount')).toBe('3')
 			expect(view.part('cell', '0:name')?.getAttribute('role')).toBe('columnheader')
 			expect(view.part('cell', '1:name')?.getAttribute('role')).toBe('gridcell')

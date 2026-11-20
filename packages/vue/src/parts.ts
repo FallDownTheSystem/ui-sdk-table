@@ -11,17 +11,23 @@ export const {
 	Head: TableHead,
 	Body: TableBody,
 	Foot: TableFoot,
+	Col: TableCol,
 	HeaderRow: TableHeaderRow,
+	PlainRow: TablePlainRow,
 	Row: TableRow,
 	Cell: TableCell,
+	Resizer: TableResizer,
 } = createParts(table, {
 	root: 'table',
 	head: 'thead',
 	body: 'tbody',
 	foot: 'tfoot',
+	col: 'col',
 	headerRow: 'tr',
+	plainRow: 'tr',
 	row: 'tr',
 	cell: 'td',
+	resizer: 'span',
 })
 
 // A slot has one element. A header cell is the same slot as a body cell, so a

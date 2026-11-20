@@ -1,17 +1,35 @@
 import {
 	byCell,
 	createChange,
+	createCommit,
 	createSelection,
 	definePrimitive,
+	elements,
+	isRTL,
+	live,
 	selects,
 	type ChangeDetails,
+	type CommitDetails,
 } from '@ui-sdk/core'
-import { createTableGrid, GRID_KEYS, type GridCell } from './behaviors/grid'
+import { createTableGrid, GRID_KEYS, type GridArea, type GridCell } from './behaviors/grid'
+import { createColumnPins } from './behaviors/pin'
+import { createColumnReorder, type ReorderDraft } from './behaviors/reorder'
+import { createColumnResize, type ResizeDraft } from './behaviors/resize'
+import {
+	fullColumnOrder,
+	headerCellMap,
+	layoutColumns,
+	mergeColumnTrack,
+	type ColumnLayout,
+	type ColumnPin,
+	type ColumnPinning,
+	type HeaderCell,
+} from './columns/layout'
 import { formatValue } from './format'
+import { defaultMessages, type TableMessages } from './messages'
 import {
 	cellValue,
 	createRowModel,
-	leafColumns,
 	memo,
 	sameContent,
 	stabilize,
@@ -34,8 +52,16 @@ export type TableReason =
 	| 'input-change'
 	| 'imperative'
 	| 'reset'
+	| 'drag'
+	| 'move-key'
+	| 'resize-key'
+	| 'escape-key'
 
 export type TableChangeDetails = ChangeDetails<TableReason>
+export type TableCommitDetails = CommitDetails<TableReason>
+
+export type ColumnVisibility = Readonly<Record<string, boolean>>
+export type ColumnWidths = Readonly<Record<string, number>>
 
 export type SortDirection = 'asc' | 'desc'
 
@@ -62,6 +88,18 @@ export type TableController = {
 	toggleSelected(rowId: string, event?: Event): void
 	selectAll(): void
 	clearSelection(): void
+	/** Shows or hides a column, or every column of a header group. */
+	setColumnVisibility(columnId: string, visible: boolean): void
+	toggleColumnVisibility(columnId: string): void
+	showAllColumns(): void
+	/** Moves a column to a place among the columns that can move, from 0. */
+	moveColumn(columnId: string, index: number): void
+	setColumnOrder(columnIds: readonly string[]): void
+	/** Gives a column a width in pixels. `null` takes the width away again. */
+	setColumnWidth(columnId: string, width: number | null): void
+	resetColumnWidths(): void
+	/** Pins a column to the start or the end of the table. `null` frees it. */
+	pinColumn(columnId: string, side: ColumnPin | null): void
 }
 
 export type TableOptions<Row = unknown> = {
@@ -80,6 +118,15 @@ export type TableOptions<Row = unknown> = {
 	/** Row selection. Without it, rows cannot be selected. */
 	selection?: 'single' | 'multiple'
 	canSelect?: (row: Row) => boolean
+	/** Whether a person can resize columns. A column can say otherwise. Defaults to false. */
+	resizable?: boolean
+	/** Whether a person can move columns. A column can say otherwise. Defaults to false. */
+	reorderable?: boolean
+	/** The smallest width of a column that has no `minWidth`, in pixels. Defaults to 48. */
+	columnMinWidth?: number
+	columnMaxWidth?: number
+	/** Texts of the table in another language, or with other words. */
+	messages?: Partial<TableMessages>
 	controller?: TableController
 
 	sort?: readonly SortRule[]
@@ -108,6 +155,29 @@ export type TableOptions<Row = unknown> = {
 	selected?: string[]
 	defaultSelected?: string[]
 	onSelectedChange?: (value: string[], details: TableChangeDetails) => void
+
+	/** Columns with `false` are hidden. The id of a header group hides all its columns. */
+	columnVisibility?: ColumnVisibility
+	defaultColumnVisibility?: ColumnVisibility
+	onColumnVisibilityChange?: (value: ColumnVisibility, details: TableChangeDetails) => void
+
+	/** Column ids in display order. Columns that are not listed come after, in definition order. */
+	columnOrder?: readonly string[]
+	defaultColumnOrder?: readonly string[]
+	onColumnOrderChange?: (value: readonly string[], details: TableChangeDetails) => void
+
+	/** Column widths in pixels, by column id. A column without an entry has the width of its definition. */
+	columnWidths?: ColumnWidths
+	defaultColumnWidths?: ColumnWidths
+	/** Runs for each step of a resize. */
+	onColumnWidthsChange?: (value: ColumnWidths, details: TableChangeDetails) => void
+	/** Runs once when a resize ends: on release of the handle, and after each key. */
+	onColumnWidthsCommit?: (value: ColumnWidths, details: TableCommitDetails) => void
+
+	/** The columns that stay at the start or the end edge while the rest scrolls. */
+	columnPinning?: ColumnPinning
+	defaultColumnPinning?: ColumnPinning
+	onColumnPinningChange?: (value: ColumnPinning, details: TableChangeDetails) => void
 }
 
 type TableState = {
@@ -117,6 +187,19 @@ type TableState = {
 	page: PageState | undefined
 	expanded: readonly string[]
 	selected: string[]
+	columnVisibility: ColumnVisibility
+	columnOrder: readonly string[]
+	columnWidths: ColumnWidths
+	columnPinning: ColumnPinning
+	/**
+	 * The ids of the columns that a person can move, in display order: the
+	 * visible columns that are not pinned. The reorder behavior moves this list.
+	 */
+	columnTrack: string[]
+	/** The move of a column that is going on, with the order it shows. */
+	columnDrag: ReorderDraft | null
+	/** The pointer drag of a resize handle that is going on. */
+	columnResize: ResizeDraft | null
 	active: GridCell | null
 	/**
 	 * Goes up when `rows` or `columns` is a new array. Parts read rows through
@@ -131,9 +214,28 @@ const NO_COLUMNS: readonly ColumnDef[] = []
 const NO_SORT: readonly SortRule[] = []
 const NO_FILTER: FilterState = {}
 const NO_IDS: readonly string[] = []
+const NO_VISIBILITY: ColumnVisibility = {}
+const NO_WIDTHS: ColumnWidths = {}
+const NO_PINNING: ColumnPinning = {}
 
-/** The header row is row 0 of the grid, so cell focus can move into it. */
-const HEADER_ROWS = 1
+const DEFAULT_COLUMN_WIDTH = 150
+const DEFAULT_COLUMN_MIN_WIDTH = 48
+const RESIZE_STEP = 10
+const RESIZE_LARGE_STEP = 50
+
+/** The ids of the columns that a person can move: the visible ones that are not pinned. */
+function columnTrack(layout: ColumnLayout): string[] {
+	return layout.leaves.filter((column) => !layout.pins.has(column.id)).map((column) => column.id)
+}
+
+/** Every state key that a part reads only through its own entry or not at all. */
+const QUIET = {
+	selected: [],
+	active: [],
+	columnWidths: [],
+	columnTrack: [],
+	columnResize: [],
+} as const
 
 function listed(ids: Iterable<string>): string {
 	const list = [...ids]
@@ -155,6 +257,11 @@ export const table = definePrimitive({
 		canGroup: 'value',
 		selection: 'string',
 		canSelect: 'value',
+		resizable: 'boolean',
+		reorderable: 'boolean',
+		columnMinWidth: 'number',
+		columnMaxWidth: 'number',
+		messages: 'value',
 		controller: 'value',
 		sort: 'value',
 		defaultSort: 'value',
@@ -174,18 +281,63 @@ export const table = definePrimitive({
 		selected: 'value',
 		defaultSelected: 'value',
 		onSelectedChange: 'callback',
+		columnVisibility: 'value',
+		defaultColumnVisibility: 'value',
+		onColumnVisibilityChange: 'callback',
+		columnOrder: 'value',
+		defaultColumnOrder: 'value',
+		onColumnOrderChange: 'callback',
+		columnWidths: 'value',
+		defaultColumnWidths: 'value',
+		onColumnWidthsChange: 'callback',
+		onColumnWidthsCommit: 'callback',
+		columnPinning: 'value',
+		defaultColumnPinning: 'value',
+		onColumnPinningChange: 'callback',
 	},
-	controlled: ['sort', 'filter', 'groupBy', 'page', 'expanded', 'selected'],
-	state: (options: TableOptions): TableState => ({
-		sort: options.sort ?? options.defaultSort ?? NO_SORT,
-		filter: options.filter ?? options.defaultFilter ?? NO_FILTER,
-		groupBy: options.groupBy ?? options.defaultGroupBy ?? NO_IDS,
-		page: options.page ?? options.defaultPage,
-		expanded: options.expanded ?? options.defaultExpanded ?? NO_IDS,
-		selected: options.selected ?? options.defaultSelected ?? [],
-		active: null,
-		revision: 0,
-	}),
+	controlled: [
+		'sort',
+		'filter',
+		'groupBy',
+		'page',
+		'expanded',
+		'selected',
+		'columnVisibility',
+		'columnOrder',
+		'columnWidths',
+		'columnPinning',
+	],
+	commits: ['columnWidths'],
+	live: ['columnResize'],
+	state: (options: TableOptions): TableState => {
+		const columnVisibility =
+			options.columnVisibility ?? options.defaultColumnVisibility ?? NO_VISIBILITY
+		const columnOrder = options.columnOrder ?? options.defaultColumnOrder ?? NO_IDS
+		const columnPinning = options.columnPinning ?? options.defaultColumnPinning ?? NO_PINNING
+		return {
+			sort: options.sort ?? options.defaultSort ?? NO_SORT,
+			filter: options.filter ?? options.defaultFilter ?? NO_FILTER,
+			groupBy: options.groupBy ?? options.defaultGroupBy ?? NO_IDS,
+			page: options.page ?? options.defaultPage,
+			expanded: options.expanded ?? options.defaultExpanded ?? NO_IDS,
+			selected: options.selected ?? options.defaultSelected ?? [],
+			columnVisibility,
+			columnOrder,
+			columnWidths: options.columnWidths ?? options.defaultColumnWidths ?? NO_WIDTHS,
+			columnPinning,
+			columnTrack: columnTrack(
+				layoutColumns(options.columns ?? NO_COLUMNS, {
+					visibility: columnVisibility,
+					order: columnOrder,
+					pinning: columnPinning,
+				}),
+			),
+			columnDrag: null,
+			columnResize: null,
+			active: null,
+			revision: 0,
+		}
+	},
 	sync: (options) => {
 		const synced: Partial<TableState> = {}
 		if (options.sort !== undefined) synced.sort = options.sort
@@ -194,12 +346,19 @@ export const table = definePrimitive({
 		if (options.page !== undefined) synced.page = options.page
 		if (options.expanded !== undefined) synced.expanded = options.expanded
 		if (options.selected !== undefined) synced.selected = options.selected
+		if (options.columnVisibility !== undefined) synced.columnVisibility = options.columnVisibility
+		if (options.columnOrder !== undefined) synced.columnOrder = options.columnOrder
+		if (options.columnWidths !== undefined) synced.columnWidths = options.columnWidths
+		if (options.columnPinning !== undefined) synced.columnPinning = options.columnPinning
 		return synced
 	},
 	api: (context) => {
 		const state = () => context.store.get()
 		const options = () => context.options()
 		const change = createChange(context)
+		const commit = createCommit(context)
+		const message = <Key extends keyof TableMessages>(key: Key): TableMessages[Key] =>
+			options().messages?.[key] ?? defaultMessages[key]
 
 		let seenRows = options().rows
 		let seenColumns = options().columns
@@ -210,20 +369,65 @@ export const table = definePrimitive({
 			context.store.set({ revision: state().revision + 1 })
 		})
 
-		const columnsOf = memo((columns: readonly ColumnDef[]) => {
-			const leaves = leafColumns(columns)
-			return { leaves, byId: new Map(leaves.map((column) => [column.id, column])) }
-		})
-		const columns = () => columnsOf(options().columns ?? NO_COLUMNS)
+		const stableVisibility = stabilize<ColumnVisibility>()
+		const stableOrder = stabilize<readonly string[]>()
+		const stablePinning = stabilize<ColumnPinning>()
+		const layoutOf = () =>
+			memo(
+				(
+					columns: readonly ColumnDef[],
+					visibility: ColumnVisibility,
+					order: readonly string[],
+					pinning: ColumnPinning,
+				) => layoutColumns(columns, { visibility, order, pinning }),
+			)
+		const committedLayout = layoutOf()
+		const movingLayout = layoutOf()
+		const movingOrder = memo(
+			(columns: readonly ColumnDef[], order: readonly string[], track: readonly string[]) =>
+				mergeColumnTrack(fullColumnOrder(columns, order), track),
+		)
+		const definitions = () => options().columns ?? NO_COLUMNS
+		/** The columns as the state orders them, without a move that is going on. */
+		const committed = () =>
+			committedLayout(
+				definitions(),
+				stableVisibility(state().columnVisibility),
+				stableOrder(state().columnOrder),
+				stablePinning(state().columnPinning),
+			)
+		/**
+		 * The columns as the table shows them. Every part reads the columns from
+		 * here, so the header, the cells, the footer and the keyboard agree.
+		 */
+		const layout = (): ColumnLayout => {
+			const drag = state().columnDrag
+			if (!drag) return committed()
+			const order = stableOrder(state().columnOrder)
+			return movingLayout(
+				definitions(),
+				stableVisibility(state().columnVisibility),
+				movingOrder(definitions(), order, drag.order),
+				stablePinning(state().columnPinning),
+			)
+		}
+		const headerMap = memo(headerCellMap)
+		/** The header cell that covers a place of the header. */
+		const headerAt = (row: number, col: number) => headerMap(layout())[row]?.[col]
 
 		function column(id: string, purpose: string): ColumnDef {
-			const found = columns().byId.get(id)
+			const found = layout().byId.get(id)
 			if (!found) {
 				throw new Error(
-					`No column "${id}" to ${purpose}. Columns: ${listed(columns().byId.keys())}.`,
+					`No column "${id}" to ${purpose}. Columns: ${listed(layout().byId.keys())}.`,
 				)
 			}
 			return found
+		}
+
+		const label = (columnId: string) => {
+			const found = layout().byId.get(columnId) ?? layout().groups.get(columnId)
+			return found?.header ?? columnId
 		}
 
 		function text(row: unknown, column: ColumnDef): string {
@@ -247,7 +451,7 @@ export const table = definePrimitive({
 
 		const model = createRowModel<unknown>({
 			rows: () => options().rows ?? NO_ROWS,
-			columns: () => options().columns ?? NO_COLUMNS,
+			columns: definitions,
 			// Read at each use, so a table that gets these options later still works.
 			get getRowId() {
 				return options().getRowId
@@ -307,11 +511,139 @@ export const table = definePrimitive({
 			selectable: canSelect,
 		})
 
+		const headerRowCount = () => layout().headerRows.length
+		/** Without rows, the body holds one row that says so. */
+		const bodyRowCount = () => model.flat().length || 1
+		const hasTotals = memo((columns: readonly ColumnDef[]) =>
+			columns.some((column) => column.aggregate !== undefined),
+		)
+		/** The footer is one row of column totals, and it exists when a column has a total. */
+		const footerRowCount = () => (hasTotals(layout().leaves) ? 1 : 0)
+		const rowCount = () => headerRowCount() + bodyRowCount() + footerRowCount()
+
+		function area(cell: GridCell): GridArea {
+			const columns = layout()
+			const head = columns.headerRows.length
+			if (cell.row < head) {
+				const header = headerAt(cell.row, cell.col)
+				if (header) {
+					return {
+						row: header.row,
+						col: header.col,
+						rowSpan: header.rowSpan,
+						colSpan: header.colSpan,
+					}
+				}
+			}
+			// A group row is one cell as wide as the table, and so is the row that says "no rows".
+			const flat = model.flat()
+			const wide = flat.length ? flat[cell.row - head]?.node.kind === 'group' : cell.row === head
+			if (wide) {
+				return { row: cell.row, col: 0, rowSpan: 1, colSpan: Math.max(1, columns.leaves.length) }
+			}
+			return { row: cell.row, col: cell.col, rowSpan: 1, colSpan: 1 }
+		}
+
 		const grid = createTableGrid(context, {
 			key: 'active',
-			rows: () => HEADER_ROWS + model.flat().length,
-			cols: () => columns().leaves.length,
+			rows: rowCount,
+			cols: () => layout().leaves.length,
 			pageSize: () => state().page?.pageSize ?? 10,
+			area,
+		})
+
+		const reorderable = (columnId: string) =>
+			layout().byId.get(columnId)?.reorderable ?? options().reorderable ?? false
+		const resizable = (columnId: string) =>
+			layout().byId.get(columnId)?.resizable ?? options().resizable ?? false
+
+		const reorder = createColumnReorder(context, {
+			track: 'columnTrack',
+			draft: 'columnDrag',
+			set: (track, details) =>
+				change(
+					'columnOrder',
+					mergeColumnTrack(fullColumnOrder(definitions(), state().columnOrder), track),
+					details,
+				),
+			disabled: (columnId) => !reorderable(columnId),
+			label,
+			message: (event) => message('columnMoved')(event),
+		})
+
+		/** The width that the table asks for a column: from a resize, else from its definition. */
+		const widthOf = (columnId: string): number | undefined =>
+			state().columnWidths[columnId] ?? layout().byId.get(columnId)?.width
+		const minWidthOf = (columnId: string) =>
+			layout().byId.get(columnId)?.minWidth ?? options().columnMinWidth ?? DEFAULT_COLUMN_MIN_WIDTH
+		const maxWidthOf = (columnId: string) =>
+			layout().byId.get(columnId)?.maxWidth ?? options().columnMaxWidth
+
+		/** The width on the screen of each visible column whose header cell is rendered. */
+		function measureColumns(): Map<string, number> {
+			const widths = new Map<string, number>()
+			type Place = { header?: boolean; row: number; col: number }
+			for (const cell of elements<Place>(context, 'cell')) {
+				if (!cell.props.header) continue
+				const header = headerAt(cell.props.row, cell.props.col)
+				if (!header?.leaf) continue
+				const width = cell.el.getBoundingClientRect().width
+				if (width > 0) widths.set(header.column.id, width)
+			}
+			return widths
+		}
+
+		// The widths on the screen when a resize starts. A column that never had a
+		// width gets the one it has on the screen, so the other columns hold their
+		// place while one column changes.
+		let frozen: ColumnWidths = NO_WIDTHS
+
+		/** Prepares a resize of a column and returns the width it starts from. */
+		function startResize(columnId: string): number {
+			const measured = measureColumns()
+			const widths: Record<string, number> = {}
+			for (const leaf of layout().leaves) {
+				const width = measured.get(leaf.id)
+				if (width !== undefined && state().columnWidths[leaf.id] === undefined) {
+					widths[leaf.id] = Math.round(width)
+				}
+			}
+			frozen = widths
+			return measured.get(columnId) ?? widthOf(columnId) ?? DEFAULT_COLUMN_WIDTH
+		}
+
+		const resize = createColumnResize(context, {
+			draft: 'columnResize',
+			set: (columnId, width, details) =>
+				change(
+					'columnWidths',
+					{ ...frozen, ...state().columnWidths, [columnId]: Math.round(width) },
+					details,
+				),
+			commit: (details) =>
+				commit('columnWidths', state().columnWidths, {
+					reason: details.reason,
+					event: details.event,
+				}),
+			snapshot: () => state().columnWidths,
+			restore: (snapshot, details) => change('columnWidths', snapshot as ColumnWidths, details),
+			min: minWidthOf,
+			max: maxWidthOf,
+			step: () => RESIZE_STEP,
+			largeStep: () => RESIZE_LARGE_STEP,
+			label,
+			message: (event) => message('columnResized')({ column: event.label, width: event.width }),
+		})
+
+		const pinnedColumns = memo((columns: ColumnLayout) =>
+			columns.leaves.flatMap((leaf) => {
+				const side = columns.pins.get(leaf.id)
+				return side ? [{ id: leaf.id, side }] : []
+			}),
+		)
+		const pins = createColumnPins(context, {
+			pinned: () => pinnedColumns(layout()),
+			width: widthOf,
 		})
 
 		function requireSelection(): void {
@@ -350,7 +682,9 @@ export const table = definePrimitive({
 		// passes a new object on each render, and that is not a new list.
 		let seen = list()
 		context.onDestroy(
-			context.store.subscribe((_liveOnly, _delivered, changed) => {
+			context.store.subscribe((liveOnly, _delivered, changed) => {
+				if (liveOnly) return
+				followColumns()
 				const next = list()
 				const newList =
 					next.sort !== seen.sort || next.filter !== seen.filter || next.groupBy !== seen.groupBy
@@ -364,6 +698,45 @@ export const table = definePrimitive({
 				if (target !== page.page) change('page', { ...page, page: target }, { reason: 'reset' })
 			}),
 		)
+
+		// The column and the header height that the active cell was on. The active
+		// cell is a place, a row and a column number. When columns move, hide or
+		// pin, the place holds another column; the person looked at a column, so
+		// the active cell goes with it.
+		let seenLayout = layout()
+		let activeColumn: string | undefined
+
+		function followColumns(): void {
+			const columns = layout()
+			const track = columnTrack(committed())
+			if (!sameContent(track, state().columnTrack)) context.store.set({ columnTrack: track })
+			const active = state().active
+			if (active && columns !== seenLayout) {
+				const before = seenLayout.headerRows.length
+				const head = columns.headerRows.length
+				const moved = activeColumn === undefined ? undefined : columns.index.get(activeColumn)
+				const col = moved ?? active.col
+				const row =
+					active.row < before ? Math.min(active.row, head - 1) : active.row - before + head
+				if (row !== active.row || col !== active.col) context.store.set({ active: { row, col } })
+			}
+			seenLayout = columns
+			grid.settle()
+			const now = state().active
+			activeColumn = now ? columns.leaves[now.col]?.id : undefined
+		}
+		context.onOptions(() => {
+			// The options are not in place yet when this runs, so the check waits one turn.
+			queueMicrotask(followColumns)
+		})
+
+		function requireVisible(columnId: string, purpose: string): void {
+			column(columnId, purpose)
+			if (layout().index.has(columnId)) return
+			throw new Error(
+				`Column "${columnId}" is hidden, so there is nothing to ${purpose}. Visible columns: ${listed(layout().index.keys())}.`,
+			)
+		}
 
 		function setSort(next: readonly SortRule[], reason: TableReason, event?: Event): void {
 			if (!sameContent(next, state().sort)) change('sort', next, { reason, event })
@@ -489,6 +862,112 @@ export const table = definePrimitive({
 			clearSelection() {
 				change('selected', [], { reason: 'imperative' })
 			},
+			setColumnVisibility(columnId, visible) {
+				const columns = layout()
+				const group = columns.groups.get(columnId)
+				const found = group ?? column(columnId, visible ? 'show' : 'hide')
+				if (typeof visible !== 'boolean') {
+					throw new Error('`setColumnVisibility` takes a column id and true or false.')
+				}
+				if (!visible) {
+					if (found.hideable === false) throw new Error(`Column "${columnId}" cannot be hidden.`)
+					const next = layoutColumns(definitions(), {
+						visibility: { ...state().columnVisibility, [columnId]: false },
+					})
+					if (!next.leaves.length) {
+						throw new Error(
+							`Column "${columnId}" is the last visible column. A table needs one column.`,
+						)
+					}
+				}
+				const next: Record<string, boolean> = { ...state().columnVisibility, [columnId]: visible }
+				// A column that shows is not in the record: the record stays small and
+				// equal for two states that look the same.
+				if (visible) delete next[columnId]
+				if (!sameContent(next, state().columnVisibility)) {
+					change('columnVisibility', next, { reason: 'imperative' })
+				}
+			},
+			toggleColumnVisibility(columnId) {
+				const group = layout().groups.get(columnId)
+				if (!group) column(columnId, 'show or hide')
+				controller.setColumnVisibility(columnId, state().columnVisibility[columnId] === false)
+			},
+			showAllColumns() {
+				if (Object.keys(state().columnVisibility).length) {
+					change('columnVisibility', NO_VISIBILITY, { reason: 'imperative' })
+				}
+			},
+			moveColumn(columnId, index) {
+				requireVisible(columnId, 'move')
+				const track = state().columnTrack
+				if (!track.includes(columnId)) {
+					throw new Error(
+						`Column "${columnId}" is pinned, and a pinned column keeps its place. Free it with \`pinColumn\` first.`,
+					)
+				}
+				if (!Number.isInteger(index) || index < 0 || index >= track.length) {
+					throw new Error(
+						`A column moves to a place from 0 to ${track.length - 1} among: ${listed(track)}.`,
+					)
+				}
+				reorder.move(columnId, index)
+			},
+			setColumnOrder(columnIds) {
+				if (!Array.isArray(columnIds))
+					throw new Error('`setColumnOrder` takes a list of column ids.')
+				for (const id of columnIds) column(String(id), 'order')
+				if (!sameContent(columnIds, state().columnOrder)) {
+					change('columnOrder', [...columnIds], { reason: 'imperative' })
+				}
+			},
+			setColumnWidth(columnId, width) {
+				column(columnId, 'resize')
+				const next: Record<string, number> = { ...state().columnWidths }
+				if (width === null) delete next[columnId]
+				else if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
+					const max = maxWidthOf(columnId) ?? Infinity
+					next[columnId] = Math.round(Math.min(max, Math.max(minWidthOf(columnId), width)))
+				} else {
+					throw new Error('A column width is a number of pixels above 0, or null for no width.')
+				}
+				if (sameContent(next, state().columnWidths)) return
+				if (change('columnWidths', next, { reason: 'imperative' })) {
+					commit('columnWidths', state().columnWidths, { reason: 'imperative' })
+				}
+			},
+			resetColumnWidths() {
+				if (!Object.keys(state().columnWidths).length) return
+				if (change('columnWidths', NO_WIDTHS, { reason: 'imperative' })) {
+					commit('columnWidths', state().columnWidths, { reason: 'imperative' })
+				}
+			},
+			pinColumn(columnId, side) {
+				column(columnId, 'pin')
+				if (side !== null && side !== 'start' && side !== 'end') {
+					throw new Error(
+						`A column is pinned to "start" or "end", or freed with null, not "${String(side)}".`,
+					)
+				}
+				const current = state().columnPinning
+				const without = (ids: readonly string[] = []) => ids.filter((id) => id !== columnId)
+				const next = {
+					start: side === 'start' ? [...without(current.start), columnId] : without(current.start),
+					end: side === 'end' ? [columnId, ...without(current.end)] : without(current.end),
+				}
+				const same =
+					sameContent(next.start, current.start ?? []) && sameContent(next.end, current.end ?? [])
+				if (!same) change('columnPinning', next, { reason: 'imperative' })
+			},
+		}
+
+		/** Changes the width of a column by a number of pixels, as a key on its header does. */
+		function resizeColumnBy(columnId: string, delta: number, event?: Event): boolean {
+			requireVisible(columnId, 'resize')
+			return resize.resizeBy(columnId, delta, startResize(columnId), {
+				reason: event ? 'resize-key' : 'imperative',
+				event,
+			})
 		}
 
 		return {
@@ -496,14 +975,49 @@ export const table = definePrimitive({
 			model,
 			grid,
 			selection,
-			/** The visible rows in order. Grid row `n` is `rows()[n - 1]`; grid row 0 is the header. */
+			reorder,
+			resize,
+			pins,
+			message,
+			/**
+			 * The visible rows in order. The header rows come first in the grid, so
+			 * grid row `n` is `rows()[n - headerRowCount()]`.
+			 */
 			rows: () => model.flat(),
 			row: (id: string): FlatRow<unknown> | undefined => {
 				const index = flatIndex(model.flat()).get(id)
 				return index === undefined ? undefined : model.flat()[index]
 			},
-			columns: () => columns().leaves,
-			column: (id: string) => columns().byId.get(id),
+			/** The visible columns in display order. */
+			columns: () => layout().leaves,
+			/** A column by id, also when it is hidden. */
+			column: (id: string) => layout().byId.get(id),
+			/** The header rows, with the cells that span header groups. */
+			headerRows: (): HeaderCell[][] => layout().headerRows,
+			headerAt,
+			headerRowCount,
+			footerRowCount,
+			/** Every row of the grid: the header rows, the body rows and the footer row. */
+			gridRowCount: rowCount,
+			/** Every column that holds cells, hidden ones too, in definition order. */
+			allColumns: () => layout().all,
+			isColumnVisible: (id: string) => layout().index.has(id),
+			columnPin: (id: string): ColumnPin | undefined => layout().pins.get(id),
+			/** Whether the column is the pinned column next to the columns that scroll. */
+			isPinEdge: (id: string): boolean => {
+				const pinned = pinnedColumns(layout())
+				const side = layout().pins.get(id)
+				const same = pinned.filter((column) => column.side === side)
+				return (side === 'start' ? same.at(-1) : same[0])?.id === id
+			},
+			columnLabel: label,
+			columnWidth: widthOf,
+			columnMinWidth: minWidthOf,
+			columnMaxWidth: maxWidthOf,
+			canResize: resizable,
+			canReorder: (id: string) => reorderable(id) && state().columnTrack.includes(id),
+			startResize,
+			resizeColumnBy,
 			/** The text of a cell as a person sees it, with the format of its column. */
 			text,
 			isSelected: (id: string) => idSet(state().selected).has(id),
@@ -532,29 +1046,72 @@ export const table = definePrimitive({
 			keys: { none: 'Focus stays on a cell, and the keydown of the cell handles the keys.' },
 			bind: (el, { api }) => api.grid.bindRoot(el),
 			// Selection and cell focus change one row or two cells. The root must not render for them.
-			selects: selects({ selected: [], active: [] }),
-			attrs: (_state, { api }) => ({
-				'aria-rowcount': String(HEADER_ROWS + api.rows().length),
-				'aria-colcount': String(api.columns().length),
-				'aria-multiselectable': api.selectionMode() === 'multiple' ? 'true' : undefined,
-			}),
+			selects: selects({ selected: [], active: [], columnTrack: [], columnResize: [] }),
+			attrs: (_state, { api }) => {
+				const columns = api.columns()
+				// With a width for every column, the table has a width of its own: the
+				// sum. Then a resize changes one column and no other.
+				const widths = columns.map((column) => api.columnWidth(column.id))
+				const sized = columns.length > 0 && widths.every((width) => width !== undefined)
+				const total = widths.reduce<number>((sum, width) => sum + (width ?? 0), 0)
+				return {
+					'aria-rowcount': String(api.gridRowCount()),
+					'aria-colcount': String(columns.length),
+					'aria-multiselectable': api.selectionMode() === 'multiple' ? 'true' : undefined,
+					'data-sized': sized ? '' : undefined,
+					style: sized ? `--table-width:${total}px` : undefined,
+				}
+			},
 			state: (state, { api }) => ({
 				revision: state.revision,
 				sort: state.sort,
 				filter: state.filter,
 				groupBy: state.groupBy,
 				expanded: state.expanded,
+				columnVisibility: state.columnVisibility,
+				columnOrder: state.columnOrder,
+				columnPinning: state.columnPinning,
+				columnDrag: state.columnDrag,
 				page: api.model.page(),
 				pageSize: state.page?.pageSize,
 				pageCount: api.model.pageCount(),
 				rowCount: api.model.rowCount(),
 			}),
 		}),
-		head: slot({ role: 'rowgroup' }),
-		body: slot({ role: 'rowgroup' }),
-		foot: slot({ role: 'rowgroup' }),
-		// The header row is a slot of its own, so no row id of the data can be mistaken for it.
+		// The head, the body and the foot hold the offsets of the pinned columns.
+		head: slot({ role: 'rowgroup', bind: (el, { api }) => api.pins.bindGroup(el) }),
+		body: slot({ role: 'rowgroup', bind: (el, { api }) => api.pins.bindGroup(el) }),
+		foot: slot({ role: 'rowgroup', bind: (el, { api }) => api.pins.bindGroup(el) }),
+		/** A `col` element. It gives its column a width, and it holds no cell. */
+		col: slot<{ value: string }>({
+			props: { value: 'string' },
+			selects: selects({
+				...QUIET,
+				columnWidths: ({ key }) => [key],
+				sort: [],
+				filter: [],
+				groupBy: [],
+				page: [],
+				expanded: [],
+				columnDrag: [],
+			}),
+			attrs: (_state, { key, api }) => {
+				const width = api.columnWidth(key)
+				return {
+					'data-column': key,
+					'data-pinned': api.columnPin(key),
+					style: width === undefined ? undefined : `--table-column-width:${width}px`,
+				}
+			},
+		}),
+		// The header rows are a slot of their own, so no row id of the data can be mistaken for one.
 		headerRow: slot<{ index: number }>({
+			props: { index: 'number' },
+			role: 'row',
+			attrs: (_state, { props }) => ({ 'aria-rowindex': String(props.index + 1) }),
+		}),
+		/** A row that holds no data row: the footer row, or the row that says "no rows". */
+		plainRow: slot<{ index: number }>({
 			props: { index: 'number' },
 			role: 'row',
 			attrs: (_state, { props }) => ({ 'aria-rowindex': String(props.index + 1) }),
@@ -566,9 +1123,10 @@ export const table = definePrimitive({
 			role: 'row',
 			// A row reads `selected` and `expanded` only for its own id.
 			selects: selects({
+				...QUIET,
 				selected: ({ key }) => [key],
 				expanded: ({ key }) => [key],
-				active: [],
+				columnDrag: [],
 			}),
 			attrs: (_state, { key, props, api }) => {
 				const row = api.row(key)
@@ -599,44 +1157,98 @@ export const table = definePrimitive({
 				}
 			},
 		}),
-		cell: slot<{ value: string; row: number; col: number; header?: boolean }>({
-			props: { value: 'string', row: 'number', col: 'number', header: 'boolean' },
+		/**
+		 * A cell of the header or of the body. `row` and `col` are its place in
+		 * the grid, from 0, with the header rows first. A cell that spans gives
+		 * its first row and column, and `rowspan` and `colspan`.
+		 *
+		 * A person moves, resizes and pins a column by its header cell. So one
+		 * header cell element must stay with one column: key the cells of a
+		 * header row by the column, not by the position.
+		 */
+		cell: slot<{
+			value: string
+			row: number
+			col: number
+			header?: boolean
+			colspan?: number
+			rowspan?: number
+		}>({
+			props: {
+				value: 'string',
+				row: 'number',
+				col: 'number',
+				header: 'boolean',
+				colspan: 'number',
+				rowspan: 'number',
+			},
 			role: (_state, { props }) => (props.header ? 'columnheader' : 'gridcell'),
 			roles: ['columnheader', 'gridcell'],
 			focus: 'roving',
-			keys: [...GRID_KEYS, 'Enter', 'F2', 'Escape', ' '],
-			selects: selects({ active: byCell, selected: [], expanded: [] }),
+			keys: [...GRID_KEYS, 'Enter', 'F2', 'Escape', ' ', 'alt+ArrowLeft', 'alt+ArrowRight'],
+			selects: selects({ ...QUIET, active: byCell, expanded: [] }),
 			attrs: (state, { props, api }) => {
-				const column = api.columns()[props.col]
-				const sort = props.header && column?.sortable ? api.sortOf(column.id) : undefined
+				const header = props.header ? api.headerAt(props.row, props.col) : undefined
+				const column = props.header ? header?.column : api.columns()[props.col]
+				const wide = (props.colspan ?? 1) > 1
+				// The header of one column, and not a header group.
+				const leaf = !!header?.leaf
+				const sortable = leaf && !!column?.sortable
+				const sort = sortable && column ? api.sortOf(column.id) : undefined
+				const pin = column && !(wide && !props.header) ? api.columnPin(column.id) : undefined
+				const offset = pin && column ? api.pins.offset(column.id) : undefined
 				return {
 					tabindex: api.grid.tabIndex(state, props),
+					colspan: wide ? String(props.colspan) : undefined,
+					rowspan: (props.rowspan ?? 1) > 1 ? String(props.rowspan) : undefined,
 					'aria-colindex': String(props.col + 1),
-					'aria-sort':
-						props.header && column?.sortable
-							? sort === 'asc'
-								? 'ascending'
-								: sort === 'desc'
-									? 'descending'
-									: 'none'
-							: undefined,
+					'aria-sort': sortable
+						? sort === 'asc'
+							? 'ascending'
+							: sort === 'desc'
+								? 'descending'
+								: 'none'
+						: undefined,
 					'data-column': column?.id,
 					'data-active': api.grid.isActive(state, props) ? '' : undefined,
 					'data-sorted': sort,
+					'data-pinned': pin,
+					'data-pinned-edge': pin && column && api.isPinEdge(column.id) ? '' : undefined,
+					'data-moving': leaf && column && api.reorder.moving(state, column.id) ? '' : undefined,
+					'data-grabbed': leaf && column && api.reorder.dragging(state, column.id) ? '' : undefined,
+					style: offset ? `--table-pin-offset:${offset}` : undefined,
 				}
 			},
 			on: {
 				keydown: (event, { api, props, el }) => {
 					const onCell = event.target === el
-					const column = api.columns()[props.col]
+					const header = props.header ? api.headerAt(props.row, props.col) : undefined
+					const column = header?.column
+					const leaf = !!header?.leaf && !!column
+					// A column that is picked up owns every key until it is dropped.
+					if (onCell && leaf && api.reorder.keydown(event, column.id)) return
+					// Alt with an arrow changes the width of the column, from its header.
+					if (
+						onCell &&
+						leaf &&
+						event.altKey &&
+						(event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+						api.canResize(column.id)
+					) {
+						event.preventDefault()
+						const wider = (event.key === 'ArrowRight') !== (!!el && isRTL(el))
+						const step = event.shiftKey ? RESIZE_LARGE_STEP : RESIZE_STEP
+						api.resizeColumnBy(column.id, wider ? step : -step, event)
+						return
+					}
 					// Enter on a sortable header sorts. It comes before the move into the
 					// cell, because a header often holds a sort button for the pointer.
-					if (onCell && props.header && event.key === 'Enter' && column?.sortable) {
+					if (onCell && leaf && event.key === 'Enter' && column.sortable) {
 						event.preventDefault()
 						api.toggleSort(column.id, { append: event.shiftKey, event })
 						return
 					}
-					const row = props.header ? undefined : api.rows()[props.row - HEADER_ROWS]
+					const row = props.header ? undefined : api.rows()[props.row - api.headerRowCount()]
 					// Enter on a group row opens the group, for the same reason: the row holds a button.
 					if (onCell && event.key === 'Enter' && row?.node.kind === 'group') {
 						event.preventDefault()
@@ -665,15 +1277,78 @@ export const table = definePrimitive({
 					api.grid.focus(props, { reason: 'imperative', event })
 				},
 				pointerdown: (event, { api, props, el }) => {
+					const target = event.target instanceof Element ? event.target : undefined
+					// A press on the resize handle resizes. It must not move focus or start a column move.
+					if (target?.closest('[data-slot="table-resizer"]')) return
+					const header = props.header ? api.headerAt(props.row, props.col) : undefined
 					// A press on a control inside the cell must leave focus on that control.
-					if (event.target !== el && event.target instanceof Element) {
-						const control = event.target.closest('a[href], button, input, select, textarea')
-						if (control && el?.contains(control)) return
+					const control =
+						target && target !== el && target.closest('a[href], button, input, select, textarea')
+					if (!control || !el?.contains(control)) {
+						api.grid.focus(props, { reason: 'item-press', event })
 					}
-					api.grid.focus(props, { reason: 'item-press', event })
+					// The whole header cell is the grip of its column. A drag starts only
+					// after the pointer moves, so a press on a sort button stays a press.
+					if (header?.leaf) api.reorder.pointerdown(event, header.column.id)
 				},
 			},
-			bind: (el, { api, props }) => api.grid.bind(el, props),
+			bind: (el, { api, props }) => {
+				const cleanups = [api.grid.bind(el, props)]
+				const header = props.header ? api.headerAt(props.row, props.col) : undefined
+				if (header?.leaf) {
+					const columnId = header.column.id
+					cleanups.push(api.reorder.bind(el, columnId), api.pins.bind(el, columnId))
+				}
+				return () => cleanups.forEach((cleanup) => cleanup())
+			},
+		}),
+		/** The handle at the edge of a header cell that resizes its column. `value` is the column id. */
+		resizer: slot<{ value: string }>({
+			props: { value: 'string' },
+			role: 'separator',
+			focus: 'tab-stop',
+			keys: ['ArrowLeft', 'ArrowRight', 'shift+ArrowLeft', 'shift+ArrowRight'],
+			selects: selects({
+				...QUIET,
+				columnWidths: ({ key }) => [key],
+				sort: [],
+				filter: [],
+				groupBy: [],
+				page: [],
+				expanded: [],
+				columnDrag: [],
+			}),
+			attrs: (_state, { key, api }) => ({
+				...api.resize.handleAttrs(),
+				tabindex: '0',
+				'aria-orientation': 'vertical',
+				'aria-label': api.message('resizeColumn')(api.columnLabel(key)),
+				'aria-valuenow': String(Math.round(api.columnWidth(key) ?? DEFAULT_COLUMN_WIDTH)),
+				'aria-valuemin': String(api.columnMinWidth(key)),
+				'aria-valuemax':
+					api.columnMaxWidth(key) === undefined ? undefined : String(api.columnMaxWidth(key)),
+				'data-column': key,
+			}),
+			live: live((state, { key, api }) => ({
+				'data-dragging': api.resize.dragging(state, key) ? '' : undefined,
+			})),
+			on: {
+				pointerdown: (event, { api, key, el }) => {
+					if (!el || event.button !== 0) return
+					api.resize.pointerdown(event, key, el, api.startResize(key))
+					// Without this, the press also selects the text of the header. It comes
+					// after the start of the drag: a drag does not start from a press that
+					// is already prevented.
+					event.preventDefault()
+				},
+				keydown: (event, { api, key, el }) => {
+					if (!el) return
+					if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+					// The arrow belongs to the handle, not to the grid around it.
+					event.stopPropagation()
+					api.resize.keydown(event, key, el, api.startResize(key))
+				},
+			},
 		}),
 	}),
 	agent: {
@@ -699,6 +1374,14 @@ export const table = definePrimitive({
 			'toggleSelected',
 			'selectAll',
 			'clearSelection',
+			'setColumnVisibility',
+			'toggleColumnVisibility',
+			'showAllColumns',
+			'moveColumn',
+			'setColumnOrder',
+			'setColumnWidth',
+			'resetColumnWidths',
+			'pinColumn',
 		],
 	},
 })
