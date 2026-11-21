@@ -9,7 +9,6 @@ const books: Book[] = [
 	{ id: 'b3', title: 'الأيام', author: 'طه حسين', year: 1929, price: 52 },
 	{ id: 'b4', title: 'ثلاثية غرناطة', author: 'رضوى عاشور', year: 1994, price: 74 },
 	{ id: 'b5', title: 'اللص والكلاب', author: 'نجيب محفوظ', year: 1961, price: 41 },
-	{ id: 'b6', title: 'ذاكرة الجسد', author: 'أحلام مستغانمي', year: 1993, price: 60 },
 ]
 const columns: ColumnDef<Book>[] = [
 	{ id: 'title', header: 'العنوان', width: 170, sortable: true },

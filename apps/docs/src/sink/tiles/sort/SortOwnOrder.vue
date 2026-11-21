@@ -9,9 +9,7 @@ const tickets: Ticket[] = [
 	{ id: 't1', subject: 'Invoice shows the wrong tax', urgency: 'High' },
 	{ id: 't2', subject: 'Typo on the pricing page', urgency: 'Low' },
 	{ id: 't3', subject: 'Checkout is down', urgency: 'Urgent' },
-	{ id: 't4', subject: 'Export misses a column', urgency: 'Medium' },
 	{ id: 't5', subject: 'Password mail is slow', urgency: 'High' },
-	{ id: 't6', subject: 'Logo looks soft on phones', urgency: 'Low' },
 	{ id: 't7', subject: 'Refund was sent twice', urgency: 'Urgent' },
 ]
 const columns: ColumnDef<Ticket>[] = [

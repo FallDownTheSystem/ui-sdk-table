@@ -28,7 +28,6 @@ const files: Entry[] = [
 		name: 'docs',
 		children: [{ id: 'docs/benchmarks.md', name: 'benchmarks.md', size: 6.7 }],
 	},
-	{ id: 'README.md', name: 'README.md', size: 3.9 },
 ]
 const columns: ColumnDef<Entry>[] = [
 	{ id: 'name', header: 'Name', sortable: true },
@@ -49,7 +48,7 @@ const columns: ColumnDef<Entry>[] = [
 				:rows="files"
 				:columns="columns"
 				:get-children="(entry: Entry) => entry.children"
-				:default-expanded="['src', 'src/rows']"
+				:default-expanded="['src']"
 				sticky-header
 				aria-label="Files of a project"
 			>

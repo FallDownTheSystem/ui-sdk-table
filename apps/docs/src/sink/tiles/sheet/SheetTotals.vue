@@ -52,7 +52,6 @@ const kind = computed(() => {
 				:columns="columns"
 				:controller="controller"
 				:group-by="['city']"
-				:default-expanded="['group/city=Oslo']"
 				:default-column-visibility="{ city: false }"
 				group-totals
 				sticky-header

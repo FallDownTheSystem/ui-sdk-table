@@ -3,6 +3,9 @@ import { Button } from '@ui-sdk/vue/button'
 import { createTableController, Table, type ColumnDef } from 'ui-sdk-table-vue'
 import { onBeforeUnmount, shallowRef } from 'vue'
 import { orders, type Order } from '../../data'
+
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 3)
 import SinkCheck from '../../parts/SinkCheck.vue'
 
 const columns: ColumnDef<Order>[] = [
@@ -34,7 +37,7 @@ onBeforeUnmount(stop)
 		</div>
 		<div class="sink-frame">
 			<Table
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:controller="controller"
 				selection="single"

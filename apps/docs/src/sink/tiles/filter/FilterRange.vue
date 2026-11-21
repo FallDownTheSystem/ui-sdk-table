@@ -17,6 +17,8 @@ import {
 import { computed, shallowRef } from 'vue'
 import { euro, products, type Product } from '../../data'
 
+// A few products, so the table stands whole in its tile.
+const shelf = products.slice(0, 4)
 const columns: ColumnDef<Product>[] = [
 	{ id: 'name', header: 'Product' },
 	{ id: 'price', header: 'Price', filter: 'range', format: 'currency', formatOptions: euro },
@@ -63,7 +65,7 @@ function slide(value: number | number[]) {
 		</div>
 		<div class="sink-frame">
 			<Table
-				:rows="products"
+				:rows="shelf"
 				:columns="columns"
 				:controller="controller"
 				locale="en"

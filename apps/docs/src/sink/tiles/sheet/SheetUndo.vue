@@ -18,7 +18,7 @@ const columns: ColumnDef<Product>[] = [
 ]
 const controller = createTableController()
 const view = useTableView(controller)
-const rows = shallowRef(products.slice(0, 4))
+const rows = shallowRef(products.slice(0, 3))
 
 // The steps are no state of the view, so they are read again after each change of the table.
 const steps = computed(() => {

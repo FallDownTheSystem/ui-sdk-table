@@ -33,6 +33,6 @@ export const tiles: TileCopy[] = [
 		title: 'Totals in the label.',
 		blurb: 'One wide cell for each group, with a mean and a count of your own.',
 		size: 'wide',
-		tone: 'ink',
+		tone: 'wine',
 	},
 ]

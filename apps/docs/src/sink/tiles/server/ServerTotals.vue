@@ -15,9 +15,9 @@ const columns: ColumnDef<Person>[] = [
 	{ id: 'name', header: 'Name', aggregate: 'count' },
 	{ id: 'score', header: 'Score', format: 'decimal', aggregate: 'sum' },
 ]
-const page = shallowRef<PageState | undefined>({ page: 1, pageSize: 6 })
+const page = shallowRef<PageState | undefined>({ page: 1, pageSize: 3 })
 const rows = computed(() => {
-	const { page: number, pageSize } = page.value ?? { page: 1, pageSize: 6 }
+	const { page: number, pageSize } = page.value ?? { page: 1, pageSize: 3 }
 	return everyone.slice((number - 1) * pageSize, number * pageSize)
 })
 const fromServer = shallowRef(true)

@@ -10,6 +10,9 @@ import {
 import { computed, shallowRef } from 'vue'
 import { orders, type Order } from '../../data'
 
+// The first eight orders: four of them fall in the days of the start.
+const rows = orders.slice(0, 8)
+
 const columns: ColumnDef<Order>[] = [
 	{ id: 'customer', header: 'Customer' },
 	{
@@ -61,7 +64,7 @@ function bound(end: 'from' | 'to', day: string) {
 		<div class="sink-frame">
 			<Table
 				v-model:filter="filter"
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:controller="controller"
 				:default-sort="[{ id: 'placed' }]"

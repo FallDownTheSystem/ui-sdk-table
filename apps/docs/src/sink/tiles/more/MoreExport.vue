@@ -4,6 +4,9 @@ import { createTableController, Table, type ColumnDef } from 'ui-sdk-table-vue'
 import { shallowRef } from 'vue'
 import { count, euro, orders, type Order } from '../../data'
 
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 3)
+
 const columns: ColumnDef<Order>[] = [
 	{ id: 'customer', header: 'Customer', sortable: true },
 	// A file says the city with its country, which the screen has no room for.
@@ -34,7 +37,7 @@ async function write(kind: 'csv' | 'xlsx') {
 		</div>
 		<div class="sink-frame">
 			<Table
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:controller="controller"
 				:default-sort="[{ id: 'customer' }]"

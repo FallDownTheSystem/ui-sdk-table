@@ -26,7 +26,6 @@ const columns: ColumnDef<Person>[] = [
 				:rows="people"
 				:columns="columns"
 				:group-by="['team']"
-				:default-expanded="['group/team=Billing']"
 				:default-column-visibility="{ team: false }"
 				:group-totals="false"
 				sticky-header

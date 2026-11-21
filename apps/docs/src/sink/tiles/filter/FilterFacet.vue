@@ -11,7 +11,7 @@ import {
 import { computed, shallowRef } from 'vue'
 import { createPeople, type Person } from '../../data'
 
-const people = createPeople(60)
+const people = createPeople(11)
 const columns: ColumnDef<Person>[] = [
 	{ id: 'name', header: 'Name' },
 	{ id: 'team', header: 'Team', filter: 'select' },
@@ -58,8 +58,9 @@ const chosen = (id: string) => {
 			</ToggleGroup>
 		</div>
 		<div class="demo-bar">
-			<p class="demo-note" role="status">
-				{{ view?.dataRowCount ?? 0 }} of {{ people.length }} people
+			<p class="readout" role="status">
+				<strong class="display">{{ view?.dataRowCount ?? 0 }} of {{ people.length }}</strong>
+				<span class="readout-label">people</span>
 			</p>
 			<Button class="end" @click="controller.clearColumnFilters()">Clear</Button>
 		</div>

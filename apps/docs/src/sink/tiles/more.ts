@@ -12,7 +12,7 @@ export const tiles: TileCopy[] = [
 		id: 'more-export',
 		title: 'Export a file.',
 		blurb: 'The rows as you see them, as CSV or Excel, with writers that load on the first press.',
-		tone: 'clay',
+		tone: 'pine',
 	},
 	{
 		id: 'more-rtl',
@@ -24,7 +24,7 @@ export const tiles: TileCopy[] = [
 		id: 'more-messages',
 		title: 'Say it in Finnish.',
 		blurb: 'The words of the table and its numbers change while it runs.',
-		tone: 'paper',
+		tone: 'clay',
 	},
 	{
 		id: 'more-marks',

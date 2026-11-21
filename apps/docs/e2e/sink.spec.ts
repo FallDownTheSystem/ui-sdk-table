@@ -7,7 +7,19 @@ import {
 	type ContrastKind,
 } from './contrast'
 
-const TONES = ['paper', 'sand', 'mist', 'moss', 'sun', 'plum', 'clay', 'ink', 'navy'] as const
+const TONES = [
+	'paper',
+	'sand',
+	'mist',
+	'moss',
+	'sun',
+	'plum',
+	'clay',
+	'ink',
+	'navy',
+	'pine',
+	'wine',
+] as const
 
 /** What the page writes to the console as an error, and what it throws. */
 function watchErrors(page: Page): string[] {
@@ -471,13 +483,13 @@ test('the tile of letters: a letter selects its column over a header group, Shif
 	await expect(table.locator('tr[data-kind="letters"] > th')).toHaveText(['', 'A', 'B', 'C', 'D'])
 	await expect(letter('#')).toHaveAccessibleName('All cells')
 	await letter('items').click()
-	await expect(said).toHaveText('14 by 1 cells')
+	await expect(said).toHaveText('3 by 1 cells')
 	await expect(letter('items')).toHaveAttribute('data-selected', '')
 	await letter('city').click({ modifiers: ['Shift'] })
-	await expect(said).toHaveText('14 by 2 cells')
+	await expect(said).toHaveText('3 by 2 cells')
 	await expect(table.locator('th[data-kind="letter"][data-selected]')).toHaveCount(2)
 	await letter('#').click()
-	await expect(said).toHaveText('14 by 4 cells')
+	await expect(said).toHaveText('3 by 4 cells')
 
 	// The letter of a column under a group is a cell of one column. Down goes to the group, then to the column.
 	await letter('total').click()
@@ -526,7 +538,7 @@ test('the tiles of a sheet: a number selects its row, a format is data, a total 
 	expect(await foot.innerText()).not.toBe(sum)
 
 	await tile(page, 'sheet-sum').getByRole('button', { name: 'Distance', exact: true }).click()
-	await expect(page.getByTestId('sum-bar')).toContainText('Sum 29.80')
+	await expect(page.getByTestId('sum-bar')).toContainText('Sum 98.60')
 
 	const cut = tableOf(page, 'sheet-cut')
 	await tile(page, 'sheet-cut').getByRole('button', { name: 'Move two days' }).click()
@@ -609,8 +621,9 @@ test('the wheel over a table moves the page when the table has no more to scroll
 
 	// A table that scrolls: first the table to its end, then the page.
 	await page.evaluate(() => scrollTo(0, 0))
-	const frame = frameOf(page, 'group-totals')
-	await expect(tableOf(page, 'group-totals')).toBeVisible()
+	const frame = frameOf(page, 'rows-sticky')
+	await tile(page, 'rows-sticky').scrollIntoViewIfNeeded()
+	await expect(tableOf(page, 'rows-sticky')).toBeVisible()
 	await frame.scrollIntoViewIfNeeded()
 	await settled()
 	const scrollsFrom = await scrollY()
@@ -746,7 +759,9 @@ for (const tone of TONES) {
 			['the title of a tile', part('columns-pin', '.tile-title'), 'text', TEXT],
 			['the blurb of a tile', part('columns-pin', '.tile-blurb'), 'text', TEXT],
 			['a name under a tile', part('columns-pin', '.tile-uses [data-slot="toggle"]'), 'text', TEXT],
-			['a note beside a table', part('filter-search', '.demo-note'), 'text', TEXT],
+			['a note beside a table', part('edit-price', '.demo-note'), 'text', TEXT],
+			['a number read out large', part('filter-search', '.readout .display'), 'text', TEXT],
+			['the label of a number', part('filter-search', '.readout-label'), 'text', TEXT],
 			[
 				'the placeholder of a field',
 				part('filter-search', '[data-slot="input"]'),
@@ -1038,6 +1053,57 @@ for (const tone of TONES) {
 		expect(failed, `${tone}: ${measured.length} pairs measured`).toEqual([])
 	})
 }
+
+test('the tiles with a look of their own hold their text at 4.5 to 1', async ({ page }) => {
+	await installContrast(page)
+	await page.setViewportSize({ width: 1280, height: 900 })
+	await open(page, '&eager&only=style')
+	const part = (id: string, selector: string) => tile(page, id).locator(selector).first()
+	const pairs: Pair[] = []
+	for (const id of ['style-brutal', 'style-pixel', 'style-swiss', 'style-deco']) {
+		await expect(tableOf(page, id)).toBeVisible()
+		pairs.push(
+			[`${id}: the title`, part(id, '.tile-title'), 'text', 4.5],
+			[`${id}: the blurb`, part(id, '.tile-blurb'), 'text', 4.5],
+			[`${id}: a name under it`, part(id, '.tile-uses [data-slot="toggle"]'), 'text', 4.5],
+			[`${id}: a header cell`, part(id, 'thead th'), 'text', 4.5],
+			[`${id}: a body cell`, part(id, 'tbody td'), 'text', 4.5],
+			[`${id}: a body cell at the end`, part(id, 'tbody tr:last-child td:last-child'), 'text', 4.5],
+		)
+	}
+	for (const state of ['todo', 'doing', 'done']) {
+		pairs.push([
+			`a task in ${state}`,
+			part('style-brutal', `td[data-state="${state}"]`),
+			'text',
+			4.5,
+		])
+	}
+	for (const place of [1, 2, 3, 4]) {
+		pairs.push([
+			`the score in place ${place}`,
+			part('style-pixel', `tbody tr:nth-child(${place}) td[data-column="score"]`),
+			'text',
+			4.5,
+		])
+		pairs.push([
+			`the name in place ${place}`,
+			part('style-pixel', `tbody tr:nth-child(${place}) td[data-column="player"]`),
+			'text',
+			4.5,
+		])
+	}
+	pairs.push(
+		['a track', part('style-swiss', 'td[data-column="track"]'), 'text', 4.5],
+		['a cabin', part('style-deco', 'td[data-column="cabin"]'), 'text', 4.5],
+	)
+	const failed: string[] = []
+	for (const [what, locator, kind, least] of pairs) {
+		const ratio = await contrastOf(locator, kind)
+		if (ratio < least) failed.push(`${what}: ${ratio.toFixed(2)} (at least ${least})`)
+	}
+	expect(failed).toEqual([])
+})
 
 test('the bar of the filter holds its text at 4.5 to 1 and its controls at 3 to 1', async ({
 	page,

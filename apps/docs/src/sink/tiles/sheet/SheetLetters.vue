@@ -9,6 +9,9 @@ import {
 import { computed } from 'vue'
 import { orders, type Order } from '../../data'
 
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 3)
+
 const columns: ColumnDef<Order>[] = [
 	rowNumberColumn<Order>({ width: 36 }),
 	{ id: 'customer', header: 'Customer' },
@@ -40,7 +43,7 @@ const said = computed(() => {
 		</div>
 		<div class="sink-frame">
 			<Table
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:controller="controller"
 				cell-selection

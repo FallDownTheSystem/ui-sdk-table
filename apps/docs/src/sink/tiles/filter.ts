@@ -5,6 +5,7 @@ export const tiles: TileCopy[] = [
 		id: 'filter-search',
 		title: 'Search with a pause.',
 		blurb: 'The field shows each letter at once, and the table filters when you stop.',
+		size: 'tall',
 		tone: 'moss',
 	},
 	{

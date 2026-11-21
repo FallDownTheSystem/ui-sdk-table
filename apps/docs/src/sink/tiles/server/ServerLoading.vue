@@ -21,7 +21,8 @@ function load() {
 	loading.value = true
 	clearTimeout(timer)
 	timer = setTimeout(() => {
-		rows.value = orders
+		// A few orders, so the table stands whole in its tile.
+		rows.value = orders.slice(0, 4)
 		loading.value = false
 	}, 1600)
 }
@@ -48,7 +49,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 				<template #loading>
 					<span class="sr-only">Loading the orders</span>
 					<span class="skeleton-rows" aria-hidden="true">
-						<span v-for="row in 6" :key="row" class="skeleton-row">
+						<span v-for="row in 4" :key="row" class="skeleton-row">
 							<span v-for="bar in BARS" :key="bar" :class="`skeleton w${bar}`" />
 						</span>
 					</span>

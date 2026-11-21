@@ -17,7 +17,7 @@ export const tiles: TileCopy[] = [
 	{
 		id: 'server-totals',
 		title: 'Totals from the server.',
-		blurb: 'The page has six rows, and the footer still sums up all four hundred.',
+		blurb: 'The page has three rows, and the footer still sums up all four hundred.',
 		tone: 'moss',
 	},
 	{

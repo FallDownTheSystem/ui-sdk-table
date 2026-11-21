@@ -17,7 +17,6 @@ const funds: Fund[] = [
 	{ id: 'f2', fund: 'Global Bonds', fee: 0.35, year: -1.36, five: 3.9 },
 	{ id: 'f3', fund: 'Small Caps', fee: 1.1, year: 12.07, five: 58.6 },
 	{ id: 'f4', fund: 'Green Energy', fee: 0.75, year: -6.52, five: 22.4 },
-	{ id: 'f5', fund: 'Money Market', fee: 0.1, year: 2.91, five: 9.3 },
 ]
 const columns: ColumnDef<Fund>[] = [
 	{ id: 'fund', header: 'Fund' },
