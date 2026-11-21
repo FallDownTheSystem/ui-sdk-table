@@ -428,3 +428,54 @@ describe.runIf(requested)('the check after new rows with 50,000 rows', () => {
 		console.table(results)
 	}, 120_000)
 })
+
+describe.runIf(requested)('a fill and a paste of formulas with 50,000 rows', () => {
+	test('median time of a fill down and of a paste of formulas, and the objects that the state holds', () => {
+		let held: { cells?: Record<string, Record<string, string>> } = {}
+		const view = mount(
+			table,
+			{
+				rows: lines(),
+				columns: [...base, { id: 'sum', header: 'Sum' }],
+				sheet: true,
+				history: false,
+				formulas: createFormulaEngine(),
+				onCellFormulasChange: (value: typeof held) => {
+					held = value
+				},
+			} as TableOptions,
+			'<root aria-label="Lines"></root>',
+		)
+		const results: Record<string, number> = {}
+		try {
+			const formulas = ['=[price]*[qty]', '=[price]+[qty]', '=[price]-[qty]']
+			let round = 0
+			results['a fill of one same-row formula down 50,000 rows'] = median(() => {
+				view.api.setCellFormula('r0', 'total', formulas[round++ % 3] ?? '')
+				view.api.selectCells(
+					{ rowId: 'r0', columnId: 'total' },
+					{ rowId: `r${ROWS - 1}`, columnId: 'total' },
+				)
+				void view.api.fillCells('down')
+			}, 5)
+			const rows = new Set(Object.values(held.cells ?? {}))
+			results['the row objects of the formulas after the fill'] = rows.size
+			expect(Object.keys(held.cells ?? {})).toHaveLength(ROWS)
+
+			// Each line names the row above it: 50,000 different texts.
+			const pastes = [1, 2, 3].map((factor) =>
+				Array.from({ length: ROWS - 1 }, (_, index) => `=A${index + 1}*${factor}`).join('\n'),
+			)
+			round = 0
+			view.api.selectCells({ rowId: 'r1', columnId: 'sum' })
+			results['a paste of 49,999 formulas that each name another row'] = median(
+				() => void view.api.pasteCells(pastes[round++ % 3] ?? ''),
+				3,
+			)
+			expect(held.cells?.r2?.sum).toMatch(/^=\[price@r1\]\*\d$/)
+		} finally {
+			view.unmount()
+		}
+		console.table(results)
+	}, 300_000)
+})

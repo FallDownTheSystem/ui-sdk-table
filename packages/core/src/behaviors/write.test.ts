@@ -46,6 +46,7 @@ function setup(schema?: StandardSchemaV1) {
 				return row && { kind: 'row', id, row, index, depth: 0, parentId: null }
 			},
 			check: (input, row, column): Checked | Promise<Checked> => {
+				if ('formula' in input) return { issues: ['This table has no formulas.'] }
 				const parsed = 'text' in input ? parseText(input.text, row, column, texts) : input
 				return 'issues' in parsed ? parsed : checkValue(column.schema, parsed.value)
 			},

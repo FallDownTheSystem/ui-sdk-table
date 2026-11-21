@@ -56,6 +56,7 @@ import type {
 	FormulaEngine,
 	FormulaEntry,
 	FormulaIssue,
+	FormulaPlace,
 	FormulaResult,
 	FormulaView,
 } from './formula/types'
@@ -2542,18 +2543,34 @@ export const table = definePrimitive({
 		const writes = createCellWrites<TableEditReason>(context, {
 			rowById: (id) => model.rowById(id),
 			check: (input: WriteInput, row, column, rowId) => {
-				const node = 'text' in input ? model.rowById(rowId) : undefined
-				const entry = node && 'text' in input ? formulaEntry(node, column, input.text) : undefined
+				const node = engine() && model.rowById(rowId)
+				const entry = !node
+					? undefined
+					: 'formula' in input
+						? formulaEntry(node, column, input.formula, true)
+						: 'text' in input
+							? formulaEntry(node, column, input.text)
+							: undefined
 				if (entry && 'issues' in entry) return { issues: [entryRefusal(entry)] }
-				if (entry && 'formula' in entry) return { value: undefined, formula: entry.formula }
-				return resolveValue(
-					entry ? { text: entry.text } : input,
+				const own = node ? formulaOf(rowId, column.id) : undefined
+				if (entry && 'formula' in entry) {
+					// The formula that the cell holds already is no change.
+					return node && entry.formula === own
+						? { value: valueNow(node, column) }
+						: { value: undefined, formula: entry.formula }
+				}
+				const checked = resolveValue(
+					entry ? { text: entry.text } : (input as { text: string } | { value: unknown }),
 					row,
 					column,
 					parseTexts(),
 					options().locale,
 					shownFormat(column, rowId),
 				)
+				// A value over a formula takes the formula away, also a value that stays.
+				return own === undefined || isThenable(checked) || 'issues' in checked
+					? checked
+					: { ...checked, formula: null }
 			},
 			valueOf: valueNow,
 			report: (edits, details) => {
@@ -2749,13 +2766,25 @@ export const table = definePrimitive({
 			const rows = bodyRows()
 			const leaves = layout().leaves.slice(bounds.left, bounds.right + 1)
 			const lines: string[][] = []
+			const formulas: (CopiedFormula | undefined)[][] = []
 			for (let row = bounds.top; row <= bounds.bottom; row++) {
 				const flat = rows[row - head]
 				// A group row or a detail row holds no values, and gives an empty line.
 				const values = flat && flat.node.kind === 'row' && !flat.detail ? flat.node.row : undefined
 				lines.push(leaves.map((column) => (values === undefined ? '' : editText(values, column))))
+				if (engine()) {
+					formulas.push(
+						leaves.map((column) => {
+							const formula = flat && formulaOf(flat.id, column.id)
+							return formula ? { rowId: flat.id, columnId: column.id, formula } : undefined
+						}),
+					)
+				}
 			}
-			return cellsToText(lines)
+			const text = cellsToText(lines)
+			// The clipboard holds values; a paste of this text again pastes the formulas.
+			lastCopy = engine() ? { text: copyKey(text), formulas, mode: 'copy' } : undefined
+			return text
 		}
 
 		/**
@@ -2765,6 +2794,7 @@ export const table = definePrimitive({
 		 * paste is worse than none. Cells that cannot be edited are skipped.
 		 */
 		function pasteText(text: string, event?: Event): void | Promise<void> {
+			const copied = lastCopy?.text === copyKey(text) ? lastCopy : undefined
 			const bounds = selectedCells()
 			if (!bounds) throw new Error(message('pasteNowhere')())
 			const block = textToCells(text)
@@ -2803,7 +2833,15 @@ export const table = definePrimitive({
 					const column = leaves[col]
 					const value = line[(col - bounds.left) % width]
 					if (!column || value === undefined || !canEdit(flat.node, column)) continue
-					targets.push({ rowId: flat.id, column, input: { text: value } })
+					const source =
+						copied?.formulas[(row - bounds.top) % block.length]?.[(col - bounds.left) % width]
+					targets.push({
+						rowId: flat.id,
+						column,
+						input: source
+							? { formula: moveTo(source, flat.id, column.id, copied?.mode) }
+							: { text: value },
+					})
 				}
 			}
 			if (!targets.length) throw new Error(message('pasteNowhere')())
@@ -2820,6 +2858,8 @@ export const table = definePrimitive({
 				announce(message('cellsPasted')({ cells }))
 			}
 			const written = writes.write(targets, { reason: 'paste', event })
+			// The formulas of a cut land once.
+			if (copied?.mode === 'cut') lastCopy = undefined
 			return typeof written === 'number' ? finish(written) : written.then(finish)
 		}
 
@@ -2845,6 +2885,7 @@ export const table = definePrimitive({
 				}
 			}
 			if (!targets.length) throw new Error(message('clearNowhere')())
+			if (reason === 'cut' && lastCopy) lastCopy.mode = 'cut'
 			return writes.write(targets, { reason, event })
 		}
 
@@ -2923,8 +2964,24 @@ export const table = definePrimitive({
 					)
 					to.forEach((row, index) => {
 						if (!canEdit(row.node, column)) return
+						// A source cell with a formula gives it on, moved; one with a value follows the series.
+						const source =
+							from[back ? from.length - 1 - (index % from.length) : index % from.length]
+						const formula = source && formulaOf(source.id, column.id)
 						// A value of the same column needs no `parse`: it is a value already.
-						targets.push({ rowId: row.id, column, input: { value: values[index] } })
+						targets.push({
+							rowId: row.id,
+							column,
+							input: formula
+								? {
+										formula: moveTo(
+											{ rowId: source.id, columnId: column.id, formula },
+											row.id,
+											column.id,
+										),
+									}
+								: { value: values[index] },
+						})
 					})
 				}
 			} else {
@@ -2940,9 +2997,24 @@ export const table = definePrimitive({
 					)
 					cols.forEach((column, index) => {
 						if (!canEdit(row.node, column)) return
+						const source =
+							sources[back ? sources.length - 1 - (index % sources.length) : index % sources.length]
+						const formula = source && formulaOf(row.id, source.id)
 						// A value of another column is a text for this one, as in a paste: the
 						// `parse` of this column makes its own kind of value of it, or refuses it.
-						targets.push({ rowId: row.id, column, input: { text: toText(values[index]) } })
+						targets.push({
+							rowId: row.id,
+							column,
+							input: formula
+								? {
+										formula: moveTo(
+											{ rowId: row.id, columnId: source.id, formula },
+											row.id,
+											column.id,
+										),
+									}
+								: { text: toText(values[index]) },
+						})
 					})
 				}
 			}
@@ -3562,6 +3634,20 @@ export const table = definePrimitive({
 		const formulaOf = (rowId: string, columnId: string) =>
 			formulaIn(formulasNow.read(), rowId, columnId)
 
+		type CopiedFormula = FormulaPlace & { formula: string }
+		/** The last copy of the table: its text, and the formulas of its cells. */
+		let lastCopy:
+			| { text: string; formulas: (CopiedFormula | undefined)[][]; mode: 'copy' | 'cut' }
+			| undefined
+		// Another program can change the line ends or add one at the end.
+		const copyKey = (text: string) => text.replace(/\r\n/g, '\n').replace(/\n$/, '')
+		const moveTo = (
+			from: CopiedFormula,
+			rowId: string,
+			columnId: string,
+			mode: 'copy' | 'cut' = 'copy',
+		) => requireFormulas().move(from.formula, from, { rowId, columnId }, formulaSheet, mode)
+
 		/** Whether a cell takes a text with `=` as a formula: a cell that can be edited, in a column that allows it and is not computed. */
 		function holdsFormula(node: DataRow<unknown>, column: ColumnDef): boolean {
 			return (
@@ -3577,16 +3663,21 @@ export const table = definePrimitive({
 			node: DataRow<unknown>,
 			column: ColumnDef,
 			text: string,
+			stored = false,
 		): FormulaEntry | undefined {
 			const found = engine()
-			if (!found || (text[0] !== '=' && !text.startsWith("'=")) || !holdsFormula(node, column)) {
-				return undefined
+			if (!found || (text[0] !== '=' && !text.startsWith("'="))) return undefined
+			// A formula of a copy or a fill must land; a typed text is a value where no formula can be.
+			if (!holdsFormula(node, column)) {
+				return stored ? { issues: [{ code: 'notHere', column: column.id }] } : undefined
 			}
 			// Without the whole document, no address names a row.
 			if (text[0] === '=' && text.length > 1 && (options().manualPage ?? false)) {
 				return { issues: [{ code: 'noDocument' }] }
 			}
-			return found.entry(text, { rowId: node.id, columnId: column.id }, formulaSheet)
+			return stored
+				? { formula: text }
+				: found.entry(text, { rowId: node.id, columnId: column.id }, formulaSheet)
 		}
 
 		/** The formula of a cell, or of its column, as a formula bar and an agent read it. */

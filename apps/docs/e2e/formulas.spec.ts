@@ -517,3 +517,93 @@ test('new prices of the owner change the totals without a key, and a removed row
 	// The other formula still reads its own row.
 	await expect(lineCell(table, 0, 'total')).toHaveText('200.00')
 })
+
+test.describe('fill, copy, paste, cut and clear with formulas', () => {
+	test.use({ permissions: ['clipboard-read', 'clipboard-write'] })
+
+	async function centerOf(target: Locator) {
+		const box = await target.boundingBox()
+		if (!box) throw new Error('The element has no box.')
+		return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+	}
+
+	test('a drag of the fill handle down from a total gives every row its total, and Control+D does the same', async ({
+		page,
+	}) => {
+		const table = await openLines(page)
+		await lineCell(table, 0, 'total').click()
+		await page.keyboard.type('=B1*C1')
+		await page.keyboard.press('Enter')
+		await lineCell(table, 0, 'total').click()
+		const start = await centerOf(table.locator('[data-slot="table-fill-handle"]'))
+		const end = await centerOf(lineCell(table, 2, 'total'))
+		await page.mouse.move(start.x, start.y)
+		await page.mouse.down()
+		await page.mouse.move(end.x, end.y, { steps: 6 })
+		await page.mouse.up()
+		await expect(lineCell(table, 1, 'total')).toHaveText('45.00')
+		await expect(lineCell(table, 2, 'total')).toHaveText('3.00')
+		await lineCell(table, 2, 'total').click()
+		await page.keyboard.press('F2')
+		await expect(lineEditor(table)).toHaveValue('=B3*C3')
+		await page.keyboard.press('Escape')
+
+		await lineCell(table, 2, 'total').click()
+		await page.keyboard.press('Shift+ArrowDown')
+		await page.keyboard.press('ControlOrMeta+d')
+		await expect(lineCell(table, 3, 'total')).toHaveText('90.00')
+		await expect(page.getByTestId('line-formulas')).toContainText('"l4":{"total":"=[price]*[qty]"}')
+	})
+
+	test('a block copied with its formulas and pasted two rows lower reads the rows there', async ({
+		page,
+	}) => {
+		const table = await openLines(page)
+		await lineCell(table, 0, 'total').click()
+		await page.keyboard.type('=B1*C1')
+		await page.keyboard.press('Enter')
+		await page.keyboard.type('=D1+1')
+		await page.keyboard.press('Enter')
+		await lineCell(table, 0, 'total').click()
+		await page.keyboard.press('Shift+ArrowDown')
+		await page.keyboard.press('ControlOrMeta+c')
+		await lineCell(table, 2, 'total').click()
+		await page.keyboard.press('ControlOrMeta+v')
+		await expect(lineCell(table, 2, 'total')).toHaveText('3.00')
+		await expect(lineCell(table, 3, 'total')).toHaveText('4.00')
+		await lineCell(table, 3, 'total').click()
+		await page.keyboard.press('F2')
+		await expect(lineEditor(table)).toHaveValue('=D3+1')
+		await page.keyboard.press('Escape')
+	})
+
+	test('a cut and a paste keep what the formula reads, and Delete on a range and Control+Z take both back', async ({
+		page,
+	}) => {
+		const table = await openLines(page)
+		await lineCell(table, 0, 'total').click()
+		await page.keyboard.type('=B1*C1')
+		await page.keyboard.press('Enter')
+		await lineCell(table, 0, 'total').click()
+		await page.keyboard.press('ControlOrMeta+x')
+		await expect(lineCell(table, 0, 'total')).toHaveText('')
+		await lineCell(table, 3, 'total').click()
+		await page.keyboard.press('ControlOrMeta+v')
+		await expect(lineCell(table, 3, 'total')).toHaveText('100.00')
+		await page.keyboard.press('F2')
+		await expect(lineEditor(table)).toHaveValue('=B1*C1')
+		await page.keyboard.press('Escape')
+
+		await lineCell(table, 2, 'price').click()
+		await page.keyboard.press('Shift+ArrowDown')
+		await page.keyboard.press('Shift+ArrowRight')
+		await page.keyboard.press('Shift+ArrowRight')
+		await page.keyboard.press('Delete')
+		await expect(lineCell(table, 3, 'total')).toHaveText('')
+		await expect(lineCell(table, 3, 'total')).not.toHaveAttribute('data-formula')
+		await page.keyboard.press('ControlOrMeta+z')
+		await expect(lineCell(table, 3, 'total')).toHaveText('100.00')
+		await expect(lineCell(table, 3, 'total')).toHaveAttribute('data-formula', '')
+		await expect(lineCell(table, 2, 'price')).toHaveText('0.20')
+	})
+})

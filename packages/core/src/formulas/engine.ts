@@ -23,6 +23,7 @@ import {
 } from './graph'
 import { namedColumns, parseTree, type FormulaNode } from './parser'
 import { addressRef, bracketRef, headerNames, printTree } from './print'
+import { moveFormula } from './move'
 import { changedCells, everyFormula } from './recheck'
 import { revertFormulas, setFormulas } from './state'
 import { formulaSigns, STORED_SIGNS } from './tokens'
@@ -175,6 +176,8 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 			columnCircle(columnId, formula, columns, layer, compile),
 		setFormulas,
 		revertFormulas,
+		move: (formula, from, to, sheet, mode) =>
+			moveFormula(formula, from, to, sheet.columns(), addressesOf(sheet), mode),
 		describe: describeFormulaIssue,
 		errorText: describeFormulaError,
 		recalculated: (cells) =>

@@ -225,6 +225,19 @@ export type FormulaEngine = {
 	): CellFormulas
 	/** Takes a change of formulas back, or puts it on again, in `now`. */
 	revertFormulas(now: CellFormulas, from: CellFormulas, to: CellFormulas): CellFormulas
+	/**
+	 * A stored formula for another cell: a copy and a fill move each part
+	 * without `$` as far as the cell moved, in the addresses of the
+	 * document, and past the edge a part is `#REF!`. A cut keeps every cell
+	 * that the formula read.
+	 */
+	move(
+		formula: string,
+		from: FormulaPlace,
+		to: FormulaPlace,
+		sheet: FormulaSheet,
+		mode: 'copy' | 'cut',
+	): string
 	/** The words for an issue, in English. */
 	describe(issue: FormulaIssue): string
 	/** What the table says after `recalculate()`, in English. */

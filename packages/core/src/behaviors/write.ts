@@ -2,8 +2,8 @@ import type { PrimitiveContext } from '@ui-sdk/core'
 import { isThenable, sameValue, type CellEdit, type Checked } from '../edit'
 import { toText, type ColumnDef, type DataRow } from '../rows'
 
-/** A text is parsed as the editor parses it. A value goes to the schema as it is. */
-export type WriteInput = { text: string } | { value: unknown }
+/** A text is parsed as the editor parses it. A value goes to the schema as it is. A formula is in the stored form. */
+export type WriteInput = { text: string } | { value: unknown } | { formula: string }
 
 /** One cell and what to put into it. */
 export type WriteTarget = { rowId: string; column: ColumnDef; input: WriteInput }
@@ -96,14 +96,19 @@ export function createCellWrites<Reason extends string>(
 							refusal.value({
 								reason: details.reason,
 								column: target.column,
-								text: 'text' in input ? input.text : toText(input.value),
+								text:
+									'text' in input
+										? input.text
+										: 'formula' in input
+											? input.formula
+											: toText(input.value),
 								message: result.issues[0] ?? refusal.invalid(),
 							}),
 						)
 					}
 					const previous = options.valueOf(node, target.column)
 					// A formula is a change also when the value it gives stays.
-					const formula = 'formula' in result ? (result.formula as string) : undefined
+					const formula = 'formula' in result ? (result.formula as string | null) : undefined
 					if (formula === undefined && sameValue(previous, result.value)) return
 					edits.push({
 						rowId: node.id,

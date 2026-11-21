@@ -10,6 +10,10 @@ import type { TableChangeDetails } from './table'
 
 const engine = createFormulaEngine()
 
+/** The total of a row in the store of the harness, which the harness does not type. */
+const totalOf = (values: Record<string, object | undefined>, id: string) =>
+	(values[id] as { total?: unknown } | undefined)?.total
+
 function setup(
 	extra: Record<string, unknown> = {},
 	given: { owner?: (report: Report, apply: () => void) => void } = {},
@@ -272,6 +276,158 @@ describe('a table without the `formulas` option', () => {
 			expect(() => view.api.setCellFormula('a', 'total', '=1')).toThrow(
 				'This table has no formulas',
 			)
+		} finally {
+			view.unmount()
+		}
+	})
+})
+
+describe('a fill, a paste, a cut and a clear with formulas', () => {
+	const cellAt = (rowId: string) => ({ rowId, columnId: 'total' })
+
+	test('a fill down gives every row the formula, as one text and one row object', () => {
+		const { view, values, formulas, reports } = setup()
+		try {
+			void view.api.editCell('a', 'total', '=C1*D1')
+			view.api.selectCells(cellAt('a'), cellAt('d'))
+			void view.api.fillCells('down')
+			expect(['a', 'b', 'c', 'd'].map((id) => totalOf(values, id))).toEqual([100, 45, 3, 90])
+			const cells = formulas.at(-1)?.cells ?? {}
+			expect(Object.keys(cells)).toEqual(['a', 'b', 'c', 'd'])
+			// The filled rows share one object, so 50,000 filled rows hold one.
+			expect(new Set([cells.b, cells.c, cells.d]).size).toBe(1)
+			expect(reports.at(-1)?.details.reason).toBe('fill')
+			expect(view.api.getHistory().entries.at(-1)).toMatchObject({ reason: 'fill', formulas: true })
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a fill keeps a part with `$`, and a fill up past the first row gives #REF!', () => {
+		const { view, values } = setup()
+		try {
+			void view.api.editCell('a', 'total', '=C$1*D1')
+			view.api.selectCells(cellAt('a'), cellAt('b'))
+			void view.api.fillCells('down')
+			expect(view.api.getCellFormula('b', 'total')?.text).toBe('=C$1*D2')
+			expect(totalOf(values, 'b')).toBe(225)
+
+			void view.api.editCell('d', 'total', '=C3*2')
+			view.api.selectCells(cellAt('c'), cellAt('d'))
+			void view.api.fillCells('up')
+			expect(view.api.getCellFormula('c', 'total')?.text).toBe('=C2*2')
+			view.api.selectCells(cellAt('a'), cellAt('d'))
+			void view.api.fillCells('up')
+			expect(view.api.getCellFormula('a', 'total')?.formula).toBe('=#REF!*2')
+			expect(totalOf(values, 'a')).toBe('#REF!')
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a fill to the right moves the columns of the formula', () => {
+		const { view, values } = setup()
+		try {
+			void view.api.editCell('a', 'stock', '=C1*2')
+			view.api.selectCells({ rowId: 'a', columnId: 'stock' }, cellAt('a'))
+			void view.api.fillCells('forward')
+			expect(view.api.getCellFormula('a', 'total')?.text).toBe('=D1*2')
+			expect(values.a).toMatchObject({ stock: 5, total: 10 })
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a paste of the copy of the table pastes its formulas, moved; another text with = is a formula as typed', () => {
+		const { view, values } = setup()
+		try {
+			void view.api.editCell('a', 'total', '=C1*D1')
+			void view.api.editCell('b', 'total', '=E1+1')
+			view.api.selectCells(cellAt('a'), cellAt('b'))
+			const text = view.api.copyCells()
+			// The clipboard holds values, which another program can read.
+			expect(text).toBe('100\n101')
+			view.api.selectCells(cellAt('c'))
+			void view.api.pasteCells(`${text}\r\n`)
+			expect(view.api.getCellFormula('c', 'total')?.text).toBe('=C3*D3')
+			expect(view.api.getCellFormula('d', 'total')?.text).toBe('=E3+1')
+			expect(totalOf(values, 'd')).toBe(4)
+
+			view.api.selectCells(cellAt('d'))
+			void view.api.pasteCells('=C1+1')
+			expect(view.api.getCellFormula('d', 'total')?.formula).toBe('=[price@a]+1')
+			// A plain text is a value, and it takes the formula away.
+			void view.api.pasteCells('7')
+			expect(view.api.getCellFormula('d', 'total')).toBeNull()
+			expect(totalOf(values, 'd')).toBe(7)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a paste of the formula that a cell holds already makes no report and no step', () => {
+		const { view, reports } = setup()
+		try {
+			void view.api.editCell('a', 'total', '=C1*D1')
+			view.api.selectCells(cellAt('a'))
+			const text = view.api.copyCells()
+			expect(() => view.api.pasteCells(text)).not.toThrow()
+			void view.api.pasteCells('=C1*D1')
+			expect(reports).toHaveLength(1)
+			expect(view.api.getHistory().entries).toHaveLength(1)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a cut and its paste keep the cells that the formula read, once', () => {
+		const { view, values } = setup()
+		try {
+			void view.api.editCell('a', 'total', '=C1*D1')
+			view.api.selectCells(cellAt('a'))
+			const text = view.api.cutCells()
+			expect(view.api.getCellFormula('a', 'total')).toBeNull()
+			view.api.selectCells(cellAt('c'))
+			void view.api.pasteCells(text as string)
+			expect(view.api.getCellFormula('c', 'total')?.text).toBe('=C1*D1')
+			expect(totalOf(values, 'c')).toBe(100)
+			// A second paste of the same text is values: the formula of a cut lands once.
+			view.api.selectCells(cellAt('d'))
+			void view.api.pasteCells(text as string)
+			expect(view.api.getCellFormula('d', 'total')).toBeNull()
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a paste with one circle changes no cell', () => {
+		const { view, reports } = setup()
+		try {
+			void view.api.editCell('a', 'total', '=E2')
+			view.api.selectCells(cellAt('b'), cellAt('c'))
+			expect(() => view.api.pasteCells('=E1\n5')).toThrow(/read its own cell/)
+			expect(reports).toHaveLength(1)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a clear takes the values and the formulas, also of a cell whose value is empty, and an undo brings both back', () => {
+		const { view, values } = setup()
+		try {
+			void view.api.editCell('a', 'total', '=C1*D1')
+			void view.api.editCell('b', 'total', '=""')
+			view.api.selectCells(cellAt('a'), cellAt('b'))
+			void view.api.clearCells()
+			expect(view.api.getCellFormula('a', 'total')).toBeNull()
+			expect(view.api.getCellFormula('b', 'total')).toBeNull()
+			expect(view.api.getHistory().entries.at(-1)).toMatchObject({
+				reason: 'clear',
+				formulas: true,
+			})
+			view.api.undo()
+			expect(totalOf(values, 'a')).toBe(100)
+			expect(view.api.getCellFormula('b', 'total')?.formula).toBe('=""')
 		} finally {
 			view.unmount()
 		}
