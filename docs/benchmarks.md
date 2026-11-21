@@ -129,12 +129,16 @@ Each value is the median of 9 runs (5 for a parse), in milliseconds, on the clou
 | 50,000 same-row formulas after 50,000 changed values, read through the values of the turn (P7) | part of the above | 34.9 |
 | A chain of 50,000 cells, one edit at the top, the order only (P7) | under 90 | 21.7 |
 | One report of the 50,000 cells of that chain (P7) | part of the above | 68.9 |
+| Slice 3: set a formula of a column in a table, then `getView` | the cost of one pass of the pipeline | 0.89 |
+| Slice 3: the same while the table sorts by that column | as above | 104 |
+| Slice 3: sort again by that column, its values kept | not estimated | 79.6 |
 
 What the numbers show:
 
 - A cell reads its column through `cellValue` and the closure of each node, where the sketch read `row.price`: about six times the sketch for the shortest formula. The first sort by a computed column computes each row once, so it costs one pass of the formula more than a plain sort, and a sort again reads the kept values.
 - The first version of the engine cut every comparison to 15 digits with `toPrecision`; `IFS` was 70 ms and `IF` with `ROUND` 62 ms. A comparison now cuts only two numbers that are closer than 1e-13 of their size, which gives the same answers.
 - A date function first read the zone of its column with `timeZoneOf` for each row, which asks `Intl` whether the zone exists: 386 ms for the first read of 50,000 moments. The zone is now kept for each column object, and the offset of the zone for each day of UTC (`formulas/zone.ts`), so a row reads `Intl` only on a day that the clock changes.
+- A formula of a column at run time (`setColumnFormula`, slice 3) reports no value. It gives the row model new column objects, so the next read of the rows runs the stages again: nothing to compute until a stage reads the column, and one pass of the formula and one sort when the table sorts by it. The three lines of slice 3 come from the second test of `formulas/formulas.perf.test.ts`, which mounts a table with 50,000 rows.
 - A report of 100,000 cells through a paste reads each text with `parseText`; a report of dependents will not. The budgets of the report are written again before slice 5, with the real path of dependents.
 
 ## Size of the build
@@ -155,6 +159,15 @@ The formula engine is the entry `ui-sdk-table-core/formulas` (`vp pack src/index
 | Slice 1, built without the entry | 133.29 kB, the same bytes | 45.25 kB | none | none |
 | Slice 1, built with the entry | 131.29 kB, and a shared chunk of the row helpers of 2.15 kB | 44.72 kB, and 0.99 kB | 18.61 kB | 6.68 kB |
 | Slice 2, with the date functions, built with the entry | 131.29 kB, the row helpers 2.17 kB | 44.71 kB, and 1.01 kB | 25.38 kB | 9.05 kB |
+| Slice 2 with the fix of P2, built with the entry | 131.60 kB, the row helpers 2.17 kB | 44.82 kB, and 1.01 kB | 25.38 kB | 9.05 kB |
+| Slice 3, the glue of column formulas, built with the entry | 134.44 kB, and a chunk of 2.32 kB with the error codes and the row helpers | 45.65 kB, and 1.10 kB | 30.61 kB | 10.74 kB |
+
+The glue of the formulas in the main entry has a limit of 12 kB minified, which `src/formulas-size.test.ts` checks with a build: the main entry and every chunk that it loads, against 147,528 bytes before the fix of P2 (131.60 kB, the row helpers 2.17 kB, the formats 13.76 kB). The rule that keeps it: the main entry holds only what must touch the inside of the table (the state key, its change path, the shells of the actions, the hooks, the attributes and the view). Everything that runs only with an engine is in the formulas entry and comes in through the engine object: the words of the issues, `setFormulas` and `revertFormulas`, the build of the columns with their formulas and the check for a circle of columns.
+
+| After slice | Glue in the main entry, minified |
+| --- | --- |
+| 3, the first build, with the words and the helpers in the main entry | 8.93 kB |
+| 3, with them behind the engine | 2.99 kB |
 
 The main entry holds no text of the engine. The format `period` is in the main entry, as the plan says: the chunk of the formats, which the main entry and the export entry share, grows from 12.59 kB to 13.76 kB (4.66 kB to 5.09 kB compressed). The plan estimated about 20 kB for the entry with about 45 functions; slice 2 has 51 of them in 25.38 kB.
 

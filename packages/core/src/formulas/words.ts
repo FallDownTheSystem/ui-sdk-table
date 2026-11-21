@@ -44,5 +44,11 @@ export function describeFormulaIssue(issue: FormulaIssue): string {
 			return `\`${issue.name}\` names another row or a range of cells. This formula reads the cells of its own row only.`
 		case 'cycle':
 			return `The formula of column \`${issue.name}\` reads that column itself.`
+		case 'unknownCell':
+			return `No cell \`${issue.name}\`. The table has ${issue.rows} ${issue.rows === 1 ? 'row' : 'rows'}.`
+		case 'circle':
+			return `The formula would read its own cell: ${issue.cells.join(' reads ')}.`
+		case 'tooLarge':
+			return `The change would read ${issue.reads} cells, more than ${issue.limit}. Read fewer rows, or a cell above that holds the sum so far.`
 	}
 }

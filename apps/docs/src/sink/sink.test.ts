@@ -52,6 +52,11 @@ const used = new Set(Object.values(uses).flat())
  * slot or column key of the library must get a tile or a line here.
  */
 const NOT_SHOWN: Record<string, string> = {
+	formulas: 'The tiles for formulas come in a later slice.',
+	cellFormulas: 'The tiles for formulas come in a later slice.',
+	defaultCellFormulas: 'The tiles for formulas come in a later slice.',
+	getColumnFormula: 'The tiles for formulas come in a later slice.',
+	setColumnFormula: 'The tiles for formulas come in a later slice.',
 	getRowId: 'Every tile has rows with an `id`, which is the default.',
 	sortChildren: 'A sorted tree; the tree tile is not sorted.',
 	canGroup: 'The group tiles say it by `column.groupable`.',

@@ -211,8 +211,17 @@ export function compileRowFormula<Row>(
 	if ('issues' in parsed) {
 		failWith(formula, parsed.issues, options.self ? ` of column "${options.self}"` : '')
 	}
-	const byId = new Map(namedColumns(known).map((column) => [column.id, column]))
-	const run = compileNode(parsed.tree, byId)
+	return compileTree(parsed.tree, known, options) as (row: Row) => unknown
+}
+
+/** A function of a row for a tree that was read already. */
+export function compileTree(
+	tree: FormulaNode,
+	columns: readonly ColumnDef<never>[],
+	options: FormulaOptions,
+): (row: unknown) => unknown {
+	const byId = new Map(namedColumns(columns).map((column) => [column.id, column]))
+	const run = compileNode(tree, byId)
 	const timeZone = options.timeZone
 	const time = (date: string | Date) =>
 		date instanceof Date ? date.getTime() : (toTime(date, timeZone) ?? Number.NaN)

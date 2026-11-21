@@ -50,6 +50,7 @@ import {
 	type FormatPlace,
 } from './sheet/formats'
 import { lettersByColumn } from './sheet/chrome'
+import type { CellFormulas, FormulaEngine, FormulaIssue } from './formula/types'
 import { createColumnResize, type ResizeDraft } from './behaviors/resize'
 import { createStickyRows } from './behaviors/sticky'
 import {
@@ -111,6 +112,7 @@ import {
 	uniqueValues,
 	valueKey,
 	walkRows,
+	leafColumns,
 	aggregates,
 	type AggregateFn,
 	type AggregateName,
@@ -143,7 +145,7 @@ export type TableReason =
 export type TableChangeDetails = ChangeDetails<TableReason>
 
 /** What made a step of the history: the reason of an edit, or of a change of formats. */
-export type TableStepReason = TableEditReason | 'shortcut'
+export type TableStepReason = TableEditReason | 'shortcut' | 'formula'
 export type TableCommitDetails = CommitDetails<TableReason>
 
 /**
@@ -337,6 +339,21 @@ export type TableController = {
 	 */
 	setColumnAggregate(columnId: string, aggregate: AggregateName | null | undefined): void
 	/**
+	 * The formula of a computed column, as a person reads it (the headers of
+	 * the columns, the signs of the locale) and in the stored form, or `null`
+	 * for a column without one. `error` says why the formula gives an error
+	 * in every row. Needs the `formulas` option.
+	 */
+	getColumnFormula(columnId: string): { formula: string; text: string; error: string | null } | null
+	/**
+	 * Sets the formula of a column, as a person types it or in the stored
+	 * form, or takes it away with `null`: one change of `cellFormulas` and
+	 * one step of the history. It throws when the formula cannot be read,
+	 * reads another row, or reads its own column through other formulas.
+	 * Needs the `formulas` option.
+	 */
+	setColumnFormula(columnId: string, formula: string | null): void
+	/**
 	 * Changes the format of cells: how their values become text (`format`,
 	 * `decimals`, `currency`, `dateStyle`) and how they look (`align`, `bold`,
 	 * `italic`, `color`, `fill`). A key with `null` takes that property away.
@@ -453,6 +470,10 @@ export type TableView = {
 	columnAggregates: ColumnAggregates
 	/** The formats of cells and columns that were set at run time. */
 	cellFormats: CellFormats
+	/** Whether the table has the `formulas` option. */
+	formulas: boolean
+	/** The formulas of the table. */
+	cellFormulas: CellFormulas
 	/** Whether `undo` has a step to take back. Always false without the `history` option. */
 	canUndo: boolean
 	canRedo: boolean
@@ -765,6 +786,23 @@ export type TableOptions<Row = unknown> = {
 	cellFormats?: CellFormats
 	defaultCellFormats?: CellFormats
 	onCellFormatsChange?: (value: CellFormats, details: TableChangeDetails) => void
+
+	/**
+	 * Turns formulas on: the value of `createFormulaEngine()` of the entry
+	 * `ui-sdk-table-core/formulas`. Pass one engine for the life of the table;
+	 * a new engine at each render computes every formula again.
+	 */
+	formulas?: FormulaEngine
+	/**
+	 * The formulas of the table, as data of the owner, in the stored form.
+	 * `columns` makes a column computed: each row gets the value of the
+	 * formula, also a row that comes later, and its cells cannot be edited.
+	 * A formula that cannot be read, or column formulas that read each other
+	 * in a circle, show an error in every row. Read only with `formulas`.
+	 */
+	cellFormulas?: CellFormulas
+	defaultCellFormulas?: CellFormulas
+	onCellFormulasChange?: (value: CellFormulas, details: TableChangeDetails) => void
 	/**
 	 * The names that `color` and `fill` of a cell format can have, such as
 	 * `['red', 'amber', 'green']`. The table writes a name into `data-color`
@@ -898,6 +936,8 @@ type TableState = {
 	columnAggregates: ColumnAggregates
 	/** The formats of cells and columns. Not a key of `controlled`: an agent reads a format with `getCellFormat`, and its snapshot stays small. */
 	cellFormats: CellFormats
+	/** The formulas of cells and columns. Not a key of `controlled`, as `cellFormats`: an agent reads a formula with an action. */
+	cellFormulas: CellFormulas
 	cellRange: CellRange | null
 	/**
 	 * The text of a search field that the filter does not hold yet: it waits
@@ -991,6 +1031,7 @@ const QUIET = {
 	fillDraft: [],
 	filling: [],
 	cellFormats: [],
+	cellFormulas: [],
 } as const
 
 /** For a part that reads no state at all. */
@@ -1025,6 +1066,7 @@ const EDIT_REASONS: readonly TableEditReason[] = [
 
 const NO_HISTORY: HistoryCounts = { undo: 0, redo: 0 }
 const NO_FORMATS: CellFormats = Object.freeze({})
+const NO_FORMULAS: CellFormulas = Object.freeze({})
 const NO_FORMAT: CellFormat = Object.freeze({})
 const HISTORY_LIMIT = 100
 const HISTORY_MAX_CELLS = 100_000
@@ -1118,6 +1160,10 @@ export const table = definePrimitive({
 		cellFormats: 'value',
 		defaultCellFormats: 'value',
 		onCellFormatsChange: 'callback',
+		formulas: 'value',
+		cellFormulas: 'value',
+		defaultCellFormulas: 'value',
+		onCellFormulasChange: 'callback',
 		formatColors: 'value',
 		sheet: 'boolean',
 		history: 'value',
@@ -1174,6 +1220,7 @@ export const table = definePrimitive({
 			columnAggregates:
 				options.columnAggregates ?? options.defaultColumnAggregates ?? NO_AGGREGATES,
 			cellFormats: options.cellFormats ?? options.defaultCellFormats ?? NO_FORMATS,
+			cellFormulas: options.cellFormulas ?? options.defaultCellFormulas ?? NO_FORMULAS,
 			rowWindow: firstRowWindow(
 				options.rowHeight ?? options.estimatedRowHeight ?? DEFAULT_ROW_HEIGHT,
 				options.overscan ?? DEFAULT_OVERSCAN,
@@ -1215,6 +1262,7 @@ export const table = definePrimitive({
 		if (options.rowPinning !== undefined) synced.rowPinning = options.rowPinning
 		if (options.columnAggregates !== undefined) synced.columnAggregates = options.columnAggregates
 		if (options.cellFormats !== undefined) synced.cellFormats = options.cellFormats
+		if (options.cellFormulas !== undefined) synced.cellFormulas = options.cellFormulas
 		if (options.cellRange !== undefined) synced.cellRange = options.cellRange
 		return synced
 	},
@@ -1268,7 +1316,30 @@ export const table = definePrimitive({
 			(columns: readonly ColumnDef[], order: readonly string[], track: readonly string[]) =>
 				mergeColumnTrack(fullColumnOrder(columns, order), track),
 		)
-		const definitions = () => options().columns ?? NO_COLUMNS
+		const ownColumns = () => options().columns ?? NO_COLUMNS
+		const engine = () => options().formulas
+		// The columns with their formulas: the definitions that every other part
+		// reads. The engine builds them, so a table without one carries no such code.
+		const withFormulas = memo(
+			(
+				columns: readonly ColumnDef[],
+				layer: CellFormulas['columns'],
+				found: FormulaEngine | undefined,
+			) => (found && layer ? found.withColumns(columns, layer) : undefined),
+		)
+		const builtColumns = () => withFormulas(ownColumns(), state().cellFormulas.columns, engine())
+		const definitions = () => builtColumns()?.columns ?? ownColumns()
+		// A new formula of a column gives the rows other values, as new columns do.
+		let seenColumnFormulas = state().cellFormulas.columns
+		context.onDestroy(
+			context.store.subscribe((liveOnly) => {
+				if (liveOnly) return
+				const next = state().cellFormulas.columns
+				if (next === seenColumnFormulas) return
+				seenColumnFormulas = next
+				context.store.set({ revision: state().revision + 1 })
+			}),
+		)
 		/** The columns as the state orders them, without a move that is going on. */
 		const committed = () =>
 			committedLayout(
@@ -1366,6 +1437,12 @@ export const table = definePrimitive({
 			state: () => state().columnAggregates,
 			change: (next, details) => change('columnAggregates', next, details),
 			dispatch: (next, details) => dispatch(context, 'onColumnAggregatesChange', next, details),
+		})
+		const formulasNow = createHeldKey<CellFormulas, TableReason>({
+			given: () => options().cellFormulas,
+			state: () => state().cellFormulas,
+			change: (next, details) => change('cellFormulas', next, details),
+			dispatch: (next, details) => dispatch(context, 'onCellFormulasChange', next, details),
 		})
 		// The formats of now for a change that starts from them. What a cell
 		// shows is the state, which follows the owner.
@@ -2039,6 +2116,21 @@ export const table = definePrimitive({
 			direction: 'undo' | 'redo',
 			event?: Event,
 		): HistoryResult {
+			if (step.formulas) {
+				// A step of formulas: the formulas that the step changed go back, and
+				// what the owner changed beside it since stays.
+				const { before, after } = step.formulas
+				const now = formulasNow.read()
+				const next =
+					direction === 'undo'
+						? requireFormulas().revertFormulas(now, after, before)
+						: requireFormulas().revertFormulas(now, before, after)
+				if (next !== now && !formulasNow.change(next, { reason: direction, event })) {
+					return 'refused'
+				}
+				applied = { cells: 0, gone: 0, hidden: 0 }
+				return 'done'
+			}
 			if (step.formats) {
 				// A step of formats: the formats that the step changed go back, and
 				// what the owner changed beside it since stays.
@@ -3199,6 +3291,98 @@ export const table = definePrimitive({
 			aggregatesNow.change(next, { reason: event ? 'item-press' : 'imperative', event })
 		}
 
+		function requireFormulas(): FormulaEngine {
+			const found = engine()
+			if (!found) throw new Error('This table has no formulas: pass `formulas`.')
+			return found
+		}
+
+		/** What the engine reads of the table. */
+		const formulaSheet = {
+			columns: ownColumns,
+			rowIds: () => [...model.source().byId.keys()],
+			rowNumber: (rowId: string) => {
+				const at = [...model.source().byId.keys()].indexOf(rowId)
+				return at < 0 ? undefined : at + 1
+			},
+			row: (rowId: string) => model.source().byId.get(rowId)?.row,
+			value: (rowId: string, columnId: string) => {
+				const node = model.source().byId.get(rowId)
+				const found = layout().byId.get(columnId)
+				return node && found ? valueNow(node, found) : undefined
+			},
+			locale: () => options().locale,
+		}
+
+		/** A column that can hold a formula: a column of the owner with cells, without the numbers of the rows. */
+		function formulaTarget(columnId: unknown, purpose: string): ColumnDef {
+			const valid = leafColumns(ownColumns()).filter((leaf) => !leaf.rowHeader)
+			const found = valid.find((leaf) => leaf.id === columnId)
+			if (!found) {
+				throw new Error(
+					`No column "${String(columnId)}" to ${purpose}. Columns: ${listed(valid.map((leaf) => leaf.id))}.`,
+				)
+			}
+			return found
+		}
+
+		/** The words of an issue: those of the app in `messages`, else those of the engine. */
+		const issueText = (found: FormulaEngine, issue: FormulaIssue) =>
+			options().messages?.formulaIssue?.(issue) ?? found.describe(issue)
+
+		function readColumnFormula(columnId: string) {
+			const found = requireFormulas()
+			const target = formulaTarget(columnId, 'read the formula of')
+			const formula = formulasNow.read().columns?.[target.id]
+			if (formula === undefined) return null
+			const issues = builtColumns()?.issues.get(target.id)
+			return {
+				formula,
+				text: found.print(formula, { columnId: target.id }, formulaSheet),
+				error: issues ? issues.map((issue) => issueText(found, issue)).join(' ') : null,
+			}
+		}
+
+		function writeColumnFormula(columnId: string, text: string | null): void {
+			const found = requireFormulas()
+			const target = formulaTarget(columnId, 'give a formula')
+			if (text !== null && typeof text !== 'string') {
+				throw new Error('A formula is a text that starts with `=`, or null to take it away.')
+			}
+			let formula: string | null = null
+			if (text !== null) {
+				const parsed = found.parse(text, { columnId: target.id }, formulaSheet)
+				const issue: FormulaIssue | undefined =
+					'issues' in parsed
+						? parsed.issues[0]
+						: found.columnCircle(
+								target.id,
+								parsed.formula,
+								ownColumns(),
+								formulasNow.read().columns,
+							)
+				if (issue) {
+					throw new Error(
+						`The formula "${text}" of column "${target.id}" cannot be set: ${issueText(found, issue)}`,
+					)
+				}
+				if ('formula' in parsed) formula = parsed.formula
+			}
+			const before = formulasNow.read()
+			const next = found.setFormulas(before, { columns: [{ columnId: target.id, formula }] })
+			if (next === before) return
+			if (!formulasNow.change(next, { reason: 'imperative' })) return
+			if (historyOn()) {
+				history.record({
+					id: ++stepIds,
+					reason: 'formula',
+					source: 'programmatic',
+					cells: [],
+					formulas: { before, after: next, cells: 0 },
+				})
+			}
+		}
+
 		function resetColumns(key: keyof typeof started): void {
 			if (!sameContent(started[key], state()[key])) change(key, started[key], { reason: 'reset' })
 		}
@@ -3464,6 +3648,8 @@ export const table = definePrimitive({
 			resetColumnOrder: () => resetColumns('columnOrder'),
 			resetColumnPinning: () => resetColumns('columnPinning'),
 			setColumnAggregate: (columnId, aggregate) => chooseAggregate(columnId, aggregate),
+			getColumnFormula: (columnId) => readColumnFormula(columnId),
+			setColumnFormula: (columnId, formula) => writeColumnFormula(columnId, formula),
 			moveColumn(columnId, index) {
 				requireVisible(columnId, 'move')
 				const track = state().columnTrack
@@ -3760,6 +3946,8 @@ export const table = definePrimitive({
 					loading: options().loading ?? false,
 					columnAggregates: current.columnAggregates,
 					cellFormats: current.cellFormats,
+					formulas: !!options().formulas,
+					cellFormulas: current.cellFormulas,
 					canUndo: history.canUndo(current),
 					canRedo: history.canRedo(current),
 					activeCell: activeCellRef(),
@@ -4159,6 +4347,7 @@ export const table = definePrimitive({
 						source: step.source,
 						cells: step.cells.length,
 						formats: !!step.formats,
+						formulas: !!step.formulas,
 					})),
 					position,
 				}
@@ -4859,6 +5048,11 @@ export const table = definePrimitive({
 			},
 			/** The text of a group row: the value of the group as its column shows it, and its count. */
 			groupText,
+			/** Whether the table has the `formulas` option. */
+			hasFormulas: () => !!engine(),
+			/** Whether a column is computed by a formula of the `columns` layer. */
+			isFormulaColumn: (columnId: string) =>
+				!!engine() && state().cellFormulas.columns?.[columnId] !== undefined,
 		}
 	},
 	slots: (slot) => ({
@@ -4910,6 +5104,7 @@ export const table = definePrimitive({
 						api.selectionMode() === 'multiple' || api.cellSelection() ? 'true' : undefined,
 					'data-cell-selection': api.cellSelection() ? '' : undefined,
 					'data-sheet': api.sheet() ? '' : undefined,
+					'data-formulas': api.hasFormulas() ? '' : undefined,
 					'data-sized': sized ? '' : undefined,
 					'data-row-window': api.windowed() ? '' : undefined,
 					'aria-busy': api.loading() ? 'true' : undefined,
@@ -5258,6 +5453,7 @@ export const table = definePrimitive({
 					'data-italic': format?.italic ? '' : undefined,
 					'data-color': format?.color,
 					'data-fill': format?.fill,
+					'data-formula-column': column && api.isFormulaColumn(column.id) ? '' : undefined,
 					...(ranged ? api.rangeAttrs(state, props) : undefined),
 					'data-kind': inGroup,
 					'data-row-header': rowHeader ? '' : undefined,
@@ -5656,6 +5852,8 @@ export const table = definePrimitive({
 			'resetColumnWidths',
 			'pinColumn',
 			'setColumnAggregate',
+			'getColumnFormula',
+			'setColumnFormula',
 			'pinRow',
 			'scrollToRow',
 			'editCell',

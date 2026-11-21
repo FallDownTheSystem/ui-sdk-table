@@ -1,4 +1,5 @@
 import type { ChangeSource } from '@ui-sdk/core'
+import type { CellFormulas } from '../formula/types'
 import type { CellFormats } from './formats'
 
 /** One cell of a step: the value that it held before the step and after it. */
@@ -24,6 +25,8 @@ export type TableStep<Reason extends string = string> = {
 	 * a step for 50,000 cells holds two pointers.
 	 */
 	formats?: { before: CellFormats; after: CellFormats; cells: number }
+	/** The formulas before and after, for a step that changed formulas, as `formats`. */
+	formulas?: { before: CellFormulas; after: CellFormulas; cells: number }
 }
 
 /** A step as `getHistory` shows it: what made it and how many cells it holds, without the values. */
@@ -35,6 +38,8 @@ export type HistoryEntry<Reason extends string = string> = {
 	cells: number
 	/** Whether the step changed formats and no value. */
 	formats: boolean
+	/** Whether the step changed formulas. */
+	formulas: boolean
 }
 
 /** What a step weighs against the `maxCells` of the history. A step is never free, so the list has an end. */

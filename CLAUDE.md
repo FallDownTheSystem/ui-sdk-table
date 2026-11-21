@@ -94,6 +94,12 @@ A data sheet is the table with more options, not a second primitive and not a `S
 - A new option, method or slot of the sheet gets a tile in `apps/docs/src/sink/tiles/sheet/` or a line with a real reason in `NOT_SHOWN` of `sink.test.ts`, and its looks for every tone in the sheet block at the end of `sink.css` (the colour names of the sink are `accent` and `alert`).
 - The demo page is `?page=sheet`. A page with `hidden: true` in `apps/docs/src/page.ts` is a page of a proof: a test opens it, and the menu does not list it.
 
+## Formulas (`packages/core/src/formulas`, `src/formula`, entry `ui-sdk-table-core/formulas`)
+
+- The main entry holds only what must touch the inside of the table: the state key `cellFormulas`, its change path, the methods as thin shells that throw "This table has no formulas: pass `formulas`" without an engine, the hooks, the attributes and the view. Everything that runs only with an engine is in `src/formulas/` and comes in through the engine object (`FormulaEngine` of `formula/types.ts`). No file outside `src/formulas/` imports from it at run time (`formulas-entry.test.ts`); `src/formulas-size.test.ts` holds the glue under 12 kB.
+- A formula of the `columns` layer makes a computed column: `definitions()` gives the model the columns that `engine.withColumns` built, one array that changes only with the columns, the layer or the engine. A formula of the owner that cannot be read, or a circle of columns, shows an error in every row; one from an action is refused.
+- The words of an issue come from `messages.formulaIssue`, else from the engine.
+
 ## Server mode (`manualSort`, `manualFilter`, `manualPage`)
 
 - A manual stage returns its input array itself. The sort, filter and page states stay and are requests to the owner.

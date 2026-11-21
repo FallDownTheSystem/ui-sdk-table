@@ -1,4 +1,5 @@
 import type { ColumnReorderMessage } from './behaviors/reorder'
+import type { FormulaIssue } from './formula/types'
 
 /**
  * Every text that the table itself writes: names of controls and messages
@@ -6,6 +7,11 @@ import type { ColumnReorderMessage } from './behaviors/reorder'
  * parts in the order of its language.
  */
 export type TableMessages = {
+	/**
+	 * The words for an issue of a formula. Without it, the words of the
+	 * engine: a table without formulas carries none.
+	 */
+	formulaIssue?: (issue: FormulaIssue) => string
 	/** What the body says when no row passes the filters. */
 	noRows: () => string
 	/** What the body says while the first rows are on their way. */

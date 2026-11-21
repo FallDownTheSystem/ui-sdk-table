@@ -251,3 +251,52 @@ test.describe('in a browser in New York', () => {
 		expect(await page.evaluate(() => new Date(Date.UTC(2026, 10, 30, 22, 30)).getDate())).toBe(30)
 	})
 })
+
+test('a formula of a column that the table holds: set it, group by it, change it, and Control+Z brings the first one back', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const field = page.getByTestId('custom-formula')
+	const quantities = await column(table, 'qty')
+	await expect(table.locator('thead th[data-column="custom"]')).toHaveAttribute(
+		'data-formula-column',
+		'',
+	)
+	expect(await column(table, 'custom')).toEqual(quantities.map((qty) => qty * 2))
+
+	await field.fill('=IF([Quantity]>20, "many", "few")')
+	await field.press('Enter')
+	await expect(page.getByTestId('custom-stored')).toHaveText('=IF([qty]>20, "many", "few")')
+	await page.getByTestId('grouping').selectOption('custom')
+	await expect(groupRows(table)).toHaveCount(2)
+	const many = quantities.filter((qty) => qty > 20).length
+	await expect(groupRows(table).filter({ hasText: 'many' }).getByRole('button')).toHaveText(
+		`many (${many})`,
+	)
+	await expect(groupRows(table).filter({ hasText: 'few' }).getByRole('button')).toHaveText(
+		`few (${quantities.length - many})`,
+	)
+
+	await field.fill('=IF([Quantity]>30, "many", "few")')
+	await field.press('Enter')
+	await expect(groupRows(table).filter({ hasText: 'many' }).getByRole('button')).toHaveText(
+		`many (${quantities.filter((qty) => qty > 30).length})`,
+	)
+
+	// The key acts on a cell of the table, and takes the last change of the formula back.
+	await page.getByTestId('grouping').selectOption('none')
+	await cellOf(dataRows(table).first(), 'product').click()
+	await page.keyboard.press('Control+z')
+	await expect(page.getByTestId('custom-stored')).toHaveText('=IF([qty]>20, "many", "few")')
+	await page.keyboard.press('Control+z')
+	await expect(page.getByTestId('custom-stored')).toHaveText('=[qty]*2')
+	expect(await column(table, 'custom')).toEqual(quantities.map((qty) => qty * 2))
+	await page.keyboard.press('Control+Shift+z')
+	await expect(page.getByTestId('custom-stored')).toHaveText('=IF([qty]>20, "many", "few")')
+
+	// A formula that reads its own column is refused with words, and nothing changes.
+	await field.fill('=[Custom]+1')
+	await field.press('Enter')
+	await expect(page.getByTestId('custom-issue')).toContainText('reads that column itself')
+	await expect(page.getByTestId('custom-stored')).toHaveText('=IF([qty]>20, "many", "few")')
+})

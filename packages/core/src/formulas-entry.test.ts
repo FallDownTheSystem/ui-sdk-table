@@ -27,7 +27,13 @@ test('no file outside `src/formulas/` imports from it', () => {
 	for (const [path, text] of Object.entries(sources)) {
 		for (const match of text.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
 			const spec = match[1] ?? ''
-			if (/(^|\/)formulas(\/|$)/.test(spec)) breaches.push(`${path}: ${spec}`)
+			// A path of the import from the root of the package: `./behaviors/formulas` is the glue, not the engine.
+			const target = spec.startsWith('.')
+				? new URL(spec, `file:///src/${path.slice(2)}`).pathname
+				: spec
+			if (/^\/src\/formulas(\/|$)|^ui-sdk-table-core\/formulas$/.test(target)) {
+				breaches.push(`${path}: ${spec}`)
+			}
 		}
 	}
 	expect(breaches).toEqual([])

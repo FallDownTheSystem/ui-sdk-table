@@ -1,5 +1,6 @@
 import type { ColumnDef } from '../rows/types'
 import { compileRowFormula, type FormulaOptions } from './compile'
+import { keptByRow } from './engine'
 import { formulaShows } from './kinds'
 
 export type FormulaColumnDef<Row> = Omit<ColumnDef<Row>, 'value' | 'key' | 'editable'> & {
@@ -27,7 +28,6 @@ export function formulaColumn<Row>(
 ): ColumnDef<Row> {
 	const { formula, ...column } = definition
 	const run = compileRowFormula(formula, columns, { ...options, self: definition.id })
-	const kept = new WeakMap<object, unknown>()
 	const shows =
 		column.format === undefined
 			? formulaShows(formula, columns as readonly ColumnDef<never>[], options.timeZone)
@@ -36,12 +36,6 @@ export function formulaColumn<Row>(
 		...shows,
 		...column,
 		editable: false,
-		value: (row) => {
-			if (typeof row !== 'object' || row === null) return run(row)
-			if (kept.has(row)) return kept.get(row)
-			const value = run(row)
-			kept.set(row, value)
-			return value
-		},
+		value: keptByRow(run as (row: unknown) => unknown),
 	}
 }

@@ -11,6 +11,7 @@ import {
 	type CellEdit,
 	type CellFormat,
 	type CellFormats,
+	type CellFormulas,
 	type CellRange,
 	type ColumnAggregates,
 	type ColumnDef,
@@ -99,6 +100,7 @@ const MODELS = [
 	'rowPinning',
 	'columnAggregates',
 	'cellFormats',
+	'cellFormulas',
 	'cellRange',
 ] as const
 type Model = (typeof MODELS)[number]
@@ -176,6 +178,8 @@ const OPTIONS = [
 	'defaultRowPinning',
 	'defaultColumnAggregates',
 	'defaultCellFormats',
+	'formulas',
+	'defaultCellFormulas',
 	'formatColors',
 	'defaultCellRange',
 ] as const
@@ -389,6 +393,7 @@ export type TableEmits = {
 	'update:rowPinning': (value: RowPinning) => void
 	'update:columnAggregates': (value: ColumnAggregates) => void
 	'update:cellFormats': (value: CellFormats) => void
+	'update:cellFormulas': (value: CellFormulas) => void
 	'update:cellRange': (value: CellRange | null) => void
 	sortChange: (value: readonly SortRule[], details: TableChangeDetails) => void
 	filterChange: (value: FilterState, details: TableChangeDetails) => void
@@ -404,6 +409,7 @@ export type TableEmits = {
 	rowPinningChange: (value: RowPinning, details: TableChangeDetails) => void
 	columnAggregatesChange: (value: ColumnAggregates, details: TableChangeDetails) => void
 	cellFormatsChange: (value: CellFormats, details: TableChangeDetails) => void
+	cellFormulasChange: (value: CellFormulas, details: TableChangeDetails) => void
 	cellRangeChange: (value: CellRange | null, details: TableChangeDetails) => void
 	cellRangeCommit: (value: CellRange | null, details: TableCommitDetails) => void
 	/** Cells got new values. Put them into the rows; `details.cancel()` refuses them. */
@@ -648,6 +654,7 @@ const TableImpl = defineComponent(
 			onRowPinningChange: report('rowPinning'),
 			onColumnAggregatesChange: report('columnAggregates'),
 			onCellFormatsChange: report('cellFormats'),
+			onCellFormulasChange: report('cellFormulas'),
 			onCellRangeChange: report('cellRange'),
 			onCellRangeCommit: (value: CellRange | null, details: TableCommitDetails) =>
 				(emit as (name: string, ...args: unknown[]) => void)('cellRangeCommit', value, details),

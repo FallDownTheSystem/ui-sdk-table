@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Table, type ColumnDef } from 'ui-sdk-table-vue'
+import { createTableController, Table, type CellFormulas, type ColumnDef } from 'ui-sdk-table-vue'
 import {
+	createFormulaEngine,
 	describeFormulaIssue,
 	formulaColumn,
 	parseFormula,
@@ -117,7 +118,30 @@ const periodColumn = computed(() =>
 	),
 )
 
-const columns = computed(() => [...base, total.value, band.value, periodColumn.value])
+// A column whose formula the table holds at run time, in `cellFormulas`.
+const engine = createFormulaEngine()
+const controller = createTableController()
+const cellFormulas = shallowRef<CellFormulas>({ columns: { custom: '=[qty]*2' } })
+const customDraft = shallowRef('=[qty]*2')
+const customIssue = shallowRef('')
+const custom: ColumnDef<Order> = {
+	id: 'custom',
+	header: 'Custom',
+	sortable: true,
+	groupable: true,
+	width: 140,
+}
+
+function saveCustom() {
+	try {
+		controller.setColumnFormula('custom', customDraft.value === '' ? null : customDraft.value)
+		customIssue.value = ''
+	} catch (error) {
+		customIssue.value = error instanceof Error ? error.message : String(error)
+	}
+}
+
+const columns = computed(() => [...base, total.value, band.value, periodColumn.value, custom])
 
 function save() {
 	const parsed = parseFormula(draft.value, { columns: base, locale, self: 'total' })
@@ -130,7 +154,7 @@ function save() {
 	draft.value = printFormula(parsed.formula, { columns: base, locale })
 }
 
-const grouping = shallowRef<'none' | 'band' | 'period'>('none')
+const grouping = shallowRef<'none' | 'band' | 'period' | 'custom'>('none')
 const groupBy = computed(() => (grouping.value === 'none' ? [] : [grouping.value]))
 const filter = shallowRef<{ columns?: Record<string, unknown> }>({})
 const range = shallowRef<{ min: string; max: string }>({ min: '', max: '' })
@@ -173,6 +197,20 @@ function filterPeriod() {
 		<output data-testid="stored">{{ stored }}</output>
 		<output role="alert" data-testid="issue">{{ issue }}</output>
 	</form>
+	<form class="toolbar" @submit.prevent="saveCustom">
+		<label>
+			Formula of the custom column
+			<input
+				v-model="customDraft"
+				data-testid="custom-formula"
+				spellcheck="false"
+				:aria-invalid="!!customIssue"
+			/>
+		</label>
+		<button type="submit">Set the formula</button>
+		<output data-testid="custom-stored">{{ cellFormulas.columns?.custom ?? '' }}</output>
+		<output role="status" data-testid="custom-issue">{{ customIssue }}</output>
+	</form>
 	<div class="toolbar">
 		<label>
 			Groups
@@ -180,6 +218,7 @@ function filterPeriod() {
 				<option value="none">No groups</option>
 				<option value="band">By band</option>
 				<option value="period">By period</option>
+				<option value="custom">By the custom column</option>
 			</select>
 		</label>
 		<label>
@@ -208,6 +247,10 @@ function filterPeriod() {
 	<div class="scroller">
 		<Table
 			v-model:filter="filter"
+			v-model:cell-formulas="cellFormulas"
+			:controller="controller"
+			:formulas="engine"
+			history
 			:rows="rows"
 			:columns="columns"
 			:group-by="groupBy"

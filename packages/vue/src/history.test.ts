@@ -260,7 +260,7 @@ test('an agent undoes and redoes, its own edits are steps that say so, and it re
 	expect(edited.ok).toBe(true)
 	await nextTick()
 	expect(controller.getHistory().entries).toEqual([
-		{ id: 1, reason: 'imperative', source: 'agent', cells: 1, formats: false },
+		{ id: 1, reason: 'imperative', source: 'agent', cells: 1, formats: false, formulas: false },
 	])
 	const undone = await agent.act({ steps: [{ ref: 'Parts', action: 'undo' }] })
 	expect(undone.ok).toBe(true)

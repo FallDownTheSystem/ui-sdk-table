@@ -15,6 +15,21 @@ export {
 	type HeaderCell,
 } from './columns/layout'
 export { defaultMessages, type TableMessages } from './messages'
+export { FORMULA_ERRORS, isFormulaError, type FormulaError } from './formula/errors'
+export type {
+	CellFormulaPatch,
+	CellFormulas,
+	ColumnFormulaPatch,
+	FormulaChange,
+	FormulaColumns,
+	FormulaColumn,
+	FormulaEngine,
+	FormulaIssue,
+	FormulaIssueCode,
+	FormulaPlace,
+	FormulaResult,
+	FormulaSheet,
+} from './formula/types'
 export type { ExportCell, ExportColumn, ExportData, ExportOptions, ExportRow } from './export/data'
 export type { RowAlign } from './behaviors/window'
 export type { CellBounds, CellRange } from './behaviors/range'

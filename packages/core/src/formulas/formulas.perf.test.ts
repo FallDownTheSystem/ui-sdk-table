@@ -1,6 +1,8 @@
+import { mount } from '@ui-sdk/core/testing'
 import { describe, expect, test } from 'vite-plus/test'
 import { createRowModel, type ColumnDef, type SortRule } from '../rows'
-import { compileRowFormula, formulaColumn, parseFormula } from './index'
+import { table, type TableOptions } from '../table'
+import { compileRowFormula, createFormulaEngine, formulaColumn, parseFormula } from './index'
 
 // A measurement, not a pass or fail check: it runs only on request, with
 // `BENCH=1 vp test run packages/core/src/formulas/formulas.perf --silent=false`,
@@ -128,4 +130,47 @@ describe.runIf(requested)('formulas with 50,000 rows', () => {
 		expect(Object.keys(results).length).toBe(11)
 		console.log(JSON.stringify(results, null, '\t'))
 	}, 120_000)
+})
+
+describe.runIf(requested)('formulas of columns in a table with 50,000 rows', () => {
+	test('median time to set a formula of a column and read the rows again', () => {
+		let reports = 0
+		const view = mount(
+			table,
+			{
+				rows: lines(),
+				columns: base,
+				formulas: createFormulaEngine(),
+				onCellEdit: () => {
+					reports++
+				},
+			} as TableOptions,
+			'<root aria-label="Lines"></root>',
+		)
+		try {
+			const formulas = ['=[price]*[qty]', '=[price]+[qty]']
+			let turn = 0
+			const next = () => formulas[turn++ % 2] ?? ''
+			const results: Record<string, number> = {}
+			results['set a formula of a column, then getView (no value is read)'] = median(() => {
+				view.api.setColumnFormula('total', next())
+				return view.api.getView().dataRowCount
+			})
+			view.api.sortBy('total', 'asc')
+			results['set a formula of a column while the table sorts by it, then getView'] = median(
+				() => {
+					view.api.setColumnFormula('total', next())
+					return view.api.getView().dataRowCount
+				},
+			)
+			results['sort again by the column, values kept'] = median(() => {
+				view.api.sortBy('total', turn++ % 2 ? 'asc' : 'desc')
+				return view.api.getView().dataRowCount
+			})
+			expect(reports).toBe(0)
+			console.table(results)
+		} finally {
+			view.unmount()
+		}
+	})
 })

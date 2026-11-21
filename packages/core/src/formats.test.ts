@@ -391,8 +391,22 @@ describe('formats and the history', () => {
 			const second = view.state.cellFormats
 			expect(view.api.getHistory()).toEqual({
 				entries: [
-					{ id: 1, reason: 'imperative', source: 'programmatic', cells: 0, formats: true },
-					{ id: 2, reason: 'imperative', source: 'programmatic', cells: 0, formats: true },
+					{
+						id: 1,
+						reason: 'imperative',
+						source: 'programmatic',
+						cells: 0,
+						formats: true,
+						formulas: false,
+					},
+					{
+						id: 2,
+						reason: 'imperative',
+						source: 'programmatic',
+						cells: 0,
+						formats: true,
+						formulas: false,
+					},
 				],
 				position: 2,
 			})
