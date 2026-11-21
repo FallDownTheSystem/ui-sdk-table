@@ -20,6 +20,7 @@
 		"@types/jsdom": "catalog:",
 		"@vitejs/plugin-vue": "catalog:",
 		"@vue/test-utils": "catalog:",
+		"geist": "catalog:",
 		"jsdom": "catalog:",
 		"vite": "catalog:",
 		"vite-plus": "catalog:"

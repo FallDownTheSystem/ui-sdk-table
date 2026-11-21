@@ -6,7 +6,7 @@ export const tiles: TileCopy[] = [
 		title: 'Pages from a server.',
 		blurb: 'The table holds one page of ten thousand people and asks for the next.',
 		size: 'wide',
-		tone: 'mist',
+		tone: 'paper',
 	},
 	{
 		id: 'server-loading',
@@ -24,6 +24,6 @@ export const tiles: TileCopy[] = [
 		id: 'server-facets',
 		title: 'Choices from the server.',
 		blurb: 'The table holds the filtered rows, and the list still offers every team.',
-		tone: 'clay',
+		tone: 'sand',
 	},
 ]

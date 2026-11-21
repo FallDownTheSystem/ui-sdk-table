@@ -9,6 +9,7 @@ catalog:
   '@vitejs/plugin-vue': ^6.0.11
   '@vue/test-utils': ^2.5.1
   jsdom: ^31.0.1
+  geist: 1.9.2
   ssf: 0.11.2
   '@types/jsdom': ^30.0.0
   vite: npm:@voidzero-dev/vite-plus-core@latest
@@ -20,3 +21,11 @@ catalog:
 # plugin's peer from the package that uses it, and falls back to plain vite.
 overrides:
   vite: npm:@voidzero-dev/vite-plus-core@latest
+
+# The docs app takes only the font files of `geist`. Its JavaScript is for
+# Next.js, so its peer `next` is optional here and not installed.
+packageExtensions:
+  geist:
+    peerDependenciesMeta:
+      next:
+        optional: true

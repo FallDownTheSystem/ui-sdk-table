@@ -3,8 +3,12 @@ import type { Component } from 'vue'
 /** How much of the grid a tile takes: one cell, two columns, two rows, or two by two. */
 export type TileSize = 's' | 'wide' | 'tall' | 'large'
 
-/** The ground of a tile. The table style reads `--tile-*` variables, so one style works on every tone. */
-export type TileTone = 'paper' | 'mist' | 'ink' | 'moss' | 'clay' | 'plum' | 'sun'
+/**
+ * The ground of a tile, in three weights: neutral (`paper`, `sand`), soft
+ * (`mist`, `moss`, `sun`, `plum`) and bold (`clay`, `ink`, `navy`). The table
+ * style reads `--tile-*` variables, so one style works on every tone.
+ */
+export type TileTone = 'paper' | 'sand' | 'mist' | 'moss' | 'sun' | 'plum' | 'clay' | 'ink' | 'navy'
 
 /** What a group file says about one tile. The demo is the `.vue` file with the name of the id. */
 export type TileCopy = {

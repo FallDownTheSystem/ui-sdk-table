@@ -24,6 +24,10 @@ const columns: ColumnDef<Order>[] = [
 
 <template>
 	<div class="demo">
+		<div class="scene">
+			<p class="display">Orders by city</p>
+			<p class="scene-sub">{{ count(orders.length, 'order', 'orders') }}, a total for each city</p>
+		</div>
 		<div class="sink-frame">
 			<Table
 				:rows="orders"

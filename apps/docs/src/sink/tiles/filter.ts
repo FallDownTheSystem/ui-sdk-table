@@ -12,24 +12,24 @@ export const tiles: TileCopy[] = [
 		title: 'Filter by a facet.',
 		blurb: 'The counts of one list follow the choice in the other.',
 		size: 'tall',
-		tone: 'paper',
+		tone: 'sand',
 	},
 	{
 		id: 'filter-range',
 		title: 'Slide a price range.',
 		blurb: 'The ends and the step of the slider come from the column.',
-		tone: 'sun',
+		tone: 'paper',
 	},
 	{
 		id: 'filter-days',
 		title: 'Between two days.',
 		blurb: 'The first and the last day of the column bound both fields.',
-		tone: 'mist',
+		tone: 'paper',
 	},
 	{
 		id: 'filter-typos',
 		title: 'Typos still match.',
 		blurb: 'A fuzzy search finds Stockholm for "stokholm".',
-		tone: 'ink',
+		tone: 'paper',
 	},
 ]

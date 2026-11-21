@@ -6,7 +6,7 @@ export const tiles: TileCopy[] = [
 		title: 'Type over a cell.',
 		blurb: 'A character opens the cell, Enter goes down, and an arrow key goes on.',
 		size: 'wide',
-		tone: 'paper',
+		tone: 'sand',
 	},
 	{
 		id: 'sheet-fill',
@@ -26,13 +26,14 @@ export const tiles: TileCopy[] = [
 		title: 'Format a range.',
 		blurb: 'Bold, a colour and one decimal more are data that the page keeps.',
 		size: 'wide',
-		tone: 'mist',
+		tone: 'paper',
 	},
 	{
 		id: 'sheet-sum',
 		title: 'Sum a selection.',
-		blurb: 'Drag over numbers, and the bar counts them after a pause.',
-		tone: 'ink',
+		blurb: 'Drag over numbers, and the sum shows after a pause.',
+		size: 'tall',
+		tone: 'navy',
 	},
 	{
 		id: 'sheet-numbers',
@@ -57,12 +58,12 @@ export const tiles: TileCopy[] = [
 		id: 'sheet-cut',
 		title: 'Cut, paste, empty.',
 		blurb: 'A cut and a paste move a block, each as one step.',
-		tone: 'paper',
+		tone: 'ink',
 	},
 	{
 		id: 'sheet-saved',
 		title: 'Open saved formats.',
 		blurb: 'A column shown as a share and two marked cells come with the document.',
-		tone: 'clay',
+		tone: 'paper',
 	},
 ]

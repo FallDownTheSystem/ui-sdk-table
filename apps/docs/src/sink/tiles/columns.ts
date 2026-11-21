@@ -5,14 +5,14 @@ export const tiles: TileCopy[] = [
 		id: 'columns-pin',
 		title: 'Pin the name.',
 		blurb: 'It stays at the start while the other columns scroll sideways.',
-		tone: 'moss',
+		tone: 'paper',
 	},
 	{
 		id: 'columns-drag',
 		title: 'Drag a header.',
 		blurb: 'Or pick it up with Space and move it with the arrow keys.',
 		size: 'wide',
-		tone: 'clay',
+		tone: 'paper',
 	},
 	{
 		id: 'columns-resize',
@@ -32,13 +32,13 @@ export const tiles: TileCopy[] = [
 		title: 'Headers over headers.',
 		blurb: 'A header group stands over its columns and moves with them.',
 		size: 'wide',
-		tone: 'paper',
+		tone: 'sand',
 	},
 	{
 		id: 'columns-formats',
 		title: 'Format every value.',
 		blurb: 'Money, a share, a day, a link and a yes or no, each from one word.',
 		size: 'wide',
-		tone: 'sun',
+		tone: 'mist',
 	},
 ]

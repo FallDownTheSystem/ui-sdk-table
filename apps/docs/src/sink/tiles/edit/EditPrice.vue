@@ -46,6 +46,10 @@ function onCellEdit(edits: readonly CellEdit<Product>[], details: TableEditDetai
 
 <template>
 	<div class="demo">
+		<div class="scene">
+			<p class="scene-title">Price list</p>
+			<p class="scene-sub">Coffee and tea, by the bag</p>
+		</div>
 		<div class="sink-frame">
 			<Table
 				:rows="rows"

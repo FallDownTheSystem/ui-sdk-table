@@ -22,6 +22,26 @@ const summary = useSelectionSummary(controller)
 
 <template>
 	<div class="demo">
+		<!-- The sum is the picture of this tile: a large number, its name above, what else it counts below. -->
+		<div class="readout" data-testid="sum-bar">
+			<template v-if="summary && summary.numbers > 1">
+				<span class="readout-label">Sum</span> <strong class="display">{{
+					summary.texts.sum
+				}}</strong>
+				<span class="readout-label">
+					mean {{ summary.texts.mean }} · {{ summary.count }} of {{ summary.cells }} filled
+				</span>
+			</template>
+			<template v-else-if="summary">
+				<span class="readout-label">Selected</span>
+				<strong class="display">{{ summary.count }} of {{ summary.cells }}</strong>
+				<span class="readout-label">filled</span>
+			</template>
+			<template v-else>
+				<span class="readout-label">Sum</span> <strong class="display">–</strong>
+				<span class="readout-label">No cell selected</span>
+			</template>
+		</div>
 		<div class="demo-bar">
 			<Button @click="controller.selectCellColumns('km')">Distance</Button>
 			<Button @click="controller.selectAllCells()">All cells</Button>
@@ -35,13 +55,5 @@ const summary = useSelectionSummary(controller)
 				aria-label="Runs of a week, with a sum of the selected cells"
 			/>
 		</div>
-		<p class="demo-note" data-testid="sum-bar">
-			<template v-if="summary && summary.numbers > 1">
-				Sum <strong>{{ summary.texts.sum }}</strong>, mean {{ summary.texts.mean }},
-				{{ summary.count }} of {{ summary.cells }} filled
-			</template>
-			<template v-else-if="summary">{{ summary.count }} of {{ summary.cells }} filled</template>
-			<template v-else>No cell selected</template>
-		</p>
 	</div>
 </template>
