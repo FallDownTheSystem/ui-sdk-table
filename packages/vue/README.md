@@ -370,6 +370,17 @@ const bar = useFormulaBar(controller)
 
 `useFormulaBar(controller)` gives `address` (`D7`), `text` (the draft, else the formula as a person reads it, else the value as the field of the cell shows it), `error` (why the last commit was refused), `dirty`, `ready` (a cell is active), `input(text)`, `commit()` (saves through `editCell`, so a text with `=` is a formula and any other text a value; returns whether it saved) and `cancel()`. A draft stays with the cell where it started, also when the active cell moves. After a commit or a cancel, give focus back to the active cell (`[data-active]`).
 
+### An Excel file with formulas
+
+```ts
+const { downloadXlsx } = await import('ui-sdk-table-vue/export')
+await downloadXlsx(controller.exportData(), 'lines', { formula: excelFormulas() })
+```
+
+`excelFormulas()` of the formulas entry is the `formula` option of `toXlsx` and `downloadXlsx`. A cell with a formula, of its own or of its column, gets the formula of the file (`<f>`) with its result beside it, when all of the formula means the same in Excel: every cell that it reads is in the file and holds there the value that it holds in the table (no day, no cell written as its text), a range is one column whose rows are in the file in the order of the document and next to each other, and each function is in `EXCEL_FUNCTIONS`. Else the cell holds its result, as without the option. The addresses are places in the file, so a sorted or filtered export keeps the formulas that read their own row. An error of a formula is an error cell of the file with the option; `#CYCLE!` stays a text. `ExportCell.formula` and `ExportRow.id` and `ExportData.document` carry the formulas to a writer of your own. A CSV holds the results.
+
+With or without the option, a column with the format `period` whose unit is `day`, `month` or `year` is a date cell with a pattern when a spreadsheet shows the pattern as the screen does (`Nov 21, 2026`, `November 2026` and `2026` in `en-US`), else its text; a week, a quarter, an hour and a day of the week are texts.
+
 ### Functions
 
 `controller.getFormulaFunctions()` and `FORMULA_FUNCTIONS` list each with its arguments and one line of help.
@@ -402,7 +413,7 @@ A function whose name Excel has behaves as in Excel, with its arguments and edge
 - **Slot props:** `formula` in `#cell` and `#col-{id}` (`{ text, error?: { code, message } }`), in `#editor` and `#edit-{id}` (the formula as a person reads it; a save of a text with `=` sets a formula), and in `#header` (the formula of a computed column).
 - **Attributes:** `data-formulas` on the table; `data-formula` on a cell with a formula of its own; `data-formula-error` (`div0`, `value`, `ref`, `name`, `num`, `na`, `cycle`) with the words of the error as `aria-description`; `data-formula-column` on the header and the cells of a computed column.
 - **Messages:** `formulaIssue(issue)`, `formulaError(code)`, `recalculated({ cells })`. Without them, the English words of the engine (`describeFormulaIssue`).
-- **Exports of the formulas entry:** `createFormulaEngine`, `formulaColumn`, `compileRowFormula`, `parseFormula`, `printFormula`, `formulaShows`, `formulaSigns`, `describeFormulaIssue`, `FORMULA_FUNCTIONS`, `setFormulas`, `revertFormulas`, `pruneFormulas`, `formulaAt`, `useFormulaBar`.
+- **Exports of the formulas entry:** `createFormulaEngine`, `formulaColumn`, `compileRowFormula`, `parseFormula`, `printFormula`, `formulaShows`, `formulaSigns`, `describeFormulaIssue`, `FORMULA_FUNCTIONS`, `setFormulas`, `revertFormulas`, `pruneFormulas`, `formulaAt`, `excelFormulas`, `EXCEL_FUNCTIONS`, `useFormulaBar`. Of the export entry: the `formula` option of `toXlsx` and the type `XlsxFormulas`.
 
 ### What a styled table needs
 

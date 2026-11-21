@@ -6,6 +6,9 @@ import {
 	type FormatOptionsByName,
 } from '../format'
 import { dateFormats, toDate } from '../format/date'
+import { PERIOD_FIELDS } from '../format/period'
+import type { PeriodFormatOptions } from '../format/types'
+import { isFormulaError } from '../formula/errors'
 import { getDateTimeFormat } from '../format/intl'
 import { numberPlan, readNumber, type NumericFormatName } from '../format/number'
 import type { ColumnDef } from '../rows'
@@ -20,7 +23,25 @@ export type XlsxOptions = {
 	freezeHeader?: boolean
 	/** Whether the file is compressed, where the environment can do that. Defaults to true. */
 	compress?: boolean
+	/**
+	 * Writes the formulas of the cells as formulas of the file, with the
+	 * result beside each: `excelFormulas()` of the entry
+	 * `ui-sdk-table-core/formulas`. Without it, a cell holds its result.
+	 */
+	formula?: XlsxFormulas
 }
+
+/**
+ * Gives the text of the formula of a cell of the file, without its `=`, or
+ * `undefined` for a cell that holds its result. `row` and `column` count the
+ * `rows` and `columns` of the data from 0, and so does `exact`: whether the
+ * file holds in a cell the value that the table holds, so that a formula of
+ * the file that reads it computes what the table computed.
+ */
+export type XlsxFormulas = (
+	data: ExportData,
+	exact: (row: number, column: number) => boolean,
+) => (row: number, column: number) => string | undefined
 
 type Typed =
 	| { kind: 'empty' }
@@ -368,6 +389,28 @@ function columnWriter(column: ColumnDef, locale: string): (cell: ExportCell) => 
 			return value === undefined ? text(cell) : { kind: 'number', value, pattern: writer.pattern }
 		}
 	}
+	if (format === 'period') {
+		// A day, a month and a year are dates when a pattern shows them as the screen does.
+		const fields = PERIOD_FIELDS[(options as PeriodFormatOptions | undefined)?.unit ?? 'day']
+		let pattern: string | null = null
+		try {
+			if (fields)
+				pattern = dateSection(
+					getDateTimeFormat(cellLocale, { ...fields, timeZone: 'UTC' }),
+					cellLocale,
+				)
+		} catch {
+			pattern = null
+		}
+		if (pattern === null) return text
+		return (cell) => {
+			const day =
+				typeof cell.value === 'string' && DATE_ONLY.test(cell.value)
+					? dayNumber(Date.parse(`${cell.value}T00:00:00Z`))
+					: undefined
+			return day === undefined ? text(cell) : { kind: 'number', value: day, pattern }
+		}
+	}
 	// A link, a yes or no, a cut text, a time ago: the file holds the text of the screen.
 	return text
 }
@@ -447,19 +490,32 @@ export async function toXlsx(data: ExportData, options: XlsxOptions = {}): Promi
 
 	const widths = data.columns.map((item) => item.header.length)
 	const out: string[] = []
-	const write = (ref: string, typed: Typed, bold: boolean): void => {
-		if (typed.kind === 'empty') return
-		if (typed.kind === 'text') {
-			const style = bold ? ` s="${styleOf(true)}"` : ''
+	/** A cell; with `formula`, the formula and its result beside it; with `error`, an error of the file. */
+	const write = (
+		ref: string,
+		typed: Typed,
+		bold: boolean,
+		formula?: string,
+		error?: string,
+	): void => {
+		const f = formula === undefined ? '' : `<f>${xml(formula)}</f>`
+		// Only a cell that needs it asks for the style, so a file has the styles it had before.
+		const weight = () => (bold ? ` s="${styleOf(true)}"` : '')
+		if (error !== undefined) {
+			out.push(`<c r="${ref}"${weight()} t="e">${f}<v>${xml(error)}</v></c>`)
+		} else if (typed.kind === 'empty') {
+			if (f) out.push(`<c r="${ref}">${f}</c>`)
+		} else if (typed.kind === 'text') {
 			out.push(
-				`<c r="${ref}"${style} t="inlineStr"><is><t xml:space="preserve">${cellText(typed.text)}</t></is></c>`,
+				f
+					? `<c r="${ref}"${weight()} t="str">${f}<v>${cellText(typed.text)}</v></c>`
+					: `<c r="${ref}"${weight()} t="inlineStr"><is><t xml:space="preserve">${cellText(typed.text)}</t></is></c>`,
 			)
 		} else if (typed.kind === 'boolean') {
-			const style = bold ? ` s="${styleOf(true)}"` : ''
-			out.push(`<c r="${ref}"${style} t="b"><v>${typed.value ? 1 : 0}</v></c>`)
+			out.push(`<c r="${ref}"${weight()} t="b">${f}<v>${typed.value ? 1 : 0}</v></c>`)
 		} else {
 			const style = styleOf(bold, typed.pattern)
-			out.push(`<c r="${ref}"${style ? ` s="${style}"` : ''}><v>${typed.value}</v></c>`)
+			out.push(`<c r="${ref}"${style ? ` s="${style}"` : ''}>${f}<v>${typed.value}</v></c>`)
 		}
 	}
 
@@ -469,14 +525,12 @@ export async function toXlsx(data: ExportData, options: XlsxOptions = {}): Promi
 	})
 	out.push('</row>')
 
-	data.rows.forEach((row, rowIndex) => {
-		const r = rowIndex + 2
-		const bold = row.kind !== 'row'
-		out.push(`<row r="${r}">`)
-		row.cells.forEach((cell, index) => {
+	// Each cell as a cell of the sheet, before any is written: a formula looks at the cells it reads.
+	const typedRows = data.rows.map((row) =>
+		row.cells.map((cell, index): Typed => {
 			const item = data.columns[index]
 			const writer = writers[index]
-			if (!item || !writer) return
+			if (!item || !writer) return EMPTY
 			let typed: Typed
 			if (row.kind === 'row') {
 				// A cell with a format of its own shows another text than its column
@@ -501,7 +555,43 @@ export async function toXlsx(data: ExportData, options: XlsxOptions = {}): Promi
 							? { kind: 'text', text: cell.text }
 							: EMPTY
 			}
-			write(`${columnName(index)}${r}`, typed, bold)
+			return typed
+		}),
+	)
+	// With formulas, an error of a formula is an error of the file, which a formula there can test.
+	const errorOf = (row: ExportData['rows'][number], cell: ExportCell) =>
+		options.formula && row.kind === 'row' && isFormulaError(cell.value) && cell.value !== '#CYCLE!'
+			? cell.value
+			: undefined
+	const exact = (rowIndex: number, index: number): boolean => {
+		const row = data.rows[rowIndex]
+		const cell = row?.cells[index]
+		const typed = typedRows[rowIndex]?.[index]
+		if (!row || row.kind !== 'row' || !cell || !typed) return false
+		const value = cell.value
+		// An error that the file does not know, such as `#CYCLE!`, is a text there.
+		if (isFormulaError(value)) return errorOf(row, cell) !== undefined
+		if (typed.kind === 'empty') return value === null || value === undefined || value === ''
+		if (typed.kind === 'number' || typed.kind === 'boolean') return typed.value === value
+		// A day is a date of the table and a text of the file.
+		return typeof value === 'string' && typed.text === value && !DATE_ONLY.test(value)
+	}
+	const formulaAt = options.formula?.(data, exact)
+
+	data.rows.forEach((row, rowIndex) => {
+		const r = rowIndex + 2
+		const bold = row.kind !== 'row'
+		out.push(`<row r="${r}">`)
+		row.cells.forEach((cell, index) => {
+			const typed = typedRows[rowIndex]?.[index]
+			if (!typed) return
+			write(
+				`${columnName(index)}${r}`,
+				typed,
+				bold,
+				formulaAt?.(rowIndex, index),
+				errorOf(row, cell),
+			)
 			// The first rows say enough about the width of a column.
 			if (rowIndex < 200) widths[index] = Math.max(widths[index] ?? 0, cell.text.length)
 		})

@@ -158,6 +158,8 @@ Each value is the median of 9 runs (5 for a parse), in milliseconds, on the clou
 | Slice 8: a fill of one same-row formula down 50,000 rows | under 70 | 573 |
 | Slice 8: the row objects of the formulas after that fill | one record of 50,000 keys and one row object | 2 (the first row and the rows it filled) |
 | Slice 8: a paste of 49,999 formulas that each name another row | under 160 | 1,280 |
+| Slice 11: an Excel file of 50,000 rows and 4 columns, the results only (not compressed) | not estimated | 171 |
+| Slice 11: the same with 50,000 formulas in the file (`excelFormulas()`) | not estimated | 252 |
 
 What the numbers show:
 
@@ -205,6 +207,8 @@ The glue of the formulas in the main entry has a limit of 12 kB minified, which 
 | 7, the check after new rows, its guard and `recalculate()` | 9.46 kB |
 | 8, the formulas of a copy, a paste, a fill, a cut and a clear | 10.47 kB |
 | 9, `getFormulaSummary`, `evaluateFormula`, `getFormulaFunctions` and the formula in the state of a cell part (`useFormulaBar` is in the Vue entry of the formulas) | 10.99 kB |
+| 10, the docs and the numbers | 10.99 kB |
+| 11, `formulaOf` and the ids of the rows for an export (`excelFormulas` is in the formulas entry, the writer of `<f>` in the export entry) | 11.32 kB |
 
 The main entry holds no text of the engine. The format `period` is in the main entry, as the plan says: the chunk of the formats, which the main entry and the export entry share, grows from 12.59 kB to 13.76 kB (4.66 kB to 5.09 kB compressed). The plan estimated about 20 kB for the entry with about 45 functions; slice 2 has 51 of them in 25.38 kB.
 

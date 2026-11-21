@@ -10,6 +10,7 @@ import {
 import {
 	createFormulaEngine,
 	describeFormulaIssue,
+	excelFormulas,
 	formulaColumn,
 	parseFormula,
 	printFormula,
@@ -203,6 +204,11 @@ function backToCell() {
 function commitBar() {
 	if (bar.commit()) backToCell()
 }
+// The file holds the formulas of the sheet, with their results beside them.
+async function downloadLines() {
+	const { downloadXlsx } = await import('ui-sdk-table-vue/export')
+	await downloadXlsx(lineController.exportData(), 'lines', { formula: excelFormulas() })
+}
 function cancelBar() {
 	bar.cancel()
 	backToCell()
@@ -373,6 +379,7 @@ function filterPeriod() {
 			/>
 		</label>
 		<output role="status" data-testid="bar-error">{{ bar.error.value }}</output>
+		<button type="button" @click="downloadLines">Export the lines to Excel</button>
 	</form>
 	<div ref="linesTable" class="scroller">
 		<Table

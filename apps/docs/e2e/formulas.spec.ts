@@ -633,3 +633,55 @@ test('the formula bar follows the active cell, a formula typed there lands in th
 	await expect(page.getByTestId('bar-error')).toHaveText('')
 	await expect(lineCell(table, 1, 'total')).toBeFocused()
 })
+
+test('the Excel file of the sheet holds the formula of a cell, with its result beside it', async ({
+	page,
+}) => {
+	// The file is caught in the page, where a browser test can read it.
+	await page.addInitScript(() => {
+		const files: Blob[] = []
+		Object.assign(window, { exported: files })
+		const create = URL.createObjectURL.bind(URL)
+		URL.createObjectURL = (blob: Blob | MediaSource) => {
+			if (blob instanceof Blob) files.push(blob)
+			return create(blob)
+		}
+	})
+	const table = await openLines(page)
+	await lineCell(table, 1, 'total').click()
+	await page.keyboard.type('=B2*C2')
+	await page.keyboard.press('Enter')
+	await expect(lineCell(table, 1, 'total')).toHaveText('45.00')
+
+	const download = page.waitForEvent('download')
+	await page.getByRole('button', { name: 'Export the lines to Excel' }).click()
+	expect((await download).suggestedFilename()).toBe('lines.xlsx')
+	const sheet = await page.evaluate(async () => {
+		const blob = (window as unknown as { exported: Blob[] }).exported[0]
+		if (!blob) return null
+		const bytes = new Uint8Array(await blob.arrayBuffer())
+		const view = new DataView(bytes.buffer)
+		const end = bytes.length - 22
+		let at = view.getUint32(end + 16, true)
+		for (let index = 0; index < view.getUint16(end + 10, true); index++) {
+			const method = view.getUint16(at + 10, true)
+			const packed = view.getUint32(at + 20, true)
+			const nameLength = view.getUint16(at + 28, true)
+			const local = view.getUint32(at + 42, true)
+			const name = new TextDecoder().decode(bytes.subarray(at + 46, at + 46 + nameLength))
+			if (name === 'xl/worksheets/sheet1.xml') {
+				const start = local + 30 + nameLength + view.getUint16(local + 28, true)
+				const body = bytes.subarray(start, start + packed)
+				if (method === 0) return new TextDecoder().decode(body)
+				const stream = new Blob([body]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+				return await new Response(stream).text()
+			}
+			at += 46 + nameLength
+		}
+		return null
+	})
+	// The row numbers are not in the file, so the total of the second line is D3 there and reads B3 and C3.
+	expect(sheet).toMatch(/<c r="D3"(?: s="\d+")?><f>B3\*C3<\/f><v>45<\/v><\/c>/)
+	// A cell without a formula holds its value only.
+	expect(sheet).not.toMatch(/<c r="D2"/)
+})

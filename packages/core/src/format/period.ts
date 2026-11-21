@@ -23,6 +23,13 @@ const WEEKDAY_TYPES: Readonly<Record<number, readonly [first: number, base: numb
 	17: [0, 1],
 }
 
+/** The fields of the text of a day, a month and a year. The Excel writer gives them a date pattern. */
+export const PERIOD_FIELDS: Partial<Record<string, Intl.DateTimeFormatOptions>> = {
+	day: { dateStyle: 'medium' },
+	month: { year: 'numeric', month: 'long' },
+	year: { year: 'numeric' },
+}
+
 // 2023-01-01 is a Sunday.
 const SUNDAY = Date.UTC(2023, 0, 1)
 
@@ -60,9 +67,9 @@ export const period: PrepareFormatter<PeriodFormatOptions> = (options, locale) =
 			return format.format(SUNDAY + ((first + offset) % 7) * DAY)
 		}
 	}
-	const day = utc({ dateStyle: 'medium' })
-	const month = utc({ year: 'numeric', month: 'long' })
-	const year = utc({ year: 'numeric' })
+	const day = utc(PERIOD_FIELDS.day ?? {})
+	const month = utc(PERIOD_FIELDS.month ?? {})
+	const year = utc(PERIOD_FIELDS.year ?? {})
 	return (value, context) => {
 		if (typeof value !== 'string' || !dateOnly.test(value)) return INVALID
 		const start = Date.parse(`${value}T00:00:00Z`)

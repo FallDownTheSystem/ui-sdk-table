@@ -2,7 +2,14 @@ import { mount } from '@ui-sdk/core/testing'
 import { describe, expect, test } from 'vite-plus/test'
 import { createRowModel, type ColumnDef, type SortRule } from '../rows'
 import { table, type TableOptions } from '../table'
-import { compileRowFormula, createFormulaEngine, formulaColumn, parseFormula } from './index'
+import { toXlsx } from '../export'
+import {
+	compileRowFormula,
+	createFormulaEngine,
+	excelFormulas,
+	formulaColumn,
+	parseFormula,
+} from './index'
 
 // A measurement, not a pass or fail check: it runs only on request, with
 // `BENCH=1 vp test run packages/core/src/formulas/formulas.perf --silent=false`,
@@ -491,6 +498,42 @@ describe.runIf(requested)('a fill and a paste of formulas with 50,000 rows', () 
 		} finally {
 			view.unmount()
 		}
+		console.table(results)
+	}, 300_000)
+	test('median time of an Excel file with and without its formulas', async () => {
+		const shared: Record<string, Record<string, string>> = {}
+		for (let index = 0; index < ROWS; index++) shared[`r${index}`] = { total: '=[price]*[qty]' }
+		const view = mount(
+			table,
+			{
+				rows: lines(),
+				columns: base,
+				formulas: createFormulaEngine(),
+				defaultCellFormulas: { cells: shared },
+			} as TableOptions,
+			'<root aria-label="Lines"></root>',
+		)
+		const timed = async (run: () => Promise<unknown>, rounds = 5) => {
+			const times: number[] = []
+			for (let round = 0; round < rounds; round++) {
+				const start = performance.now()
+				await run()
+				times.push(performance.now() - start)
+			}
+			times.sort((a, b) => a - b)
+			return Math.round((times[Math.floor(times.length / 2)] ?? 0) * 10) / 10
+		}
+		const data = view.api.exportData()
+		expect(data.rows[0]?.cells[2]?.formula).toBe('=[price]*[qty]')
+		const results: Record<string, number> = {
+			'an Excel file of 50,000 rows, the results only': await timed(() =>
+				toXlsx(data, { compress: false }),
+			),
+			'the same with 50,000 formulas in the file': await timed(() =>
+				toXlsx(data, { compress: false, formula: excelFormulas() }),
+			),
+		}
+		view.unmount()
 		console.table(results)
 	}, 300_000)
 })

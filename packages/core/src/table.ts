@@ -4721,6 +4721,11 @@ export const table = definePrimitive({
 						totalText,
 						aggregateOf,
 						locale: () => options().locale,
+						...(engine() && {
+							formulaOf: (rowId: string, columnId: string) =>
+								formulaOf(rowId, columnId) ?? formulasNow.read().columns?.[columnId],
+							documentRows: formulaSheet.rowIds,
+						}),
 					},
 					exportOptions,
 				),

@@ -55,6 +55,8 @@ export type ExportCell = {
 	text: string
 	/** The format that the cell has of its own, from the `cellFormats` of the table. */
 	format?: CellFormat
+	/** With formulas: the formula of the cell, or of its column, in the stored form. */
+	formula?: string
 }
 
 export type ExportRow<Row = unknown> = {
@@ -71,6 +73,8 @@ export type ExportRow<Row = unknown> = {
 	label?: string
 	/** One cell for each column of the export. */
 	cells: ExportCell[]
+	/** With formulas: the id of a row of kind `'row'`, for the formulas that name it. */
+	id?: string
 }
 
 /** The cells of a table as plain data, for a file writer. */
@@ -78,6 +82,8 @@ export type ExportData<Row = unknown> = {
 	columns: ExportColumn<Row>[]
 	rows: ExportRow<Row>[]
 	locale: string | undefined
+	/** With formulas: the id of every row in the order of the document, for the ranges of the formulas. */
+	document?: readonly string[]
 }
 
 /** What the collector reads from a table. */
@@ -108,6 +114,10 @@ export type ExportSource<Row> = {
 	/** The function of the total of a column, when it can be another than the `aggregate` of the column. */
 	aggregateOf?: AggregatePick<Row>
 	locale: () => string | undefined
+	/** With formulas: the formula of a cell or of its column, in the stored form. */
+	formulaOf?: (rowId: string, columnId: string) => string | undefined
+	/** With formulas: the id of every row in the order of the document. */
+	documentRows?: () => readonly string[]
 }
 
 const ROW_SETS = ['filtered', 'page', 'all', 'selected'] as const
@@ -172,9 +182,12 @@ export function collectExport<Row>(
 		}
 		const format = source.formatOf?.(rowId, column)
 		const text = source.text(row, column, rowId)
-		return format
+		const found: ExportCell = format
 			? { value: cellValue(row, column), text, format }
 			: { value: cellValue(row, column), text }
+		const formula = source.formulaOf?.(rowId, column.id)
+		if (formula !== undefined) found.formula = formula
+		return found
 	}
 
 	// A total is of the values that the file holds, so a column with
@@ -239,6 +252,7 @@ export function collectExport<Row>(
 				row: node.row,
 				level,
 				cells: columns.map((column) => cell(node.row, column, node.id)),
+				...(source.formulaOf ? { id: node.id } : {}),
 			})
 		}
 		// Each selected row is a row of its own, so its child rows come only when they are selected too.
@@ -269,5 +283,6 @@ export function collectExport<Row>(
 		columns: columns.map((column) => ({ id: column.id, header: source.label(column), column })),
 		rows,
 		locale: source.locale(),
+		...(source.documentRows ? { document: source.documentRows() } : {}),
 	}
 }
