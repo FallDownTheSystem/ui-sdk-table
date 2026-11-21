@@ -7,7 +7,7 @@ import {
 	type ContrastKind,
 } from './contrast'
 
-const TONES = ['paper', 'mist', 'ink', 'moss', 'clay', 'plum', 'sun'] as const
+const TONES = ['paper', 'sand', 'mist', 'moss', 'sun', 'plum', 'clay', 'ink', 'navy'] as const
 
 /** What the page writes to the console as an error, and what it throws. */
 function watchErrors(page: Page): string[] {
@@ -313,6 +313,8 @@ test('a name pressed with the keyboard keeps the focus when the tiles move', asy
 })
 
 test('a drag in one tile moves nothing in the tile beside it', async ({ page }) => {
+	// Both tiles in view at once, so a drag in one can be held against the boxes of the other.
+	await page.setViewportSize({ width: 1280, height: 1200 })
 	await open(page, '&only=columns-resize,columns-drag')
 	const resize = tableOf(page, 'columns-resize')
 	const move = tableOf(page, 'columns-drag')
@@ -573,16 +575,45 @@ test('the wheel over a table moves the page when the table has no more to scroll
 	page,
 }) => {
 	await open(page)
+	// The wheel acts where the pointer is, so each frame is brought into view first.
+	const scrollY = () => page.evaluate(() => window.scrollY)
+	// A wheel goes on scrolling after its event, so a measurement waits for the page to rest.
+	const settled = () =>
+		page.evaluate(
+			() =>
+				new Promise<void>((done) => {
+					let last = window.scrollY
+					let still = 0
+					const look = () => {
+						still = window.scrollY === last ? still + 1 : 0
+						last = window.scrollY
+						if (still >= 5) done()
+						else requestAnimationFrame(look)
+					}
+					requestAnimationFrame(look)
+				}),
+		)
 	// A table that fits its tile: the page scrolls at once.
-	const fits = await box(frameOf(page, 'sort-two-columns'))
+	const fitting = frameOf(page, 'edit-range')
+	// A demo mounts when its tile comes near the screen.
+	await tile(page, 'edit-range').scrollIntoViewIfNeeded()
+	await expect(tableOf(page, 'edit-range')).toBeVisible()
+	expect(await fitting.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0)
+	await fitting.scrollIntoViewIfNeeded()
+	const fitsFrom = await scrollY()
+	const fits = await box(fitting)
 	await page.mouse.move(fits.x + fits.width / 2, fits.y + fits.height / 2)
 	await page.mouse.wheel(0, 300)
-	await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0)
+	await expect.poll(scrollY).toBeGreaterThan(fitsFrom)
+	await settled()
 
 	// A table that scrolls: first the table to its end, then the page.
 	await page.evaluate(() => scrollTo(0, 0))
 	const frame = frameOf(page, 'group-totals')
 	await expect(tableOf(page, 'group-totals')).toBeVisible()
+	await frame.scrollIntoViewIfNeeded()
+	await settled()
+	const scrollsFrom = await scrollY()
 	const scrolls = await box(frame)
 	await page.mouse.move(scrolls.x + scrolls.width / 2, scrolls.y + scrolls.height / 2)
 	for (let step = 0; step < 8; step++) {
@@ -590,7 +621,7 @@ test('the wheel over a table moves the page when the table has no more to scroll
 		await page.waitForTimeout(80)
 	}
 	expect(await frame.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
-	expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0)
+	expect(await scrollY()).toBeGreaterThan(scrollsFrom)
 })
 
 for (const { width, columns } of [

@@ -9,25 +9,63 @@
 
 :root {
 	color-scheme: light;
-	--page: oklch(0.955 0.006 250);
-	--page-ink: oklch(0.25 0.02 255);
-	--page-ink-2: oklch(0.45 0.02 255);
-	--page-focus: oklch(0.5 0.15 255);
+	/* Warm paper and warm ink, as the sink page of UI SDK. */
+	--page: oklch(0.968 0.008 85);
+	--page-ink: oklch(0.22 0.015 60);
+	--page-ink-2: oklch(0.45 0.018 62);
+	--page-focus: oklch(0.55 0.17 40);
 
-	--sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-	--mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+	--sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--serif: 'Geist Serif', 'Times New Roman', Georgia, serif;
+	--mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
 	--gap: 14px;
-	--tile-radius: 20px;
-	--stage-pad: 12px;
-	--row: 31px;
+	--tile-radius: 22px;
+	--stage-pad: 22px;
+	--row: 40px;
 
 	background: var(--page);
 	color: var(--page-ink);
 	font: 14px/1.45 var(--sans);
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * The fonts are the files of the npm package `geist` (SIL Open Font License
+ * 1.1). The page serves them itself, and links their licence at its end.
+ */
+@font-face {
+	font-family: 'Geist';
+	src: url('../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2') format('woff2');
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Geist';
+	src: url('../node_modules/geist/dist/fonts/geist-sans/Geist-Italic[wght].woff2') format('woff2');
+	font-weight: 100 900;
+	font-style: italic;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Geist Mono';
+	src: url('../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2') format('woff2');
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Geist Serif';
+	src: url('../node_modules/geist/dist/fonts/geist-serif/GeistSerif-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
 }
 
 body {
@@ -50,11 +88,11 @@ input {
 .pages {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 4px 18px;
+	gap: 4px 20px;
 	max-inline-size: 1480px;
 	margin-inline: auto;
-	padding: 14px 28px 0;
-	font-size: 13px;
+	padding: 18px 28px 0;
+	font-size: 13.5px;
 }
 
 .pages a {
@@ -82,142 +120,242 @@ input {
 .sink {
 	max-inline-size: 1480px;
 	margin-inline: auto;
-	padding: 20px 28px 120px;
+	padding: 28px 28px 120px;
 }
 
 .sink-head {
-	margin-block-end: 22px;
+	margin-block: 28px 44px;
+}
+
+/* Display text is Geist Serif at its one weight, large and set tight. */
+.sink-head h1,
+.display,
+.bento-empty {
+	font-family: var(--serif);
+	font-weight: 400;
+	letter-spacing: -0.02em;
 }
 
 .sink-head h1 {
 	margin: 0;
-	font-size: 30px;
-	font-weight: 650;
-	line-height: 1.15;
-	letter-spacing: -0.02em;
+	font-size: 64px;
+	line-height: 1;
 }
 
 .sink-head p {
-	max-inline-size: 62ch;
-	margin: 6px 0 0;
+	max-inline-size: 56ch;
+	margin: 16px 0 0;
 	color: var(--page-ink-2);
-	font-size: 15px;
+	font-size: 17px;
+	line-height: 26px;
 	text-wrap: pretty;
+}
+
+.sink-end {
+	margin: 56px 0 0;
+	color: var(--page-ink-2);
+	font-size: 13px;
+}
+
+.sink-end a {
+	color: inherit;
+	text-underline-offset: 3px;
+}
+
+.sink-end a:focus-visible {
+	outline: 2px solid var(--page-focus);
+	outline-offset: 2px;
 }
 
 /* The grid. A tile gets its place from `pack`, so the order in the document is the order on the screen. */
 
 .bento {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-	grid-auto-rows: 348px;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+	grid-auto-rows: 420px;
 	gap: var(--gap);
 }
 
 .bento-empty {
 	grid-column: 1 / -1;
 	margin: 0;
-	padding: 72px 0;
+	padding: 80px 0;
 	color: var(--page-ink-2);
-	font-size: 17px;
+	font-size: 28px;
 	text-align: center;
+	text-wrap: balance;
 }
 
-/* The tones. Every pair that holds text is 4.5 to 1 or more, and `--tile-edge` and `--tile-accent` are 3 to 1 against the ground and the surface. */
+/*
+ * The tones, in three weights as on the sink page of UI SDK: neutral
+ * (`paper`, `sand`), soft (`mist`, `moss`, `sun`, `plum`) and bold (`clay`,
+ * `ink`, `navy`). Every pair that holds text is 4.5 to 1 or more, and
+ * `--tile-edge` and `--tile-accent` are 3 to 1 against the ground and the
+ * surface. A table has no fill of its own and stands on `--tile-bg`;
+ * `--tile-surface` is for the controls beside it and for popups.
+ */
 
 .tile,
 .filter {
-	--tile-bg: oklch(0.99 0.003 250);
-	--tile-surface: oklch(0.998 0.001 250);
-	--tile-ink: oklch(0.25 0.02 255);
-	--tile-ink-2: oklch(0.46 0.02 255);
-	--tile-edge: oklch(0.57 0.015 255);
-	--tile-accent: oklch(0.5 0.15 255);
-	--tile-accent-ink: oklch(0.99 0.01 255);
-	--tile-danger: oklch(0.5 0.19 27);
+	--tile-bg: oklch(0.995 0.003 85);
+	--tile-surface: oklch(1 0 0);
+	--tile-ink: oklch(0.22 0.015 60);
+	--tile-ink-2: oklch(0.45 0.018 62);
+	--tile-edge: oklch(0.6 0.016 70);
+	--tile-accent: oklch(0.55 0.18 38);
+	--tile-accent-ink: oklch(1 0 0);
+	--tile-danger: oklch(0.52 0.19 27);
+	--tile-shadow: 0 1px 2px oklch(0.2 0.02 60 / 0.08), 0 8px 24px -12px oklch(0.2 0.02 60 / 0.22);
 
-	/* Lines between rows carry no meaning of their own, so they stay faint. */
-	--tile-rule: color-mix(in oklab, var(--tile-ink) 11%, var(--tile-surface));
-	--tile-chip: color-mix(in oklab, var(--tile-ink) 8%, var(--tile-bg));
-	/* The fills of a row are opaque, so a cell that sticks covers what scrolls under it. */
-	--tile-band: color-mix(in oklab, var(--tile-ink) 5%, var(--tile-surface));
-	--tile-hover: color-mix(in oklab, var(--tile-ink) 6%, var(--tile-surface));
-	--tile-selected: color-mix(in oklab, var(--tile-accent) 14%, var(--tile-surface));
+	/* Lines carry no meaning of their own, so they are hairlines of the ink. */
+	--tile-rule: color-mix(in oklab, var(--tile-ink) 11%, var(--tile-bg));
+	--tile-chip: color-mix(in oklab, var(--tile-ink) 7%, var(--tile-bg));
+	/* How much of a colour a row or a cell mixes into the card under it. */
+	--mix-band: 4%;
+	--mix-hover: 6%;
+	--mix-selected: 13%;
+	/* The colours that tints are mixed from: a pick and a fill of a format, and an alert. */
+	--tile-tint: var(--tile-accent);
+	--tile-alert-tint: var(--tile-danger);
+	/* The text on a fill of the alert colour. */
+	--tile-danger-ink: var(--tile-surface);
+	/* Tints are opaque mixes with the card, so a part that sticks still hides what scrolls under it. */
+	--tile-band: color-mix(in oklab, var(--tile-ink) var(--mix-band), var(--tile-bg));
+	--tile-hover: color-mix(in oklab, var(--tile-ink) var(--mix-hover), var(--tile-bg));
+	--tile-selected: color-mix(in oklab, var(--tile-tint) var(--mix-selected), var(--tile-bg));
+}
+
+.tile[data-tone='sand'] {
+	--tile-bg: oklch(0.944 0.011 83);
+	--tile-surface: oklch(0.995 0.003 85);
+	--tile-ink-2: oklch(0.43 0.018 62);
+	--tile-edge: oklch(0.57 0.016 70);
+	--tile-accent: oklch(0.5 0.17 38);
 }
 
 .tile[data-tone='mist'] {
-	--tile-bg: oklch(0.93 0.018 235);
-	--tile-surface: oklch(0.99 0.005 235);
-	--tile-ink: oklch(0.26 0.04 245);
-	--tile-ink-2: oklch(0.44 0.045 245);
-	--tile-edge: oklch(0.56 0.04 245);
-	--tile-accent: oklch(0.48 0.16 262);
-	--tile-accent-ink: oklch(0.99 0.01 255);
+	--tile-bg: oklch(0.91 0.04 235);
+	--tile-surface: oklch(0.99 0.01 235);
+	--tile-ink: oklch(0.26 0.05 250);
+	--tile-ink-2: oklch(0.41 0.06 248);
+	--tile-edge: oklch(0.54 0.06 245);
+	--tile-accent: oklch(0.47 0.15 255);
+	--tile-accent-ink: oklch(0.99 0.01 235);
+	--tile-danger: oklch(0.48 0.19 27);
+}
+
+.tile[data-tone='moss'] {
+	--tile-bg: oklch(0.9 0.035 150);
+	--tile-surface: oklch(0.98 0.012 140);
+	--tile-ink: oklch(0.25 0.04 155);
+	--tile-ink-2: oklch(0.4 0.045 155);
+	--tile-edge: oklch(0.53 0.05 155);
+	--tile-accent: oklch(0.43 0.11 155);
+	--tile-accent-ink: oklch(0.98 0.012 140);
+	--tile-danger: oklch(0.47 0.19 27);
+}
+
+.tile[data-tone='sun'] {
+	--tile-bg: oklch(0.93 0.07 92);
+	--tile-surface: oklch(0.99 0.02 95);
+	--tile-ink: oklch(0.28 0.04 70);
+	--tile-ink-2: oklch(0.42 0.05 72);
+	--tile-edge: oklch(0.55 0.06 75);
+	--tile-accent: oklch(0.33 0.05 70);
+	--tile-accent-ink: oklch(0.97 0.04 95);
+	--tile-danger: oklch(0.48 0.19 27);
+}
+
+.tile[data-tone='plum'] {
+	--tile-bg: oklch(0.91 0.035 320);
+	--tile-surface: oklch(0.99 0.008 320);
+	--tile-ink: oklch(0.27 0.05 320);
+	--tile-ink-2: oklch(0.42 0.06 320);
+	--tile-edge: oklch(0.55 0.06 320);
+	--tile-accent: oklch(0.45 0.14 320);
+	--tile-accent-ink: oklch(0.99 0.008 320);
+	--tile-danger: oklch(0.48 0.19 27);
+}
+
+.tile[data-tone='clay'] {
+	/* A saturated orange with near-white ink, as `signal` of the original, a step darker so small text holds 4.5 to 1. */
+	--tile-bg: oklch(0.54 0.18 41);
+	--tile-surface: oklch(0.46 0.165 38);
+	--tile-ink: oklch(0.995 0.006 70);
+	--tile-ink-2: oklch(0.97 0.03 65);
+	--tile-edge: oklch(0.86 0.07 55);
+	/* The accent is the ink itself, so a link, a ring and a switch read on the orange. */
+	--tile-accent: oklch(0.97 0.035 75);
+	--tile-accent-ink: oklch(0.32 0.1 38);
+	--tile-danger: oklch(0.96 0.09 100);
+	--tile-danger-ink: oklch(0.3 0.08 50);
+	/* A tint on orange goes darker: a lighter one would wash out the near-white text. */
+	--tile-tint: oklch(0.3 0.1 35);
+	--tile-alert-tint: oklch(0.28 0.12 25);
+	--tile-rule: color-mix(in oklab, var(--tile-ink) 28%, var(--tile-bg));
+	--tile-chip: color-mix(in oklab, var(--tile-tint) 16%, var(--tile-bg));
+	--tile-band: color-mix(in oklab, var(--tile-tint) 10%, var(--tile-bg));
+	--tile-hover: color-mix(in oklab, var(--tile-tint) 14%, var(--tile-bg));
+	--mix-hover: 14%;
+	--mix-selected: 26%;
+	--tile-shadow: 0 1px 2px oklch(0.3 0.1 40 / 0.2), 0 10px 28px -12px oklch(0.3 0.1 40 / 0.5);
 }
 
 .tile[data-tone='ink'],
 .filter {
-	--tile-bg: oklch(0.22 0.015 250);
-	--tile-surface: oklch(0.27 0.016 250);
-	--tile-ink: oklch(0.96 0.006 240);
-	--tile-ink-2: oklch(0.84 0.012 245);
-	--tile-edge: oklch(0.68 0.015 245);
-	--tile-accent: oklch(0.82 0.14 85);
-	--tile-accent-ink: oklch(0.22 0.03 85);
-	--tile-danger: oklch(0.8 0.12 25);
-	--tile-rule: color-mix(in oklab, var(--tile-ink) 16%, var(--tile-surface));
+	--tile-bg: oklch(0.2 0.012 60);
+	--tile-surface: oklch(0.27 0.012 62);
+	--tile-ink: oklch(0.96 0.006 85);
+	--tile-ink-2: oklch(0.8 0.01 80);
+	--tile-edge: oklch(0.6 0.012 75);
+	--tile-accent: oklch(0.74 0.16 50);
+	--tile-accent-ink: oklch(0.18 0.02 60);
+	--tile-danger: oklch(0.78 0.13 25);
+	--tile-rule: color-mix(in oklab, var(--tile-ink) 15%, var(--tile-bg));
 	--tile-chip: color-mix(in oklab, var(--tile-ink) 12%, var(--tile-bg));
-	--tile-selected: color-mix(in oklab, var(--tile-accent) 16%, var(--tile-surface));
+	--mix-band: 6%;
+	--mix-hover: 9%;
+	--mix-selected: 20%;
+	--tile-shadow: 0 10px 30px -10px oklch(0 0 0 / 0.6);
 }
 
-.tile[data-tone='moss'] {
-	--tile-bg: oklch(0.91 0.045 150);
-	--tile-surface: oklch(0.985 0.012 145);
-	--tile-ink: oklch(0.26 0.045 155);
-	--tile-ink-2: oklch(0.42 0.055 155);
-	--tile-edge: oklch(0.54 0.06 155);
-	--tile-accent: oklch(0.45 0.12 155);
-	--tile-accent-ink: oklch(0.985 0.012 145);
-}
-
-.tile[data-tone='clay'] {
-	--tile-bg: oklch(0.9 0.05 50);
-	--tile-surface: oklch(0.99 0.01 60);
-	--tile-ink: oklch(0.27 0.04 40);
-	--tile-ink-2: oklch(0.43 0.06 40);
-	--tile-edge: oklch(0.54 0.07 42);
-	--tile-accent: oklch(0.5 0.16 33);
-	--tile-accent-ink: oklch(0.99 0.01 60);
-	--tile-danger: oklch(0.48 0.19 25);
-}
-
-.tile[data-tone='plum'] {
-	--tile-bg: oklch(0.3 0.075 335);
-	--tile-surface: oklch(0.35 0.075 335);
-	--tile-ink: oklch(0.97 0.015 335);
-	--tile-ink-2: oklch(0.89 0.035 335);
-	--tile-edge: oklch(0.74 0.06 335);
-	--tile-accent: oklch(0.87 0.13 95);
-	--tile-accent-ink: oklch(0.25 0.05 95);
-	--tile-danger: oklch(0.84 0.1 25);
-	--tile-rule: color-mix(in oklab, var(--tile-ink) 16%, var(--tile-surface));
+.tile[data-tone='navy'] {
+	--tile-bg: oklch(0.32 0.075 255);
+	--tile-surface: oklch(0.38 0.08 254);
+	--tile-ink: oklch(0.96 0.02 240);
+	--tile-ink-2: oklch(0.84 0.05 245);
+	--tile-edge: oklch(0.68 0.07 250);
+	--tile-accent: oklch(0.86 0.12 200);
+	--tile-accent-ink: oklch(0.25 0.06 255);
+	--tile-danger: oklch(0.82 0.11 25);
+	--tile-rule: color-mix(in oklab, var(--tile-ink) 17%, var(--tile-bg));
 	--tile-chip: color-mix(in oklab, var(--tile-ink) 12%, var(--tile-bg));
-	--tile-selected: color-mix(in oklab, var(--tile-accent) 14%, var(--tile-surface));
+	--mix-band: 7%;
+	--mix-hover: 10%;
+	--mix-selected: 20%;
+	--tile-shadow: 0 10px 30px -12px oklch(0.15 0.08 260 / 0.7);
 }
 
-.tile[data-tone='sun'] {
-	--tile-bg: oklch(0.93 0.075 95);
-	--tile-surface: oklch(0.99 0.02 98);
-	--tile-ink: oklch(0.28 0.04 80);
-	--tile-ink-2: oklch(0.44 0.06 80);
-	--tile-edge: oklch(0.55 0.07 82);
-	--tile-accent: oklch(0.36 0.07 70);
-	--tile-accent-ink: oklch(0.98 0.03 95);
+/*
+ * The faint grid of the navy card. Only a table with nothing that sticks
+ * stands on it: a part that sticks takes the plain colour of the card and
+ * would cut the grid.
+ */
+.tile[data-tone='navy']:not(:has([data-sticky], [data-pinned], [data-row-header]))::before {
+	position: absolute;
+	inset: 0;
+	background-image:
+		linear-gradient(oklch(1 0 0 / 0.05) 1px, transparent 1px),
+		linear-gradient(90deg, oklch(1 0 0 / 0.05) 1px, transparent 1px);
+	background-size: 24px 24px;
+	content: '';
+	pointer-events: none;
 }
 
 /* The tile */
 
 .tile {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	min-inline-size: 0;
@@ -225,7 +363,7 @@ input {
 	border-radius: var(--tile-radius);
 	background: var(--tile-bg);
 	color: var(--tile-ink);
-	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile-ink) 8%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile-ink) 6%, transparent);
 	scroll-margin-block: 16px 96px;
 }
 
@@ -246,26 +384,32 @@ input {
 }
 
 .tile-stage {
+	position: relative;
 	display: flex;
 	flex: 1;
 	min-block-size: 0;
-	padding: var(--stage-pad) var(--stage-pad) 10px;
+	padding: var(--stage-pad) var(--stage-pad) 16px;
 }
 
 .tile-copy {
-	padding: 0 16px 14px;
+	position: relative;
+	padding: 0 22px 20px;
+	/* Whole pixels for the line box, so the stage above has a whole height and a table can scroll to its very end. */
+	font-size: 15px;
+	line-height: 21px;
 }
 
 .tile-title,
 .tile-blurb {
 	display: inline;
 	margin: 0;
-	font-size: 14.5px;
-	line-height: 1.35;
+	font-size: inherit;
+	line-height: inherit;
+	text-wrap: pretty;
 }
 
 .tile-title {
-	font-weight: 650;
+	font-weight: 600;
 }
 
 .tile-title::after {
@@ -280,37 +424,40 @@ input {
 .tile-uses {
 	display: flex;
 	gap: 4px;
-	margin: 8px -4px 0;
+	margin: 10px -4px 0;
 	/* Room after the last name, so it can leave the fade at the end. */
 	padding-block: 3px;
 	padding-inline: 4px 28px;
 	overflow-x: auto;
 	scrollbar-width: none;
-	mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+	mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
 }
 
 [dir='rtl'] .tile-uses {
-	mask-image: linear-gradient(to left, black calc(100% - 24px), transparent);
+	mask-image: linear-gradient(to left, black calc(100% - 28px), transparent);
 }
 
+/* A name of the library: square, a hairline, the mono face. Pressed, it takes the ink. */
 .tile-use {
 	flex: none;
-	block-size: 24px;
+	block-size: 22px;
 	padding: 0 8px;
-	border: 0;
-	border-radius: 6px;
-	background: var(--tile-chip);
+	border: 1px solid color-mix(in oklab, var(--tile-ink) 18%, transparent);
+	border-radius: 0;
+	background: transparent;
 	color: var(--tile-ink-2);
-	font: 500 11.5px/1 var(--mono);
+	font: 400 11.5px/1 var(--mono);
 	white-space: nowrap;
 	cursor: pointer;
 }
 
 .tile-use:hover {
+	border-color: color-mix(in oklab, var(--tile-ink) 42%, transparent);
 	color: var(--tile-ink);
 }
 
 .tile-use[data-pressed] {
+	border-color: var(--tile-ink);
 	background: var(--tile-ink);
 	color: var(--tile-bg);
 }
@@ -323,7 +470,7 @@ input {
 	overflow-wrap: anywhere;
 }
 
-/* The filter of the page: the chosen names, how many tiles they leave, and the way back. */
+/* The filter of the page: the chosen names, how many tiles they leave, and the way back. Dark and square, as the original. */
 
 .filter {
 	position: fixed;
@@ -337,12 +484,11 @@ input {
 	max-inline-size: calc(100% - 24px);
 	margin-inline: auto;
 	padding: 6px 6px 6px 14px;
-	border-radius: 14px;
 	background: var(--tile-bg);
 	color: var(--tile-ink);
 	box-shadow:
 		0 0 0 1px color-mix(in oklab, var(--tile-ink) 14%, transparent),
-		0 12px 32px -12px oklch(0.2 0.02 255 / 0.5);
+		0 12px 32px -12px oklch(0.2 0.02 60 / 0.5);
 	translate: 0 calc(100% + 28px);
 	opacity: 0;
 }
@@ -375,14 +521,27 @@ input {
 .filter [data-slot='button'].filter-name {
 	gap: 6px;
 	padding: 0 8px;
-	font: 500 12px/1 var(--mono);
+	background: transparent;
+	font: 400 12px/1 var(--mono);
 }
 
 .filter [data-slot='button'].filter-clear {
 	flex: none;
+	padding: 0 12px;
 	border-color: var(--tile-ink);
 	background: var(--tile-ink);
 	color: var(--tile-bg);
+}
+
+.filter
+	:is(
+		[data-slot='button'],
+		[data-slot='segmented-control'],
+		[data-slot='segmented-control-indicator'],
+		[data-slot='segmented-control-item']
+	) {
+	border-radius: 0;
+	box-shadow: none;
 }
 
 /* What a demo is made of: a bar of controls, a frame that scrolls, a line of status. */
@@ -391,10 +550,10 @@ input {
 	display: flex;
 	flex: 1;
 	flex-direction: column;
-	gap: 8px;
+	gap: 12px;
 	min-inline-size: 0;
 	min-block-size: 0;
-	font-size: 12.5px;
+	font-size: 13px;
 }
 
 .demo-bar {
@@ -441,15 +600,62 @@ input {
 	white-space: nowrap;
 }
 
+/* The name of the scene of a table: a plain heading with a line of grey under it. */
+.scene {
+	display: grid;
+	gap: 2px;
+}
+
+.scene p {
+	margin: 0;
+}
+
+.scene-title {
+	font-size: 15px;
+	font-weight: 500;
+}
+
+.scene-sub {
+	color: var(--tile-ink-2);
+	font-size: 13px;
+}
+
+/* A large thing of the scene: a name, a total, a sum. Geist Serif, set tight, at the one weight it has. */
+.tile .display {
+	margin: 0;
+	font-size: 32px;
+	line-height: 1.05;
+}
+
+.tile .scene .display {
+	margin-block-end: 4px;
+}
+
+/* A number read out large, with small mono labels around it. */
+.readout {
+	display: grid;
+	justify-items: start;
+	gap: 6px;
+	padding-block: 6px 4px;
+}
+
+.readout .display {
+	font-size: 48px;
+	font-variant-numeric: tabular-nums;
+}
+
+.readout-label {
+	color: var(--tile-ink-2);
+	font: 400 12px/1.3 var(--mono);
+	font-variant-numeric: tabular-nums;
+}
+
 /* A table that is wider or higher than its tile scrolls in here, and the page never does for it. */
 .sink-frame {
 	position: relative;
 	flex: 1;
 	min-block-size: 0;
 	overflow: auto;
-	border-radius: calc(var(--tile-radius) - var(--stage-pad));
-	background: var(--tile-surface);
-	box-shadow: 0 0 0 1px var(--tile-rule);
 	scrollbar-width: thin;
 	scrollbar-color: var(--tile-edge) transparent;
 }
@@ -473,13 +679,14 @@ input {
 	flex: none;
 	align-items: center;
 	justify-content: center;
-	gap: 5px;
-	block-size: 28px;
-	padding: 0 10px;
+	gap: 6px;
+	block-size: 30px;
+	padding: 0 12px;
 	border: 1px solid var(--tile-edge);
-	border-radius: 8px;
+	border-radius: 10px;
 	background: var(--tile-surface);
 	color: var(--tile-ink);
+	box-shadow: 0 1px 2px color-mix(in oklab, var(--tile-ink) 8%, transparent);
 	font-weight: 500;
 	white-space: nowrap;
 	cursor: pointer;
@@ -510,6 +717,7 @@ input {
 .tile [data-slot='button']:is([data-disabled], [aria-disabled='true'], :disabled) {
 	border-style: dashed;
 	background: transparent;
+	box-shadow: none;
 	color: var(--tile-ink-2);
 	cursor: default;
 	scale: 1;
@@ -524,6 +732,7 @@ input {
 	border: 0;
 	border-radius: 5px;
 	background: transparent;
+	box-shadow: none;
 	color: var(--tile-ink-2);
 	vertical-align: middle;
 }
@@ -558,10 +767,10 @@ input {
 .tile [data-slot='input'] {
 	inline-size: 100%;
 	min-inline-size: 0;
-	block-size: 28px;
-	padding: 0 9px;
+	block-size: 32px;
+	padding: 0 11px;
 	border: 1px solid var(--tile-edge);
-	border-radius: 8px;
+	border-radius: 10px;
 	background: var(--tile-surface);
 	color: var(--tile-ink);
 	outline: none;
@@ -705,12 +914,13 @@ input {
 	display: inline-flex;
 	flex: none;
 	gap: 2px;
-	padding: 2px;
+	padding: 3px;
 	border: 1px solid var(--tile-edge);
-	border-radius: 9px;
-	background: var(--tile-surface);
+	border-radius: 11px;
+	background: var(--tile-chip);
 }
 
+/* The choice is a raised item in the tray. */
 .tile [data-slot='segmented-control-indicator'],
 .filter [data-slot='segmented-control-indicator'] {
 	position: absolute;
@@ -719,16 +929,17 @@ input {
 	left: var(--segmented-control-indicator-left);
 	inline-size: var(--segmented-control-indicator-width);
 	block-size: var(--segmented-control-indicator-height);
-	border-radius: 6px;
-	background: var(--tile-ink);
+	border-radius: 8px;
+	background: var(--tile-surface);
+	box-shadow: var(--tile-shadow);
 }
 
 .tile [data-slot='segmented-control-item'],
 .filter [data-slot='segmented-control-item'] {
-	block-size: 22px;
-	padding: 0 8px;
+	block-size: 24px;
+	padding: 0 10px;
 	border: 0;
-	border-radius: 6px;
+	border-radius: 8px;
 	background: transparent;
 	color: var(--tile-ink-2);
 	font-weight: 500;
@@ -741,16 +952,15 @@ input {
 	color: var(--tile-ink);
 }
 
-/* The checked item reads against the indicator behind it, which is ink. */
 .tile [data-slot='segmented-control-item'][data-checked],
 .filter [data-slot='segmented-control-item'][data-checked] {
-	color: var(--tile-surface);
+	color: var(--tile-ink);
 }
 
 /* Until the indicator is measured, the checked item draws its own ground. */
 [data-slot='segmented-control']:not(:has(> [data-slot='segmented-control-indicator'][style]))
 	[data-slot='segmented-control-item'][data-checked] {
-	background: var(--tile-ink);
+	background: var(--tile-surface);
 }
 
 .tile [data-slot='slider'] {
@@ -824,11 +1034,11 @@ input {
 	) {
 	display: grid;
 	place-items: center;
-	min-inline-size: 26px;
-	block-size: 26px;
+	min-inline-size: 28px;
+	block-size: 28px;
 	padding: 0 6px;
 	border: 1px solid transparent;
-	border-radius: 7px;
+	border-radius: 8px;
 	background: transparent;
 	color: var(--tile-ink);
 	font-variant-numeric: tabular-nums;
@@ -905,7 +1115,7 @@ input {
 	border-collapse: separate;
 	border-spacing: 0;
 	color: var(--tile-ink);
-	font-size: 12.5px;
+	font-size: 14px;
 	font-variant-numeric: tabular-nums;
 	line-height: 1.3;
 }
@@ -939,19 +1149,16 @@ input {
 	inline-size: var(--table-column-width);
 }
 
-.tile [data-slot='table'] tr {
-	--row-fill: var(--tile-surface);
-}
-
 .tile [data-slot='table'] tr:not([data-slot='table-spacer']) {
 	block-size: var(--row);
 }
 
 .tile [data-slot='table'] :is(th, td) {
 	position: relative;
-	padding: 0 10px;
+	padding: 0 12px;
 	border-block-end: 1px solid var(--tile-rule);
-	background: var(--row-fill);
+	/* No fill of its own: the card shows through, and a tint of the row comes in through `--row-fill`. */
+	background: var(--row-fill, transparent);
 	font-weight: 400;
 	text-align: start;
 	white-space: nowrap;
@@ -984,7 +1191,7 @@ input {
 }
 
 .tile [data-slot='table'] thead tr:last-child > th {
-	border-block-end-color: var(--tile-edge);
+	border-block-end-color: color-mix(in oklab, var(--tile-ink) 32%, var(--tile-bg));
 }
 
 /* A header group stands over its columns. */
@@ -1064,7 +1271,7 @@ input {
 	margin-inline-start: 6px;
 	border-radius: 4px;
 	background: var(--tile-ink);
-	color: var(--tile-surface);
+	color: var(--tile-bg);
 	content: attr(data-sort-index);
 	font-size: 10.5px;
 	font-weight: 600;
@@ -1089,7 +1296,7 @@ input {
 }
 
 .tile [data-slot='table'] tbody tr[data-kind='group']:hover {
-	--row-fill: color-mix(in oklab, var(--tile-ink) 9%, var(--tile-surface));
+	--row-fill: color-mix(in oklab, var(--tile-ink) 5%, var(--tile-hover));
 }
 
 /* The button of a group row or of a tree row: the label, with the arrow before it. */
@@ -1132,7 +1339,7 @@ input {
 }
 
 .tile [data-slot='table'] tfoot td {
-	border-block-start: 1px solid var(--tile-edge);
+	border-block-start: 1px solid color-mix(in oklab, var(--tile-ink) 32%, var(--tile-bg));
 	border-block-end: 0;
 	font-weight: 600;
 }
@@ -1150,9 +1357,11 @@ input {
 }
 
 /* Rows that stay in view: the header rows, the pinned rows and the footer. The cells stick, because a row cannot. */
+/* What sticks takes the colour of the card itself, so it reads as the open card and still hides what scrolls under it. */
 .tile [data-slot='table'] tr[data-sticky] > * {
 	position: sticky;
 	z-index: 2;
+	background: var(--row-fill, var(--tile-bg));
 }
 
 .tile [data-slot='table'] tr[data-sticky='top'] > * {
@@ -1163,12 +1372,8 @@ input {
 	inset-block-end: var(--table-sticky-offset, 0);
 }
 
-.tile [data-slot='table'] tbody tr[data-pinned] {
-	--row-fill: var(--tile-band);
-}
-
 .tile [data-slot='table'] tbody tr[data-pinned='top'] > td {
-	border-block-end-color: var(--tile-edge);
+	border-block-end-color: color-mix(in oklab, var(--tile-ink) 32%, var(--tile-bg));
 }
 
 /* A cell that gets focus scrolls into view, and it stops beside what sticks, not under it. */
@@ -1183,6 +1388,7 @@ input {
 .tile [data-slot='table-cell'][data-pinned] {
 	position: sticky;
 	z-index: 1;
+	background: var(--row-fill, var(--tile-bg));
 }
 
 .tile [data-slot='table'] tr[data-sticky] > [data-pinned] {
@@ -1198,11 +1404,11 @@ input {
 }
 
 .tile [data-slot='table-cell'][data-pinned-edge][data-pinned='start'] {
-	border-inline-end: 1px solid var(--tile-edge);
+	border-inline-end: 1px solid color-mix(in oklab, var(--tile-ink) 32%, var(--tile-bg));
 }
 
 .tile [data-slot='table-cell'][data-pinned-edge][data-pinned='end'] {
-	border-inline-start: 1px solid var(--tile-edge);
+	border-inline-start: 1px solid color-mix(in oklab, var(--tile-ink) 32%, var(--tile-bg));
 }
 
 .tile [data-slot='table-cell'][data-active]:focus-visible {
@@ -1308,7 +1514,7 @@ input {
 	block-size: calc(var(--row) - 1px);
 	padding: 0 9px;
 	border: 0;
-	background: var(--tile-surface);
+	background: var(--tile-bg);
 	color: var(--tile-ink);
 	font: inherit;
 	outline: 2px solid var(--tile-accent);
@@ -1337,7 +1543,7 @@ input {
 	padding: 5px 8px;
 	border-radius: 0 0 6px 6px;
 	background: var(--tile-danger);
-	color: var(--tile-surface);
+	color: var(--tile-danger-ink);
 	font-weight: 500;
 	text-align: start;
 	white-space: normal;
@@ -1362,7 +1568,7 @@ input {
 .cell-tag[data-state='late'],
 .cell-flag {
 	background: var(--tile-danger);
-	color: var(--tile-surface);
+	color: var(--tile-danger-ink);
 }
 
 .cell-tag[data-state='done'] {
@@ -1413,7 +1619,7 @@ input {
 	inline-size: var(--skeleton, 70%);
 	block-size: 9px;
 	border-radius: 5px;
-	background: color-mix(in oklab, var(--tile-ink) 16%, var(--tile-surface));
+	background: color-mix(in oklab, var(--tile-ink) 16%, var(--tile-bg));
 }
 
 .empty-state {
@@ -1487,8 +1693,16 @@ input {
 		padding: 16px 12px 110px;
 	}
 
+	.sink-head {
+		margin-block: 12px 28px;
+	}
+
 	.sink-head h1 {
-		font-size: 25px;
+		font-size: 44px;
+	}
+
+	.sink-head p {
+		font-size: 15.5px;
 	}
 }
 
@@ -1583,7 +1797,7 @@ input {
 
 /* A row and a cell that the page marks through `rowAttrs` and `cellAttrs`. */
 .tile [data-slot='table'] tbody tr.is-late {
-	--row-fill: color-mix(in oklab, var(--tile-danger) 9%, var(--tile-surface));
+	--row-fill: color-mix(in oklab, var(--tile-alert-tint) 9%, var(--tile-bg));
 }
 
 .tile [data-slot='table'] td.is-credit {
@@ -1611,8 +1825,8 @@ input {
 	z-index: 1;
 	inset-inline-start: 0;
 	inline-size: auto;
-	padding-inline: 6px;
-	background: var(--tile-band);
+	padding-inline: 8px;
+	background: var(--row-fill, var(--tile-bg));
 	color: var(--tile-ink-2);
 	text-align: end;
 	cursor: default;
@@ -1631,8 +1845,8 @@ input {
 	box-sizing: border-box;
 	inline-size: 8px;
 	block-size: 8px;
-	border-block-start: 1px solid var(--tile-surface);
-	border-inline-start: 1px solid var(--tile-surface);
+	border-block-start: 1px solid var(--tile-bg);
+	border-inline-start: 1px solid var(--tile-bg);
 	background: var(--tile-accent);
 	cursor: crosshair;
 	touch-action: none;
@@ -1657,7 +1871,7 @@ input {
 
 /* The cells that the drag would fill: a tint, and a line around them all from the edges that each cell names. */
 .tile [data-slot='table-cell'][data-fill-target] {
-	background: color-mix(in oklab, var(--tile-accent) 7%, var(--tile-surface));
+	background: color-mix(in oklab, var(--tile-tint) 7%, var(--tile-bg));
 	box-shadow:
 		var(--fill-top, 0 0 transparent), var(--fill-right, 0 0 transparent),
 		var(--fill-bottom, 0 0 transparent), var(--fill-left, 0 0 transparent);
@@ -1709,20 +1923,20 @@ input {
 
 /* A fill is opaque, so a cell that sticks hides what scrolls under it. */
 .tile [data-slot='table-cell'][data-fill='accent'] {
-	background-color: color-mix(in oklab, var(--tile-accent) 24%, var(--tile-surface));
+	background-color: color-mix(in oklab, var(--tile-tint) 24%, var(--tile-bg));
 }
 
 .tile [data-slot='table-cell'][data-fill='alert'] {
-	background-color: color-mix(in oklab, var(--tile-danger) 20%, var(--tile-surface));
+	background-color: color-mix(in oklab, var(--tile-alert-tint) 20%, var(--tile-bg));
 }
 
 /* A selected cell with a fill keeps its colour, a step deeper, so both can be seen. */
 .tile [data-slot='table-cell'][data-selected][data-fill='accent'] {
-	background-color: color-mix(in oklab, var(--tile-accent) 34%, var(--tile-surface));
+	background-color: color-mix(in oklab, var(--tile-tint) 34%, var(--tile-bg));
 }
 
 .tile [data-slot='table-cell'][data-selected][data-fill='alert'] {
-	background-color: color-mix(in oklab, var(--tile-danger) 30%, var(--tile-surface));
+	background-color: color-mix(in oklab, var(--tile-alert-tint) 30%, var(--tile-bg));
 }
 
 /* A colour of the text goes a step toward the ink over a fill, so it still reads there. */
@@ -1752,7 +1966,8 @@ input {
 .tile [data-slot='table'] tr[data-kind='letters'] > th {
 	padding-inline: 4px;
 	color: var(--tile-ink-2);
-	font-size: 12px;
+	/* A letter is a readout, so it takes the mono face, as the readouts of the original do. */
+	font: 400 11.5px/1 var(--mono);
 	text-align: center;
 	cursor: default;
 	user-select: none;

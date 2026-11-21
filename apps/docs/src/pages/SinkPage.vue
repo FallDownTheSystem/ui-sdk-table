@@ -9,6 +9,8 @@ import {
 	useTemplateRef,
 	watch,
 } from 'vue'
+// The licence of the fonts goes with the font files, as the SIL Open Font License asks.
+import fontLicence from '../../node_modules/geist/LICENSE.txt?url'
 import { pack, SPANS } from '../sink/pack'
 import { tiles } from '../sink/registry'
 import SinkFilter from '../sink/SinkFilter.vue'
@@ -25,7 +27,17 @@ const only = list('only')
 // `?eager` mounts every demo at once, to measure what the lazy tiles save.
 const eager = query.has('eager')
 // `?tone=plum` shows every tile on one tone, to judge a tone with every control. The contrast test reads each tone so.
-const TONES: readonly TileTone[] = ['paper', 'mist', 'ink', 'moss', 'clay', 'plum', 'sun']
+const TONES: readonly TileTone[] = [
+	'paper',
+	'sand',
+	'mist',
+	'moss',
+	'sun',
+	'plum',
+	'clay',
+	'ink',
+	'navy',
+]
 const tone = TONES.find((name) => name === query.get('tone'))
 const selected = shallowRef(list('uses'))
 const mode = shallowRef<Mode>(query.get('mode') === 'all' ? 'all' : 'any')
@@ -121,6 +133,10 @@ onUpdated(() => {
 				No tile uses all of these names together. Remove one, or match any of them.
 			</p>
 		</main>
+		<p class="sink-end">
+			Set in Geist, Geist Mono and Geist Serif by Vercel, under the
+			<a :href="fontLicence">SIL Open Font License</a>.
+		</p>
 		<SinkFilter
 			v-model:mode="mode"
 			:names="selected"

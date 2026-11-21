@@ -12,19 +12,19 @@ export const tiles: TileCopy[] = [
 		id: 'more-export',
 		title: 'Export a file.',
 		blurb: 'The rows as you see them, as CSV or Excel, with writers that load on the first press.',
-		tone: 'sun',
+		tone: 'clay',
 	},
 	{
 		id: 'more-rtl',
 		title: 'Right to left.',
 		blurb: 'The start is on the right, and a pinned column sticks there.',
-		tone: 'moss',
+		tone: 'sand',
 	},
 	{
 		id: 'more-messages',
 		title: 'Say it in Finnish.',
 		blurb: 'The words of the table and its numbers change while it runs.',
-		tone: 'mist',
+		tone: 'paper',
 	},
 	{
 		id: 'more-marks',
@@ -36,12 +36,12 @@ export const tiles: TileCopy[] = [
 		id: 'more-zones',
 		title: 'One moment, two zones.',
 		blurb: 'A departure reads in the time of Helsinki and of New York.',
-		tone: 'ink',
+		tone: 'sand',
 	},
 	{
 		id: 'more-listen',
 		title: 'Hear every change.',
 		blurb: 'A status line beside the table follows its sort, its search and its pick.',
-		tone: 'clay',
+		tone: 'sand',
 	},
 ]

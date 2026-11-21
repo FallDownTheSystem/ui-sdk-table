@@ -21,6 +21,9 @@ catalogs:
     '@vue/test-utils':
       specifier: ^2.5.1
       version: 2.6.0
+    geist:
+      specifier: 1.9.2
+      version: 1.9.2
     jsdom:
       specifier: ^31.0.1
       version: 31.0.1
@@ -36,6 +39,8 @@ catalogs:
 
 overrides:
   vite: npm:@voidzero-dev/vite-plus-core@latest
+
+packageExtensionsChecksum: sha256-xNXJoe/LWZHQMuW9DvRq7vAoP3hgHsiu6+3ydtNSXL8=
 
 importers:
 
@@ -93,6 +98,9 @@ importers:
       '@vue/test-utils':
         specifier: 'catalog:'
         version: 2.6.0(@vue/compiler-dom@3.5.46)(@vue/server-renderer@3.5.46)(vue@3.5.46(typescript@6.0.3))
+      geist:
+        specifier: 'catalog:'
+        version: 1.9.2
       jsdom:
         specifier: 'catalog:'
         version: 31.0.1
@@ -993,6 +1001,14 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  geist@1.9.2:
+    resolution: {integrity: sha512-UU1x2q5Khob0+i4csFvXk1Ki4DePdu7xISuXyEcj1tzQMg64oN7Kbuy4e5z5QhcUWbbvOMJNs3ZxYQqpsEMV3w==}
+    peerDependencies:
+      next: '>=13.2.0'
+    peerDependenciesMeta:
+      next:
+        optional: true
 
   glob@13.0.7:
     resolution: {integrity: sha512-wfsFgXQ8A3SEI9XGf7Nl3Y9l7ffSrGh7SUCT7vU/2CzYPep9kjxAn1S40F9OPKxAMGCVl7HtNlJhrCJUeUq83g==}
@@ -2027,6 +2043,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  geist@1.9.2: {}
 
   glob@13.0.7:
     dependencies:

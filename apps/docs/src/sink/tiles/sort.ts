@@ -12,19 +12,19 @@ export const tiles: TileCopy[] = [
 		id: 'sort-always',
 		title: 'Always sorted.',
 		blurb: 'A press turns the order and never clears it.',
-		tone: 'sun',
+		tone: 'navy',
 	},
 	{
 		id: 'sort-mode',
 		title: 'Pick a sort mode.',
 		blurb: 'One column at a time, more with a key, or every press adds one.',
 		size: 'wide',
-		tone: 'paper',
+		tone: 'sand',
 	},
 	{
 		id: 'sort-own-order',
 		title: 'Sort by urgency.',
 		blurb: 'The column brings its own order, so Urgent comes before Low.',
-		tone: 'clay',
+		tone: 'paper',
 	},
 ]

@@ -12,7 +12,7 @@ export const tiles: TileCopy[] = [
 		id: 'group-path',
 		title: 'Groups name their path.',
 		blurb: 'A team inside a country reads "Finland / Design".',
-		tone: 'plum',
+		tone: 'mist',
 	},
 	{
 		id: 'group-switch',
@@ -33,6 +33,6 @@ export const tiles: TileCopy[] = [
 		title: 'Totals in the label.',
 		blurb: 'One wide cell for each group, with a mean and a count of your own.',
 		size: 'wide',
-		tone: 'clay',
+		tone: 'ink',
 	},
 ]
