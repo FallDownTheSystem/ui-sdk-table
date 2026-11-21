@@ -7,6 +7,8 @@ type Page = {
 	load: () => Promise<{ default: Component }>
 	/** The stylesheet of the page. One page has one, so the looks of a page never reach another. */
 	styles: () => Promise<unknown>
+	/** A page that a test opens by its address, and that the menu does not list. */
+	hidden?: boolean
 }
 
 const plain = () => import('./style.css')
@@ -30,7 +32,14 @@ export const pages: Record<string, Page> = {
 	},
 	window: { title: 'Row window', load: () => import('./pages/WindowPage.vue'), styles: plain },
 	editing: { title: 'Editing', load: () => import('./pages/EditingPage.vue'), styles: plain },
+	sheet: { title: 'Sheet', load: () => import('./pages/SheetPage.vue'), styles: plain },
 	server: { title: 'Server', load: () => import('./pages/ServerPage.vue'), styles: plain },
+	proofs: {
+		title: 'Proofs',
+		load: () => import('./pages/ProofPage.vue'),
+		styles: plain,
+		hidden: true,
+	},
 }
 
 const requested = query.get('page') ?? 'sink'

@@ -53,11 +53,31 @@ Follow the `ui-sdk` skill. Read `node_modules/@ui-sdk/vue/docs/llms.txt`; search
 ## Editing, range, copy and paste (`packages/core/src/edit`, `behaviors/edit.ts`, `behaviors/range.ts`)
 
 - The table reports an edit through `onCellEdit(edits, details)` and never writes a row. `applyEdits` is a helper for the owner of the rows.
+- An edit is about a row id. Its `row` is the object of the last render, and the owner can have replaced it already: `applyEdits` finds the row by id then. Never drop an edit without a word.
+- Read "the value of now" of a cell with `valueNow`, not with `cellValue`: the table holds what it reported in this turn (`edit/turn.ts`) until the turn ends or other rows come. After that the rows of the owner are the truth, also when the owner did not take the edit.
 - A value goes through `resolveValue`: `parse` of the column or `parseText`, then the `schema` of the column (any Standard Schema). A refusal keeps the editor open with its message.
 - A check can answer with a promise. `saveCell` then gives back a promise of a function that reports, and only `createCellEdit` runs it, while the edit still waits. Do not report an edit from inside the promise.
 - At the answer, read the row again with `model.rowById`. The owner can replace the row objects during a check.
 - A paste is all or nothing. Refuse the whole paste before any cell changes.
 - A range from the state can hold header rows. `selectedCells()` cuts it to the body rows; use it, not `range.bounds`, for a copy, a paste or an edit.
+
+## Sheet behaviors (`behaviors/write.ts`, `behaviors/history.ts`, `packages/core/src/sheet`, option `sheet`)
+
+A data sheet is the table with more options, not a second primitive and not a `Sheet` component. `docs/ui-sdk-api-notes.md` section 10 holds the proofs that the rules below stand on.
+
+- Each sheet behavior is a `create<Thing>(context, options)` file or a pure helper in `sheet/`, composed in `api` behind an option. `sheet` is the preset: `editable`, `cellSelection` and `history` are on unless one is set to false.
+- With every new option off, the table behaves as before. `packages/core/src/sheet-off.test.ts` and "the keys of a sheet do nothing in a table" in `apps/docs/e2e/editing.spec.ts` prove it: add each new key there, with `defaultPrevented` false.
+- New values for many cells go through `createCellWrites` (`writes.write(targets, { reason })`): paste, clear and cut today, the fill later. Do not write the rule "check all, report once, read the row again" a second time.
+- Every report goes through `report()`, which records a step when no listener refused. An undo and a redo go through `tell()` and are no steps.
+- A step holds row ids, column ids and values, never a row object. An undo is a report through `onCellEdit` with the reason `undo`, with `previous` and `row` of now, and without `parse` and schema: the value came from the data.
+- A step whose rows or columns are all gone is dropped and the step before it is taken; a step that the owner refuses stays. While a check runs (`edit.checking()`, `writes.pending()`), a key does nothing and `undo()` throws.
+- With `manualPage`, a change of the page, the sort or the filter empties the history.
+- The history keys act on a cell only (`event.target === el`). In the editor and in a control inside a cell, Control+Z is the field's.
+- Tab on a cell leaves the table. Only inside a selected range of more than one cell it walks the range, and Escape drops the range. A change here needs the keyboard trap test of `apps/docs/e2e/sheet.spec.ts`.
+- Where focus goes after a save is `moveFrom` of `sheet/moves.ts`. An arrow that saved an editor moves with `grid.move(key)`: the key event can be long over when a slow check answers.
+- A range that code selects (`selectAllCells`, `selectCellRows`, `selectCellColumns`, an undo) moves the active cell into it with `activate`, which never takes focus from outside the table.
+- Run `BENCH=1 vp test run packages/core/src/sheet/sheet.perf --silent=false` when you change the writer or the history, and add a column to "Sheet, 50,000 rows" of `docs/benchmarks.md`.
+- The demo page is `?page=sheet`. A page with `hidden: true` in `apps/docs/src/page.ts` is a page of a proof: a test opens it, and the menu does not list it.
 
 ## Server mode (`manualSort`, `manualFilter`, `manualPage`)
 

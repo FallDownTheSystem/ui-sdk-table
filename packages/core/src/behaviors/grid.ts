@@ -63,6 +63,12 @@ export type TableGrid = GridFocus & {
 	 * holds the tab stop.
 	 */
 	bindRoot(root: HTMLElement): () => void
+	/**
+	 * Moves focus as a key of the grid does, without the key event: for a key
+	 * that another part handled first, such as an arrow that saved an editor.
+	 * Returns whether focus moved.
+	 */
+	move(key: string, event?: Event): boolean
 	/** Whether focus is in the table: on a cell or on a control inside one. */
 	hasFocus(): boolean
 	/**
@@ -118,7 +124,10 @@ export function createTableGrid<State extends object>(
 	let reached: GridCell | undefined
 	let bound: HTMLElement | undefined
 
-	function target(event: KeyboardEvent, rtl: boolean): GridCell | undefined {
+	function target(
+		event: { key: string; ctrlKey?: boolean; metaKey?: boolean },
+		rtl: boolean,
+	): GridCell | undefined {
 		const active = grid.active()
 		const rows = options.rows()
 		const cols = options.cols()
@@ -162,6 +171,10 @@ export function createTableGrid<State extends object>(
 		if (!next) return false
 		// The key belongs to the grid, also at an edge, so the page does not scroll.
 		event.preventDefault()
+		return go(next, event, event.shiftKey)
+	}
+
+	function go(next: GridCell, event: Event | undefined, shift: boolean): boolean {
 		if (next.row < 0 || next.col < 0 || next.row >= options.rows() || next.col >= options.cols()) {
 			return false
 		}
@@ -172,7 +185,7 @@ export function createTableGrid<State extends object>(
 		reached = { row: cell.row, col: cell.col }
 		byKey = true
 		try {
-			return grid.focus(reached, { reason: 'list-navigation', event, shift: event.shiftKey })
+			return grid.focus(reached, { reason: 'list-navigation', event, shift })
 		} finally {
 			byKey = false
 		}
@@ -196,6 +209,10 @@ export function createTableGrid<State extends object>(
 		...grid,
 		keydown,
 		settle,
+		move(key, event) {
+			const next = target({ key }, !!bound && isRTL(bound))
+			return !!next && go(next, event, false)
+		},
 		cellKeydown(event, cell) {
 			const inside = !!cell && event.target instanceof Node && event.target !== cell
 			if (inside) {

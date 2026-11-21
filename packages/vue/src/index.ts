@@ -41,9 +41,11 @@ export {
 	cellValue,
 	createDebounce,
 	defaultMessages,
+	emptyValue,
 	isEmptyFilter,
 	isNumericFormat,
 	linkOf,
+	moveFrom,
 	sliderBounds,
 	toText,
 } from 'ui-sdk-table-core'
@@ -86,4 +88,9 @@ export type {
 	TableController,
 	TableMessages,
 	TableView,
+	CellSelectionView,
+	HistoryEntry,
+	Move,
+	TableEditReason,
+	TableHistoryOptions,
 } from 'ui-sdk-table-core'

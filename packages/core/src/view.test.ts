@@ -324,6 +324,30 @@ describe('what a control beside the table reads', () => {
 			expect(view.api.getFacets('count').range).toEqual({ min: 0, max: 50, step: 5 })
 			expect(price && sliderBounds(price)).toEqual({ min: 0.3, max: 12.35, step: 0.01 })
 			expect(sliderBounds({ min: 3, max: 12, step: 5 })).toEqual({ min: 0, max: 15, step: 5 })
+			// With `steps`, a wide range gets a step that a thumb can use: 1, 2 or 5
+			// times a power of ten of the cell step, and never finer than it.
+			expect(sliderBounds({ min: 4.99, max: 1899.5, step: 0.01 }, { steps: 100 })).toEqual({
+				min: 0,
+				max: 1900,
+				step: 20,
+			})
+			expect(sliderBounds({ min: 12, max: 340, step: 1 }, { steps: 100 })).toEqual({
+				min: 10,
+				max: 340,
+				step: 5,
+			})
+			expect(sliderBounds({ min: 0.02, max: 0.31, step: 0.001 }, { steps: 100 })).toEqual({
+				min: 0.02,
+				max: 0.31,
+				step: 0.005,
+			})
+			// A range that has fewer stops than that keeps the step of its cells.
+			expect(sliderBounds({ min: 1, max: 40, step: 1 }, { steps: 100 })).toEqual({
+				min: 1,
+				max: 40,
+				step: 1,
+			})
+			expect(sliderBounds({ min: 5, max: 5, step: 0.01 }, { steps: 100 }).step).toBe(0.01)
 			expect(sliderBounds({ min: -0.25, max: 0.25, step: 0.1 })).toEqual({
 				min: -0.3,
 				max: 0.3,

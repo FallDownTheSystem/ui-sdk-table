@@ -16,7 +16,8 @@ export type RowNodes<Row> = {
 	byId: Map<string, DataRow<Row>>
 }
 
-function ownId(row: unknown): string | undefined {
+/** The `id` of a row object, when it has one that can be an id. */
+export function ownId(row: unknown): string | undefined {
 	if (typeof row !== 'object' || row === null) return undefined
 	const id = (row as { id?: unknown }).id
 	return typeof id === 'string' || typeof id === 'number' ? String(id) : undefined

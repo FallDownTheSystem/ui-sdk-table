@@ -45,6 +45,39 @@ What the numbers show:
 - The facets of a column are counted when a control asks for them. A column without a filter of its own counts the rows that the table shows, so a keystroke in the search filters one time, for the table, and the count adds about 3 ms. A column that filters leaves its own filter out, which is one more pass over the rows: about 10 ms more for one keystroke. A new value of the filter of the column itself keeps the rows of its facets, and costs nothing.
 - A text sort is the most expensive operation. Its time goes to `Intl.Collator`, which gives the correct order for the locale and for numbers inside text.
 
+## Sheet, 50,000 rows
+
+Run it with:
+
+```bash
+BENCH=1 vp test run packages/core/src/sheet/sheet.perf --silent=false
+```
+
+Each value is the median of 9 runs, in milliseconds, with a turn between the runs. The table has 50,000 rows of 5 columns and renders no cell, so the numbers are the work of the table itself. A block is 10,000 rows by 5 columns, 50,000 cells.
+
+| Operation | 2026-11-21 cloud, the code of `4d4e397` | 2026-11-21 cloud, with the writer, the history and the sheet keys |
+| --- | --- | --- |
+| Paste of 50,000 cells, history off | 40.3 (39.2 to 44.1 in 5 runs) | 44.7 (41.5 to 49.2 in 5 runs) |
+| Two pastes of 50,000 cells in one turn | not measured | 91.7 |
+| Paste of 50,000 cells, history on (records a step) | not measured | 46.8 |
+| Undo of a step of 50,000 cells | not measured | 70.4 |
+| Redo of a step of 50,000 cells | not measured | 67.2 |
+| Clear of 50,000 cells (Delete), with its step | not measured | 35.6 |
+| Paste of 2 by 5 cells that repeats over 50,000 cells | not measured | 43.3 |
+| `getView` with a selection of 50,000 cells, first call | not measured | 0.17 |
+| `getView` with the same selection, again | not measured | 0.02 |
+| `applyEdits`, 50,000 edits on 50,000 rows | not measured | 7.2 |
+| `applyEdits`, the same edits on rows that were replaced | not measured | 8.9 |
+
+What the numbers show:
+
+- The paste went from `pasteText` in `table.ts` to the writer of `behaviors/write.ts`, and reads each value through the values of the turn. It costs about 4 ms more for 50,000 cells, which is inside the spread of the runs on this computer. Most of the time of a paste is the parse of 50,000 texts.
+- The history costs about 2 ms for a step of 50,000 cells: one small object for each cell. A step holds ids and values and no row object.
+- An undo builds 50,000 edits from the rows of now and reports them. The number holds the owner of the measurement, which puts each value into a `Map`; the table's part is about the time of a paste.
+- A second report in one turn reads the values of the first report from a map that is built at that moment. Two pastes in one turn cost the time of two pastes.
+- The selection in `getView` counts the data rows of the range one time for each range, and is free after that.
+- `applyEdits` finds a row by its object first. When the owner replaced the objects already, as at the second report of one turn, it finds the rows by id in a second pass, which costs about 2 ms for 50,000 rows.
+
 ## Rendering, 50,000 rows
 
 The benchmark page of `apps/docs` (`vp run dev`, then the "50,000 rows" button) measures a full render in the browser.

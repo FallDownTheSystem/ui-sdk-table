@@ -2,6 +2,7 @@ export { createDebounce, type Debounce, type DebounceOptions } from './debounce'
 export * from './edit'
 export * from './format'
 export * from './rows'
+export * from './sheet'
 export type { GridCell } from './behaviors/grid'
 export type { ColumnReorderMessage } from './behaviors/reorder'
 export {
@@ -39,6 +40,8 @@ export {
 	type TableController,
 	type TableEditDetails,
 	type TableEditReason,
+	type TableHistoryOptions,
+	type CellSelectionView,
 	type TableOptions,
 	type TableReason,
 	type TableView,

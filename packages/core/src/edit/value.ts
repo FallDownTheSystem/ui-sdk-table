@@ -117,6 +117,23 @@ export function parseText(
 	return { value: text }
 }
 
+/**
+ * The value of a cell that a person emptied, as Delete does in a sheet. The
+ * `parse` of the column decides, from an empty text. Without it, the value
+ * that the cell holds now decides: a number or a date gives `null`, a
+ * boolean gives `false`, and anything else gives an empty text.
+ */
+export function emptyValue(row: unknown, column: ColumnDef): unknown {
+	if (column.parse) return column.parse('', row)
+	const current = cellValue(row, column)
+	if (typeof current === 'number' || typeof current === 'bigint' || current instanceof Date) {
+		return null
+	}
+	if (typeof current === 'boolean') return false
+	if (current == null && !!column.format && NUMBER_FORMATS.includes(column.format)) return null
+	return ''
+}
+
 /** Whether two cell values are the same value, so an edit from one to the other changes nothing. */
 export function sameValue(a: unknown, b: unknown): boolean {
 	// `===` too: 0 and -0 show the same.

@@ -8,6 +8,7 @@ export {
 } from './schema'
 export {
 	editText,
+	emptyValue,
 	parseText,
 	readNumberText,
 	resolveValue,

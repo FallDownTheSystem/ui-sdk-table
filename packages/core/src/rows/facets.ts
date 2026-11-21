@@ -145,14 +145,35 @@ export function numberStep<Row>(
  * The ends of a slider for a range of numbers: `min` goes down and `max` goes
  * up to the next step, so every value of the range is between them and each
  * end is a place where the thumb can stop.
+ *
+ * The step of a range is the smallest change that a cell shows, such as 0.01
+ * for a currency, and that is too fine for a thumb over a wide range. With
+ * `steps`, the step grows to the smallest of 1, 2 or 5 times a power of ten
+ * of it that gives that many stops at most, so 100 gives about a hundred
+ * stops. It is never finer than the step of the range, and always a multiple
+ * of it, so each stop is a value that a cell can show.
  */
-export function sliderBounds(range: { min: number; max: number; step: number }): {
+export function sliderBounds(
+	range: { min: number; max: number; step: number },
+	options: { steps?: number } = {},
+): {
 	min: number
 	max: number
 	step: number
 } {
-	const { step } = range
+	let { step } = range
 	if (!(step > 0) || !Number.isFinite(step)) return { ...range }
+	const most = options.steps
+	const span = range.max - range.min
+	if (most !== undefined && most >= 1 && Number.isFinite(span)) {
+		const fine = step
+		search: for (let power = 1; ; power *= 10) {
+			for (const factor of [1, 2, 5]) {
+				step = Number((fine * factor * power).toPrecision(12))
+				if (span / step <= most) break search
+			}
+		}
+	}
 	// Without the cut, 0.3 / 0.1 is 2.9999999999999996, and the end would be one step off.
 	const steps = (value: number) => Number((value / step).toPrecision(12))
 	const at = (count: number) => Number((count * step).toPrecision(12))

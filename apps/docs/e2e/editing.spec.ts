@@ -617,3 +617,52 @@ test('Shift+Space and Control+Space take rows and columns of the range, and rows
 	await expect(table.locator('td[aria-selected="false"]')).toHaveCount(0)
 	await expect(row).toHaveAttribute('aria-selected', 'true')
 })
+
+test('the keys of a sheet do nothing in a table', async ({ page }) => {
+	const table = await open(page)
+	await expect(table).not.toHaveAttribute('data-sheet')
+	await page.evaluate(() => navigator.clipboard.writeText('kept'))
+	const name = cell(table, 2, 2)
+	await name.click()
+	await page.keyboard.press('Shift+ArrowDown')
+	await expect(selected(table)).toHaveCount(2)
+	for (const key of ['Delete', 'Backspace', 'Control+z', 'Control+y', 'Control+Shift+z']) {
+		await page.keyboard.press(key)
+	}
+	// A cut without the sheet option is the browser's, and a cell holds no text to cut.
+	await page.keyboard.press('Control+x')
+	expect(await clipboard(page)).toBe('kept')
+	await expect(name).toHaveText('Aino Aalto')
+	await expect(cell(table, 3, 2)).toHaveText('Eero Heikkinen')
+	await expect(selected(table)).toHaveCount(2)
+	await expect(log(page)).toHaveCount(0)
+	await expect(editor(table)).toHaveCount(0)
+
+	// Tab leaves the table, also with a range.
+	await page.keyboard.press('Tab')
+	await expect(page.getByRole('button', { name: 'Clear the list' })).toBeFocused()
+	await page.keyboard.press('Shift+Tab')
+	await expect(name).toBeFocused()
+
+	// An arrow in an editor that a character opened moves the caret, and Enter leaves focus on the cell.
+	const score = cell(table, 2, 4)
+	await score.click()
+	await page.keyboard.type('5')
+	await page.keyboard.press('ArrowDown')
+	await page.keyboard.press('ArrowLeft')
+	await expect(editor(table)).toBeFocused()
+	await page.keyboard.type('4')
+	await page.keyboard.press('Enter')
+	await expect(score).toHaveText('45')
+	await expect(score).toBeFocused()
+	await expect(log(page).first()).toHaveText('enter-key: e1.score=45')
+
+	// A block is pasted once, and never repeats over a range.
+	await page.evaluate(() => navigator.clipboard.writeText('1\n2'))
+	await score.click()
+	for (let step = 0; step < 3; step++) await page.keyboard.press('Shift+ArrowDown')
+	await page.keyboard.press('Control+v')
+	await expect(cell(table, 3, 4)).toHaveText('2')
+	await expect(cell(table, 4, 4)).toHaveText('54')
+	await expect(selected(table)).toHaveCount(2)
+})

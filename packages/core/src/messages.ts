@@ -54,6 +54,44 @@ export type TableMessages = {
 	pasteOverRow: () => string
 	/** Why an edit was not saved: its row left the table while the value was checked. */
 	editRowGone: () => string
+	/** What a screen reader says after Delete or `clearCells` emptied cells. */
+	cellsCleared: (details: { cells: number }) => string
+	/** What a screen reader says after a cut. */
+	cellsCut: (details: { cells: number }) => string
+	/** Why a clear or a cut did nothing: a column refuses an empty value. */
+	clearRefused: (details: { column: string; message: string }) => string
+	/** Why a clear or a cut did nothing: no cell under it can be edited. */
+	clearNowhere: () => string
+	/**
+	 * What a screen reader says after an undo. `cells` got their old value
+	 * back, `gone` of the step are not in the table any more, and `hidden` of
+	 * the cells that changed are not in view: a filter, a page or a closed row
+	 * hides them.
+	 */
+	undone: (details: { cells: number; gone: number; hidden: number }) => string
+	/** What a screen reader says after a redo. */
+	redone: (details: { cells: number; gone: number; hidden: number }) => string
+	/** Why an undo or a redo did nothing: a listener of `onCellEdit` refused it. */
+	undoRefused: () => string
+	nothingToUndo: () => string
+	nothingToRedo: () => string
+	/** Why an undo or a redo must wait: the check of a new value runs. */
+	historyBusy: () => string
+	/** What a screen reader says when one change holds more cells than the history keeps, so it cannot be undone. */
+	historyTooLarge: (details: { cells: number }) => string
+}
+
+const cellCount = (cells: number) => (cells === 1 ? '1 cell' : `${cells} cells`)
+
+/** What an undo or a redo did, in one text: the cells that changed, then the ones that could not, then the ones out of view. */
+function stepText(
+	{ cells, gone, hidden }: { cells: number; gone: number; hidden: number },
+	how: string,
+): string {
+	const parts = [cells ? `${cellCount(cells)} changed ${how}.` : `No cell changed ${how}.`]
+	if (gone) parts.push(`${cellCount(gone)} ${gone === 1 ? 'is' : 'are'} not in the table any more.`)
+	if (hidden) parts.push(`${cellCount(hidden)} of them ${hidden === 1 ? 'is' : 'are'} not in view.`)
+	return parts.join(' ')
 }
 
 export const defaultMessages: TableMessages = {
@@ -92,4 +130,17 @@ export const defaultMessages: TableMessages = {
 		`Nothing was pasted. The text has ${rows} ${rows === 1 ? 'row' : 'rows'} and ${columns} ${columns === 1 ? 'column' : 'columns'}, and the table has fewer from this cell on.`,
 	pasteOverRow: () => 'Nothing was pasted. A row here holds no values.',
 	editRowGone: () => 'The change was not saved. The row is not in the table any more.',
+	cellsCleared: ({ cells }) => `${cellCount(cells)} cleared.`,
+	cellsCut: ({ cells }) => `${cellCount(cells)} cut.`,
+	clearRefused: ({ column, message }) =>
+		`Nothing was cleared. ${column} refuses an empty value: ${message}`,
+	clearNowhere: () => 'Nothing was cleared. No cell here can be edited.',
+	undone: (details) => stepText(details, 'back'),
+	redone: (details) => stepText(details, 'again'),
+	undoRefused: () => 'The change was not taken back.',
+	nothingToUndo: () => 'Nothing to undo.',
+	nothingToRedo: () => 'Nothing to redo.',
+	historyBusy: () => 'A value is checked now. Undo and redo wait for the answer.',
+	historyTooLarge: ({ cells }) =>
+		`A change of ${cellCount(cells)} is too large to undo. The history is empty now.`,
 }

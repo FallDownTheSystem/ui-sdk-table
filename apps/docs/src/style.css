@@ -364,3 +364,14 @@ body {
 	--table-sticky-bottom: 40px;
 	padding-block: 56px 40px;
 }
+
+/* The button in a header of the sheet page that selects the cells of its column. */
+.column-pick {
+	margin-inline-start: 0.25rem;
+	padding: 0 0.25rem;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}

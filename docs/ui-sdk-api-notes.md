@@ -890,6 +890,19 @@ Role type (`roles.d.ts`) includes: `grid gridcell row rowgroup rowheader columnh
 - No changelog ships in either package; 13 betas in 8 days (proof). Everything table-critical except `createReorder`, `createRovingFocus`, `createSelection`, `createTypeahead` is `@experimental`: keep each behind one table behavior of ours.
 - Copy/paste glue (`copy`/`paste` handlers), column pinning, sorting UI, filtering UI, pagination state: no helper (only `cellsToText`/`textToCells`, and the shipped `Pagination` component).
 
+## 10. Proofs for the sheet behaviors (beta.13)
+
+Each line is a test that fails first when a new UI SDK version changes the rule. Unit proofs are in `packages/core/src/proofs/`, browser proofs in `apps/docs/e2e/proofs.spec.ts` (Chromium only; Firefox and Safari are not proven).
+
+- **P1, two reports in one turn** (`proofs/history-owner.test.ts`): the fault was real. `applyEdits` looked for the row object of an edit and dropped an edit whose object the owner had replaced, without a word, and a second value for one cell was held against the rows of the last render. Fixed at the cause: `applyEdits` finds the row by `edit.rowId` when the object is gone, and the table reads a cell that it reported in this turn from `edit/turn.ts`. After the turn the rows of the owner are the truth again.
+- **P2, a range while focus moves** (`proofs/range-focus.test.ts`): `grid.focus(cell)` keeps the range of `createCellRange`, also with an event that holds Shift. The next Shift+arrow grows the range from its own end, not from the active cell. An arrow without Shift drops the range. `selectAll`, `selectRows` and `selectColumns` leave the active cell where it is, also outside the new range, so the table moves it in.
+- **P3, browser events on a cell** (`e2e/proofs.spec.ts`): a `cut` event reaches a `td` with a tab index, as a `copy` does, and `preventDefault` with `clipboardData.setData` writes the clipboard. `keydown` for Control+Y and Control+D reaches the page and is cancelable. Not proven: what the browser itself does with these keys in a window with its own menus, and Command+Y on a Mac.
+- **P4, a drag while rows come and go** (`e2e/proofs.spec.ts`, page `?page=proofs`): `bindDrag(root, event, ...)` on the root of the table keeps its moves and its end after the row window took the pressed row out of the page. `createAutoScroll` scrolls the frame of the table with the pointer near its edge, over the sticky footer, and `document.elementFromPoint` finds the cell under the pointer by its `aria-rowindex` and `aria-colindex`. The row of the active cell stays in the page, so the proof takes the press away from the table.
+- **P5, a reader of our own for `selects`** (`proofs/reader.test.ts`): a reader is `{ values({ props }), moved(previous, next, notify) }`. `values` gives the names that a part listens to, `moved` names the parts that a change reaches, and only those parts run `attrs`. Any text is a name. The Vue half of the question (item 2 of the list below) is still open and belongs to the slice of the cell formats.
+- **R8, who made a step**: `dispatch` gives back only whether a listener canceled. The table calls the listener of the owner through one of its own and reads `details.source` there, so a step of an agent says `agent` (`packages/vue/src/history.test.ts`).
+- `mount` of `@ui-sdk/core/testing` never passes new options, and `rerenderOf` is no runtime export. A test of rows that the owner replaces is a Vue test; the core tests of the sheet use an owner with a store beside its rows (`packages/core/src/sheet/harness.ts`).
+- `createController` warns in development for each method that is called before a component attached, `subscribe` too. `createTableController` of `packages/vue` does not ask it before the first table arrived.
+
 ### Unconfirmed list (collected)
 
 1. `update:<key>` skipped on `details.canceled` in `createParts` Roots; the exact controlled-detection rule in `createChange`.

@@ -9,11 +9,15 @@ import {
 	dispatch,
 	isRTL,
 	live,
+	matchesShortcut,
 	selects,
 	type ChangeDetails,
+	type ChangeSource,
 	type CommitDetails,
 } from '@ui-sdk/core'
 import { createCellEdit, type LateSave, type SaveResult } from './behaviors/edit'
+import { createStepHistory, type HistoryCounts, type HistoryResult } from './behaviors/history'
+import { createCellWrites, type WriteInput, type WriteTarget } from './behaviors/write'
 import { createTableGrid, GRID_KEYS, type GridArea, type GridCell } from './behaviors/grid'
 import { createColumnPins } from './behaviors/pin'
 import {
@@ -47,14 +51,18 @@ import {
 import {
 	cellKey,
 	editText,
-	isThenable,
+	emptyValue,
 	parseCellKey,
 	resolveValue,
 	sameValue,
+	isThenable,
 	type CellEdit,
 	type ParseTexts,
 	type Checked,
 } from './edit'
+import { createTurnValues } from './edit/turn'
+import { moveFrom, type Move } from './sheet/moves'
+import { stepSize, type HistoryEntry, type TableStep } from './sheet/steps'
 import { createDebounce } from './debounce'
 import { collectExport, type ExportData, type ExportOptions } from './export/data'
 import { formatValue, isNumericFormat } from './format'
@@ -105,8 +113,24 @@ export type TableReason =
 export type TableChangeDetails = ChangeDetails<TableReason>
 export type TableCommitDetails = CommitDetails<TableReason>
 
-/** Why cells got new values: a key or a loss of focus in the editor, a paste, or a call from code. */
-export type TableEditReason = 'enter-key' | 'tab-key' | 'focus-out' | 'paste' | 'imperative'
+/**
+ * Why cells got new values: a key or a loss of focus in the editor, a paste,
+ * or a call from code. A table with the `sheet` or the `history` option also
+ * reports an arrow key that saved the editor (`list-navigation`), a cut, a
+ * clear, a fill, and an undo or a redo.
+ */
+export type TableEditReason =
+	| 'enter-key'
+	| 'tab-key'
+	| 'focus-out'
+	| 'paste'
+	| 'imperative'
+	| 'list-navigation'
+	| 'cut'
+	| 'clear'
+	| 'fill'
+	| 'undo'
+	| 'redo'
 export type TableEditDetails = ChangeDetails<TableEditReason>
 
 /** A cell of the data, by the id of its row and of its column. */
@@ -215,6 +239,38 @@ export type TableController = {
 	 */
 	pasteCells(text: string): void | Promise<void>
 	/**
+	 * Empties the selected cells, as Delete does in a sheet: each gets the
+	 * empty value of its column (`emptyValue`), with the check of the column.
+	 * It throws with the reason when a column refuses an empty value, and then
+	 * no cell changes. Cells that cannot be edited are left as they are.
+	 */
+	clearCells(): void | Promise<void>
+	/**
+	 * Empties the selected cells and returns their text, as `copyCells` gives
+	 * it. A caller puts the text on the clipboard. It throws as `clearCells` does.
+	 */
+	cutCells(): string | Promise<string>
+	/** Selects every cell of the body. Needs the `cellSelection` option. */
+	selectAllCells(): void
+	/** Selects every cell of a row, or of the rows from one to another as the list shows them. */
+	selectCellRows(fromRowId: string, toRowId?: string): void
+	/** Selects every cell of a column, or of the columns from one to another as the table shows them. */
+	selectCellColumns(fromColumnId: string, toColumnId?: string): void
+	/**
+	 * Takes the last change of cell values back: it reports the old values
+	 * through `onCellEdit` with the reason `undo`, and the owner of the rows
+	 * puts them in, as for an edit. Needs the `history` option. It throws when
+	 * there is nothing to undo, when a listener refuses the report, and while
+	 * the check of a value runs.
+	 */
+	undo(): void
+	/** Puts the change on again that `undo` took back last, with the reason `redo`. */
+	redo(): void
+	/** Forgets every step. Call it when the rows become other data, such as another document. */
+	clearHistory(): void
+	/** The steps of the history, oldest first, and how many of them are applied: `undo` takes back the last of those. */
+	getHistory(): { entries: readonly HistoryEntry<TableEditReason>[]; position: number }
+	/**
 	 * The cells of the table as plain data, for a file: every row that passes
 	 * the filters and the visible columns, or what the options ask for. The
 	 * writers are in the `export` entry of the package (`toCsv`, `toXlsx`).
@@ -295,6 +351,34 @@ export type TableView = {
 	/** Whether one of them is open now. An id in `expanded` that no group or row has any more does not count. */
 	hasExpanded: boolean
 	loading: boolean
+	/** Whether `undo` has a step to take back. Always false without the `history` option. */
+	canUndo: boolean
+	canRedo: boolean
+	/** The cell that has the tab stop, when it is a cell of a data row. */
+	activeCell: CellRef | null
+	/**
+	 * The selected cells of a table with `cellSelection`: the range, or the
+	 * active cell alone. `null` when no cell of a data row is selected.
+	 */
+	cellSelection: CellSelectionView | null
+}
+
+/**
+ * The selected cells by id: the first and the last cell that hold values, and
+ * how many data rows and columns are between them. Group rows and detail rows
+ * inside a range hold no values and are not counted.
+ */
+export type CellSelectionView = { from: CellRef; to: CellRef; rows: number; columns: number }
+
+/** The limits of the history. Without one, the default holds. */
+export type TableHistoryOptions = {
+	/** How many steps are kept. The oldest go first. Defaults to 100. */
+	limit?: number
+	/**
+	 * How many cells all steps together hold. The oldest steps go first, and
+	 * one step that is larger empties the history. Defaults to 100,000.
+	 */
+	maxCells?: number
 }
 
 export type PageUnit = 'rows' | 'groups' | 'parents' | 'mixed'
@@ -384,6 +468,15 @@ type CellActions =
 	| 'clearCellSelection'
 	| 'copyCells'
 	| 'pasteCells'
+	| 'clearCells'
+	| 'cutCells'
+	| 'selectAllCells'
+	| 'selectCellRows'
+	| 'selectCellColumns'
+	| 'undo'
+	| 'redo'
+	| 'clearHistory'
+	| 'getHistory'
 	| 'exportData'
 
 /** The methods that are written apart from the main list, each group beside the state it reads. */
@@ -540,7 +633,29 @@ export type TableOptions<Row = unknown> = {
 	defaultRowPinning?: RowPinning
 	onRowPinningChange?: (value: RowPinning, details: TableChangeDetails) => void
 
-	/** Whether a person can edit cells. A column can say otherwise. Defaults to false. */
+	/**
+	 * The rules of a data sheet. In the editor, Enter saves and moves down
+	 * (with Shift up), and an arrow key saves and moves when a character
+	 * opened the editor. Inside a selected range, Enter and Tab walk the range
+	 * and Tab on a cell stays in it; without a range, Tab on a cell leaves the
+	 * table as before. Delete and Backspace empty the selected cells, a cut
+	 * empties them too, and a paste repeats a block that fits the range a
+	 * whole number of times. It is also a preset: `editable`, `cellSelection`
+	 * and `history` are on unless one of them is set to false. Defaults to false.
+	 */
+	sheet?: boolean
+	/**
+	 * Undo and redo for cell values: Control or Command with Z, and with
+	 * Shift+Z or Y, on a cell, and `undo` and `redo` of the controller. A step
+	 * is one report of `onCellEdit` that no listener refused. An undo reports
+	 * the old values through `onCellEdit` with the reason `undo`, without
+	 * `parse` and without the schema, and the owner of the rows puts them in.
+	 * Rows need stable ids for it. With `manualPage`, a change of the page,
+	 * the sort or the filter empties the history. Pass limits in place of
+	 * `true` to change them. Defaults to the `sheet` option.
+	 */
+	history?: boolean | TableHistoryOptions
+	/** Whether a person can edit cells. A column can say otherwise. Defaults to the `sheet` option. */
 	editable?: boolean
 	/**
 	 * Runs when cells got new values: one cell from the editor or from
@@ -550,7 +665,7 @@ export type TableOptions<Row = unknown> = {
 	 */
 	onCellEdit?: (edits: readonly CellEdit<Row>[], details: TableEditDetails) => void
 
-	/** Whether a person can select a range of cells, to copy it or to paste into it. Defaults to false. */
+	/** Whether a person can select a range of cells, to copy it or to paste into it. Defaults to the `sheet` option. */
 	cellSelection?: boolean
 	/**
 	 * The selected range of cells, from the cell where it started to the cell
@@ -624,6 +739,8 @@ type TableState = {
 	searchDraft: string | null
 	/** Whether the text of `searchDraft` waits for a pause in the typing. */
 	searchPending: boolean
+	/** How many steps `undo` and `redo` have. The steps themselves are not state. */
+	history: HistoryCounts
 	/** The id of the cell that is edited (`cellKey`), or `null`. */
 	editing: string | null
 	/** The id of the cell whose new value is checked now, or `null`. */
@@ -660,6 +777,7 @@ const NO_WIDTHS: ColumnWidths = {}
 const NO_PINNING: ColumnPinning = {}
 const NO_ROW_PINNING: RowPinning = {}
 const NO_ERRORS: Readonly<Record<string, string>> = {}
+const NO_LIMITS: TableHistoryOptions = {}
 const NO_FLAT: FlatRow<unknown>[] = []
 
 const DEFAULT_ROW_HEIGHT = 36
@@ -694,6 +812,7 @@ const QUIET = {
 	editErrors: [],
 	searchDraft: [],
 	searchPending: [],
+	history: [],
 } as const
 
 /** For a part that reads no state at all. */
@@ -711,6 +830,23 @@ const SILENT = {
 	columnDrag: [],
 	rowPinning: [],
 } as const
+
+const EDIT_REASONS: readonly TableEditReason[] = [
+	'enter-key',
+	'tab-key',
+	'focus-out',
+	'paste',
+	'list-navigation',
+	'cut',
+	'clear',
+	'fill',
+	'undo',
+	'redo',
+]
+
+const NO_HISTORY: HistoryCounts = { undo: 0, redo: 0 }
+const HISTORY_LIMIT = 100
+const HISTORY_MAX_CELLS = 100_000
 
 /** One cleanup for several. */
 const together =
@@ -790,6 +926,8 @@ export const table = definePrimitive({
 		rowPinning: 'value',
 		defaultRowPinning: 'value',
 		onRowPinningChange: 'callback',
+		sheet: 'boolean',
+		history: 'value',
 		editable: 'boolean',
 		onCellEdit: 'callback',
 		cellSelection: 'boolean',
@@ -853,6 +991,7 @@ export const table = definePrimitive({
 			cellRange: options.cellRange ?? options.defaultCellRange ?? null,
 			searchDraft: null,
 			searchPending: false,
+			history: NO_HISTORY,
 			editing: null,
 			editChecking: null,
 			editErrors: NO_ERRORS,
@@ -883,6 +1022,9 @@ export const table = definePrimitive({
 		const commit = createCommit(context)
 		const message = <Key extends keyof TableMessages>(key: Key): TableMessages[Key] =>
 			options().messages?.[key] ?? defaultMessages[key]
+		/** The rules of a data sheet, which are also a preset for the options under them. */
+		const sheet = () => options().sheet ?? false
+		const editableByDefault = () => options().editable ?? sheet()
 
 		let seenRows = options().rows
 		let seenColumns = options().columns
@@ -1426,10 +1568,10 @@ export const table = definePrimitive({
 				all || columns.some((column) => column.editable !== undefined && column.editable !== false),
 		)
 		/** Whether some cell of the table can be edited. */
-		const editing = () => hasEditing(layout().all, options().editable ?? false)
+		const editing = () => hasEditing(layout().all, editableByDefault())
 
 		function canEdit(node: DataRow<unknown>, column: ColumnDef): boolean {
-			const rule = column.editable ?? options().editable ?? false
+			const rule = column.editable ?? editableByDefault()
 			return typeof rule === 'function' ? rule(node.row) : rule
 		}
 
@@ -1469,13 +1611,214 @@ export const table = definePrimitive({
 		})
 
 		const editReason = (reason: string): TableEditReason =>
-			reason === 'enter-key' || reason === 'tab-key' || reason === 'focus-out' || reason === 'paste'
-				? reason
+			(EDIT_REASONS as readonly string[]).includes(reason)
+				? (reason as TableEditReason)
 				: 'imperative'
 
-		/** Tells the caller about new values. Returns whether a listener refused them. */
+		// The values that were reported in this turn. The rows of the owner come
+		// with its next render, and until then a second report must start from
+		// the first: its `previous`, and the test whether a value changes at all.
+		const turn = createTurnValues(() => options().rows)
+		/** The value that a cell holds now: what the table reported in this turn, else what the row says. */
+		function valueNow(node: DataRow<unknown>, column: ColumnDef): unknown {
+			const held = turn.read(node.id, column.id)
+			return held ? held.value : cellValue(node.row, column)
+		}
+
+		/**
+		 * Tells the owner about new values, and returns whether a listener
+		 * refused them, with the source of the change as the listener got it.
+		 * `dispatch` gives back only the refusal, so the listener is called
+		 * through one of our own that reads the details on their way.
+		 */
+		function tell(
+			edits: CellEdit[],
+			reason: TableEditReason,
+			event?: Event,
+		): { refused: boolean; source: ChangeSource } {
+			let source: ChangeSource = 'programmatic'
+			const through = {
+				options: () => ({
+					onCellEdit(given: readonly CellEdit[], details: TableEditDetails) {
+						source = details.source
+						options().onCellEdit?.(given, details)
+					},
+				}),
+			}
+			const refused = dispatch(through, 'onCellEdit', edits, { reason, event })
+			if (!refused) turn.add(edits)
+			return { refused, source }
+		}
+
+		/** Tells the caller about new values. Returns whether a listener refused them. A report that went through is a step of the history. */
 		function report(edits: CellEdit[], reason: string, event?: Event): boolean {
-			return dispatch(context, 'onCellEdit', edits, { reason: editReason(reason), event })
+			const why = editReason(reason)
+			const { refused, source } = tell(edits, why, event)
+			if (refused) return true
+			if (historyOn()) {
+				history.record({
+					id: ++stepIds,
+					reason: why,
+					source,
+					cells: edits.map((edit) => ({
+						rowId: edit.rowId,
+						columnId: edit.columnId,
+						before: edit.previous,
+						after: edit.value,
+					})),
+				})
+			}
+			return false
+		}
+
+		const historyOn = () => (options().history ?? sheet()) !== false
+		const historyLimits = (): TableHistoryOptions => {
+			const given = options().history
+			return typeof given === 'object' && given !== null ? given : NO_LIMITS
+		}
+		let stepIds = 0
+		// What the last undo or redo did, for the words after it.
+		let applied: { cells: number; gone: number; hidden: number } | undefined
+
+		/**
+		 * Puts a step back, or on again. The table never writes a row, so this
+		 * is a report, as an edit is, and the owner of the rows puts the values
+		 * in. The values came from the data and not from a person, so they pass
+		 * no `parse` and no schema: a schema could refuse a value that the data
+		 * held before, and that step would block every step under it.
+		 */
+		function applyStep(
+			step: TableStep<TableEditReason>,
+			direction: 'undo' | 'redo',
+			event?: Event,
+		): HistoryResult {
+			const edits: CellEdit[] = []
+			const places: GridCell[] = []
+			let gone = 0
+			let hidden = 0
+			const columns = layout().byId
+			// The places are looked up without a cell id: a step can hold many thousands of cells.
+			const rowPlaces = flatIndex(bodyRows())
+			const columnPlaces = layout().index
+			const head = headerRowCount()
+			for (const cell of step.cells) {
+				// Every row that the table has, also one that a filter, a page or a closed parent hides.
+				const node = model.rowById(cell.rowId)
+				const column = columns.get(cell.columnId)
+				if (!node || !column) {
+					gone++
+					continue
+				}
+				const value = direction === 'undo' ? cell.before : cell.after
+				const previous = valueNow(node, column)
+				// The owner did not take the edit, or took this step back by itself.
+				if (sameValue(previous, value)) continue
+				edits.push({ rowId: node.id, columnId: column.id, row: node.row, column, value, previous })
+				const row = rowPlaces.get(node.id)
+				const col = columnPlaces.get(column.id)
+				if (row === undefined || col === undefined) hidden++
+				else places.push({ row: head + row, col })
+			}
+			// Nothing of the step is in the table any more.
+			if (gone === step.cells.length) return 'gone'
+			if (edits.length && tell(edits, direction, event).refused) return 'refused'
+			applied = { cells: edits.length, gone, hidden }
+			showCells(places)
+			return 'done'
+		}
+
+		/**
+		 * Brings the person to cells that changed without a key or a press on
+		 * them: the active cell goes to the first one, and when the cells are
+		 * one block, the block is the range.
+		 */
+		function showCells(places: readonly GridCell[]): void {
+			const [head] = places
+			if (!head) return
+			let top = head.row
+			let bottom = head.row
+			let left = head.col
+			let right = head.col
+			for (const place of places) {
+				top = Math.min(top, place.row)
+				bottom = Math.max(bottom, place.row)
+				left = Math.min(left, place.col)
+				right = Math.max(right, place.col)
+			}
+			const first = { row: top, col: left }
+			activate(first)
+			// The person must see what changed, also from a button outside the table,
+			// where focus does not bring the row into view.
+			const row = bodyRows()[top - headerRowCount()]
+			if (row && !row.pinned) rowWindow.scrollTo(row.id)
+			if (!cellSelection()) return
+			const block = (bottom - top + 1) * (right - left + 1) === places.length && places.length > 1
+			range.select(block ? { anchor: first, end: { row: bottom, col: right } } : null, {
+				reason: 'imperative',
+			})
+		}
+
+		/**
+		 * Makes a cell the active one from code. Focus that is in the table
+		 * goes with it, or the next arrow key would start from a cell that the
+		 * person is not on. Focus that is outside the table stays there: a call
+		 * from code must not take it from the person.
+		 */
+		function activate(cell: GridCell): void {
+			const active = state().active
+			if (active?.row === cell.row && active.col === cell.col) return
+			if (grid.hasFocus()) {
+				grid.focus(cell, { reason: 'imperative' })
+				return
+			}
+			context.store.set({ active: cell })
+		}
+
+		const history = createStepHistory<TableState, TableStep<TableEditReason>>(context, {
+			key: 'history',
+			enabled: historyOn,
+			limit: () => historyLimits().limit ?? HISTORY_LIMIT,
+			size: stepSize,
+			maxSize: () => historyLimits().maxCells ?? HISTORY_MAX_CELLS,
+			apply: (step, direction, details) => applyStep(step, direction, details.event),
+			overflow: (step) => announce(message('historyTooLarge')({ cells: step.cells.length })),
+		})
+
+		/** Whether a new value is checked now. Its step is not in the history yet, so an undo would take the step before it. */
+		const historyBusy = () => edit.checking() || writes.pending()
+
+		/**
+		 * Runs an undo or a redo and says what it did. Returns the reason why
+		 * nothing changed, or `undefined`.
+		 */
+		function travel(direction: 'undo' | 'redo', event?: Event): string | undefined {
+			if (historyBusy()) return message('historyBusy')()
+			applied = undefined
+			const result = direction === 'undo' ? history.undo({ event }) : history.redo({ event })
+			if (result === 'refused') return message('undoRefused')()
+			if (result !== 'done' || !applied) {
+				return message(direction === 'undo' ? 'nothingToUndo' : 'nothingToRedo')()
+			}
+			announce(message(direction === 'undo' ? 'undone' : 'redone')(applied))
+			return undefined
+		}
+
+		/** Handles the keys of the history on a cell. Returns whether the key was one of them. */
+		function historyKeydown(event: KeyboardEvent): boolean {
+			if (!historyOn()) return false
+			const redo = matchesShortcut(event, 'mod+shift+z') || matchesShortcut(event, 'mod+y')
+			if (!redo && !matchesShortcut(event, 'mod+z')) return false
+			// The key is the table's, also with nothing to undo: the browser must not undo in a field elsewhere.
+			event.preventDefault()
+			const direction = redo ? 'redo' : 'undo'
+			const empty = direction === 'undo' ? !history.canUndo(state()) : !history.canRedo(state())
+			// A key with no step is silent, and so is a key while a check runs.
+			if (empty || historyBusy()) return true
+			const reason = travel(direction, event)
+			if (reason !== undefined && history.read().steps.length) {
+				announce(reason, { priority: 'assertive' })
+			}
+			return true
 		}
 
 		/**
@@ -1496,7 +1839,7 @@ export const table = definePrimitive({
 				// caller looks for the row object of the edit in its rows of now.
 				const now = model.rowById(node.id)
 				if (!now) return message('editRowGone')()
-				const previous = cellValue(now.row, column)
+				const previous = valueNow(now, column)
 				if (sameValue(previous, checked.value)) return true
 				const edits = [
 					{
@@ -1534,18 +1877,58 @@ export const table = definePrimitive({
 		})
 		const GONE = 'The table was removed before the value was checked, so nothing was saved.'
 
-		/** The cell after or before a cell, in reading order, inside the rows of the body. */
-		function nextCell(from: GridCell, back: boolean): GridCell | undefined {
-			const last = layout().leaves.length - 1
-			let row = from.row
-			let col = from.col + (back ? -1 : 1)
-			if (col < 0 || col > last) {
-				row += back ? -1 : 1
-				col = back ? last : 0
+		const writes = createCellWrites<TableEditReason>(context, {
+			rowById: (id) => model.rowById(id),
+			check: (input: WriteInput, row, column) =>
+				resolveValue(input, row, column, parseTexts(), options().locale),
+			valueOf: valueNow,
+			report: (edits, details) => report(edits, details.reason, details.event),
+			refusal: {
+				value: ({ reason, column, text, message: why }) =>
+					reason === 'clear' || reason === 'cut'
+						? message('clearRefused')({ column: label(column.id), message: why })
+						: message('pasteRefused')({ column: label(column.id), text, message: why }),
+				invalid: () => message('invalidValue')(),
+				rowGone: () => message('editRowGone')(),
+				refused: () => message('editRefused')(),
+				tableGone: () => GONE,
+			},
+		})
+
+		/** The body rows as grid rows, and the columns in view: where a move after a save can go. */
+		const moveLimits = () => {
+			const first = headerRowCount()
+			return { first, last: first + bodyRows().length - 1, cols: layout().leaves.length }
+		}
+		/** Whether a place of the grid holds the cell of a data row. A group row and a detail row hold none. */
+		const holdsCell = (cell: GridCell) => cellIdAt(cell.row, cell.col) !== undefined
+
+		/** The selected range when it holds more than one cell and the cell is inside it. */
+		function rangeAround(cell: GridCell): CellBounds | undefined {
+			if (!cellSelection() || !state().cellRange) return undefined
+			const bounds = selectedCells()
+			if (!bounds) return undefined
+			const inside =
+				cell.row >= bounds.top &&
+				cell.row <= bounds.bottom &&
+				cell.col >= bounds.left &&
+				cell.col <= bounds.right
+			return inside ? bounds : undefined
+		}
+
+		/**
+		 * The cell that focus goes to after a save. In a table, Tab goes to the
+		 * next cell in reading order and stops at the last one. In a sheet,
+		 * Enter moves too, a group row is passed over, and inside a selected
+		 * range both keys walk the range and start again at its first cell.
+		 */
+		function moveAfter(from: GridCell, move: Move): GridCell {
+			if (!sheet()) {
+				const next = moveFrom(from, move, moveLimits())
+				const spot = area(next)
+				return { row: spot.row, col: spot.col }
 			}
-			if (!inBody(row)) return undefined
-			const spot = area({ row, col })
-			return { row: spot.row, col: spot.col }
+			return moveFrom(from, move, moveLimits(), rangeAround(from), holdsCell)
 		}
 
 		const edit = createCellEdit(context, {
@@ -1570,14 +1953,36 @@ export const table = definePrimitive({
 			refused: (_id, reason) => announce(reason, { priority: 'assertive' }),
 			// The input goes away with the edit, so focus goes to a cell: the one
 			// that was edited, or after Tab the next one, as in a spreadsheet.
+			arrows: sheet,
 			done: (id, details) => {
 				const at = placeOf(id)
 				if (!at) return
-				const back = details.event instanceof KeyboardEvent && details.event.shiftKey
-				const tab = details.saved && details.reason === 'tab-key'
-				const to = tab ? (nextCell(at, back) ?? at) : at
+				const { event } = details
+				const key = event instanceof KeyboardEvent ? event : undefined
+				// An arrow that saved the editor moves as the arrow does on a cell: one
+				// cell, and a range goes. The key event is used up by then (a slow check
+				// answers long after it), so the grid moves by the name of the key.
+				if (details.saved && details.reason === 'list-navigation' && key) {
+					grid.focus(at, { reason: 'imperative', event })
+					if (cellSelection()) range.select(null, { reason: 'list-navigation', event })
+					grid.move(key.key, event)
+					return
+				}
+				const back = !!key?.shiftKey
+				const move: Move | undefined = !details.saved
+					? undefined
+					: details.reason === 'tab-key'
+						? back
+							? 'back'
+							: 'forward'
+						: sheet() && details.reason === 'enter-key' && key?.key === 'Enter'
+							? back
+								? 'up'
+								: 'down'
+							: undefined
+				const to = move ? moveAfter(at, move) : at
 				const next = cellIdAt(to.row, to.col)
-				grid.focus(to, { reason: tab ? 'list-navigation' : 'imperative', event: details.event })
+				grid.focus(to, { reason: move ? 'list-navigation' : 'imperative', event })
 				if (next === undefined || next === id) return
 				// The save can move the row, for example in a sorted table. The
 				// renderer then moves its element, focus is lost, and the text field
@@ -1595,7 +2000,7 @@ export const table = definePrimitive({
 			},
 		})
 
-		const cellSelection = () => options().cellSelection ?? false
+		const cellSelection = () => options().cellSelection ?? sheet()
 		const range = createTableRange(context, {
 			key: 'cellRange',
 			grid,
@@ -1665,66 +2070,44 @@ export const table = definePrimitive({
 			const block = textToCells(text)
 			const width = Math.max(0, ...block.map((line) => line.length))
 			const single = block.length === 1 && width === 1
+			// In a sheet, a block that fits the range a whole number of times fills it, as one value does.
+			const repeats =
+				single ||
+				(sheet() &&
+					width > 0 &&
+					(bounds.bottom - bounds.top + 1) % block.length === 0 &&
+					(bounds.right - bounds.left + 1) % width === 0)
 			const head = headerRowCount()
 			const rows = bodyRows()
 			const leaves = layout().leaves
-			const bottom = single ? bounds.bottom : bounds.top + block.length - 1
-			const right = single ? bounds.right : bounds.left + width - 1
+			const bottom = repeats ? bounds.bottom : bounds.top + block.length - 1
+			const right = repeats ? bounds.right : bounds.left + width - 1
 			// All or nothing: a text that is cut at the edge of the table is half a paste.
 			if (bottom > head + rows.length - 1 || right > leaves.length - 1) {
 				throw new Error(message('pasteTooLarge')({ rows: block.length, columns: width }))
 			}
-			const targets: { node: DataRow<unknown>; column: ColumnDef; text: string }[] = []
+			const targets: WriteTarget[] = []
 			for (let row = bounds.top; row <= bottom; row++) {
 				const flat = rows[row - head]
+				const line = block[(row - bounds.top) % block.length] ?? []
 				if (!flat || flat.node.kind !== 'row' || flat.detail) {
 					// A group row or a detail row holds no values. A copy gives an
 					// empty line for it, and such a line passes. A line with values
 					// has no place here, and the lines after it would be one row off.
-					const line = single ? [] : (block[row - bounds.top] ?? [])
-					if (line.some((value) => value !== '')) throw new Error(message('pasteOverRow')())
+					if (!single && line.some((value) => value !== '')) {
+						throw new Error(message('pasteOverRow')())
+					}
 					continue
 				}
 				for (let col = bounds.left; col <= right; col++) {
 					const column = leaves[col]
-					const value = single ? block[0]?.[0] : block[row - bounds.top]?.[col - bounds.left]
+					const value = line[(col - bounds.left) % width]
 					if (!column || value === undefined || !canEdit(flat.node, column)) continue
-					targets.push({ node: flat.node, column, text: value })
+					targets.push({ rowId: flat.id, column, input: { text: value } })
 				}
 			}
 			if (!targets.length) throw new Error(message('pasteNowhere')())
-			const finish = (checked: readonly Checked[]): void => {
-				if (destroyed) throw new Error(GONE)
-				const edits: CellEdit[] = []
-				checked.forEach((result, index) => {
-					const target = targets[index]
-					if (!target) return
-					// The rows can be other objects after a check that took time.
-					const node = model.rowById(target.node.id)
-					if (!node) throw new Error(message('editRowGone')())
-					if ('issues' in result) {
-						throw new Error(
-							message('pasteRefused')({
-								column: label(target.column.id),
-								text: target.text,
-								message: result.issues[0] ?? message('invalidValue')(),
-							}),
-						)
-					}
-					const previous = cellValue(node.row, target.column)
-					if (sameValue(previous, result.value)) return
-					edits.push({
-						rowId: node.id,
-						columnId: target.column.id,
-						row: node.row,
-						column: target.column,
-						value: result.value,
-						previous,
-					})
-				})
-				if (edits.length && report(edits, 'paste', event)) {
-					throw new Error(message('editRefused')())
-				}
+			const finish = (cells: number): void => {
 				if (cellSelection()) {
 					const pasted = {
 						anchor: { row: bounds.top, col: bounds.left },
@@ -1734,24 +2117,61 @@ export const table = definePrimitive({
 					// paste is not a reason that a change of state knows.
 					range.select(pasted, { reason: 'imperative' })
 				}
-				announce(message('cellsPasted')({ cells: edits.length }))
+				announce(message('cellsPasted')({ cells }))
 			}
-			const checks = targets.map((target) =>
-				resolveValue(
-					{ text: target.text },
-					target.node.row,
-					target.column,
-					parseTexts(),
-					options().locale,
-				),
-			)
-			const ready = checks.filter((check): check is Checked => !isThenable(check))
-			return ready.length === checks.length
-				? finish(ready)
-				: Promise.all(checks.map((check) => Promise.resolve(check))).then(finish)
+			const written = writes.write(targets, { reason: 'paste', event })
+			return typeof written === 'number' ? finish(written) : written.then(finish)
 		}
 
-		function onCopy(event: ClipboardEvent): void {
+		/**
+		 * Empties the selected cells: each gets the empty value of its column,
+		 * with the check of the column. All or nothing, as a paste. Cells that
+		 * cannot be edited are left as they are. Returns how many cells changed.
+		 */
+		function clearSelected(reason: 'clear' | 'cut', event?: Event): number | Promise<number> {
+			const bounds = selectedCells()
+			if (!bounds) throw new Error(message('clearNowhere')())
+			const head = headerRowCount()
+			const rows = bodyRows()
+			const leaves = layout().leaves.slice(bounds.left, bounds.right + 1)
+			const targets: WriteTarget[] = []
+			for (let row = bounds.top; row <= bounds.bottom; row++) {
+				const flat = rows[row - head]
+				if (!flat || flat.node.kind !== 'row' || flat.detail) continue
+				for (const column of leaves) {
+					if (!canEdit(flat.node, column)) continue
+					const value = emptyValue(flat.node.row, column)
+					targets.push({ rowId: flat.id, column, input: { value } })
+				}
+			}
+			if (!targets.length) throw new Error(message('clearNowhere')())
+			return writes.write(targets, { reason, event })
+		}
+
+		/** Runs work that a person started with a key or the clipboard, and says a refusal at once. */
+		function attempt(work: () => unknown): void {
+			const failed = (error: unknown) => {
+				if (destroyed) return
+				announce(error instanceof Error ? error.message : String(error), { priority: 'assertive' })
+			}
+			try {
+				const later = work()
+				if (isThenable(later)) void Promise.resolve(later).catch(failed)
+			} catch (error) {
+				failed(error)
+			}
+		}
+
+		/** Empties the selected cells and says how many changed. */
+		function clearAndSay(reason: 'clear' | 'cut', event?: Event): void | Promise<void> {
+			const say = (cells: number): void => {
+				announce(message(reason === 'cut' ? 'cellsCut' : 'cellsCleared')({ cells }))
+			}
+			const cleared = clearSelected(reason, event)
+			return typeof cleared === 'number' ? say(cleared) : cleared.then(say)
+		}
+
+		function onCopy(event: ClipboardEvent, say = true): void {
 			const bounds = selectedCells()
 			if (!bounds) return
 			// Without a range, a person who selected text with the pointer copies that text.
@@ -1762,6 +2182,7 @@ export const table = definePrimitive({
 			if (!ranged && cellIdAt(bounds.top, bounds.left) === undefined) return
 			event.clipboardData?.setData('text/plain', copyText())
 			event.preventDefault()
+			if (!say) return
 			const cells = (bounds.bottom - bounds.top + 1) * (bounds.right - bounds.left + 1)
 			announce(message('cellsCopied')({ cells }))
 		}
@@ -1770,16 +2191,103 @@ export const table = definePrimitive({
 			const text = event.clipboardData?.getData('text/plain')
 			if (!text || !editing()) return
 			event.preventDefault()
-			const failed = (error: unknown) => {
-				if (destroyed) return
-				announce(error instanceof Error ? error.message : String(error), { priority: 'assertive' })
+			attempt(() => pasteText(text, event))
+		}
+
+		/**
+		 * A cut in a sheet: the text goes to the clipboard at once, because a
+		 * clipboard can be written only inside its event, and then the cells
+		 * are emptied. When the clear is refused, the cells keep their values
+		 * and the text stays on the clipboard, as after a copy.
+		 */
+		function onCut(event: ClipboardEvent): void {
+			if (!sheet() || !editing()) return
+			const before = event.defaultPrevented
+			onCopy(event, false)
+			// The copy took the event when it had cells to copy.
+			if (before || !event.defaultPrevented) return
+			attempt(() => clearAndSay('cut', event))
+		}
+
+		/** The keys of a sheet on a body cell: Delete and Backspace empty the selected cells, and Tab stays inside a range. */
+		function sheetKeydown(event: KeyboardEvent, cell: GridCell): boolean {
+			if (!sheet() || event.altKey || event.ctrlKey || event.metaKey) return false
+			if (event.key === 'Tab') {
+				// Without a range, Tab leaves the table: a page is not a spreadsheet,
+				// and a table that keeps Tab is a trap for a person without a pointer.
+				const bounds = rangeAround(cell)
+				if (!bounds) return false
+				event.preventDefault()
+				const to = moveFrom(
+					cell,
+					event.shiftKey ? 'back' : 'forward',
+					moveLimits(),
+					bounds,
+					holdsCell,
+				)
+				grid.focus(to, { reason: 'list-navigation', event })
+				return true
 			}
-			try {
-				const later = pasteText(text, event)
-				if (later) void later.catch(failed)
-			} catch (error) {
-				failed(error)
+			if (event.shiftKey || (event.key !== 'Delete' && event.key !== 'Backspace')) return false
+			if (!editing() || !inBody(cell.row)) return false
+			event.preventDefault()
+			// An editor that is open in another cell with a refused value keeps the person.
+			if (!edit.release(undefined, event)) return true
+			attempt(() => clearAndSay('clear', event))
+			return true
+		}
+
+		/** The data rows between two rows of the body: how many, and the first and the last. */
+		const dataRowsIn = memo((rows: readonly FlatRow<unknown>[], top: number, bottom: number) => {
+			let count = 0
+			let first: string | undefined
+			let last: string | undefined
+			for (let index = top; index <= bottom; index++) {
+				const flat = rows[index]
+				if (!flat || flat.node.kind !== 'row' || flat.detail) continue
+				count++
+				first ??= flat.id
+				last = flat.id
 			}
+			return { count, first, last }
+		})
+
+		function selectionView(): CellSelectionView | null {
+			if (!cellSelection()) return null
+			const bounds = selectedCells()
+			if (!bounds) return null
+			const head = headerRowCount()
+			const found = dataRowsIn(bodyRows(), bounds.top - head, bounds.bottom - head)
+			const leaves = layout().leaves
+			const from = leaves[bounds.left]
+			const to = leaves[bounds.right]
+			if (found.first === undefined || found.last === undefined || !from || !to) return null
+			return {
+				from: { rowId: found.first, columnId: from.id },
+				to: { rowId: found.last, columnId: to.id },
+				rows: found.count,
+				columns: bounds.right - bounds.left + 1,
+			}
+		}
+
+		function activeCellRef(): CellRef | null {
+			const active = state().active
+			const id = active ? cellIdAt(active.row, active.col) : undefined
+			return (id === undefined ? undefined : parseCellKey(id)) ?? null
+		}
+
+		/** After a range was selected from code: the active cell is inside it, as the start of a range is. */
+		function activeIntoRange(): void {
+			const bounds = selectedCells()
+			const active = state().active
+			if (!bounds) return
+			const inside =
+				active &&
+				active.row >= bounds.top &&
+				active.row <= bounds.bottom &&
+				active.col >= bounds.left &&
+				active.col <= bounds.right
+			if (!inside) activate({ row: bounds.top, col: bounds.left })
 		}
 
 		function requireSelection(): void {
@@ -1835,6 +2343,12 @@ export const table = definePrimitive({
 				const newList =
 					next.sort !== seen.sort || next.filter !== seen.filter || next.groupBy !== seen.groupBy
 				seen = next
+				// With pages from a server, another page, sort or filter brings other
+				// rows. The rows of the steps are no longer in the table, and the owner
+				// saved them or dropped them when it left the page.
+				if ((options().manualPage ?? false) && (newList || changed.includes('page'))) {
+					history.clear()
+				}
 				// After `seen`: this can move the active cell, which runs this function
 				// again inside itself, and that run must not see a new list a second time.
 				followColumns()
@@ -2584,6 +3098,10 @@ export const table = definePrimitive({
 					hasExpandable: open.size > 0,
 					hasExpanded: current.expanded.some((id) => open.has(id)),
 					loading: options().loading ?? false,
+					canUndo: history.canUndo(current),
+					canRedo: history.canRedo(current),
+					activeCell: activeCellRef(),
+					cellSelection: selectionView(),
 				}
 			},
 			getFacets(columnId, facetOptions = {}) {
@@ -2763,9 +3281,7 @@ export const table = definePrimitive({
 			const node = requireRow(rowId, 'edit')
 			const found = column(columnId, 'edit')
 			if (canEdit(node, found)) return { node, column: found }
-			const open = layout().all.filter(
-				(item) => (item.editable ?? options().editable ?? false) !== false,
-			)
+			const open = layout().all.filter((item) => (item.editable ?? editableByDefault()) !== false)
 			throw new Error(
 				`The cell of row "${rowId}" in column "${columnId}" cannot be edited. Columns with cells that can be edited: ${listed(open.map((item) => item.id))}.`,
 			)
@@ -2824,22 +3340,14 @@ export const table = definePrimitive({
 				edit.cancel()
 			},
 			selectCells(from, to = from) {
-				if (!cellSelection()) {
-					throw new Error(
-						'This table has no cell selection. Set its `cellSelection` option to true.',
-					)
-				}
+				requireCellSelection()
 				const anchor = requireCell(from, 'select')
 				const end = requireCell(to, 'select')
 				// The active cell is the start of a range. Focus that is outside the
 				// table stays there: a call from code must not take it from the
 				// person. Focus that is in the table goes with the active cell, or
 				// the next arrow key would start from a cell that the person is not on.
-				const active = state().active
-				if (active?.row !== anchor.row || active.col !== anchor.col) {
-					if (grid.hasFocus()) grid.focus(anchor, { reason: 'imperative' })
-					else context.store.set({ active: anchor })
-				}
+				activate(anchor)
 				range.select({ anchor, end }, { reason: 'imperative' })
 			},
 			clearCellSelection() {
@@ -2876,6 +3384,95 @@ export const table = definePrimitive({
 				if (typeof text !== 'string') throw new Error('`pasteCells` takes a text.')
 				return pasteText(text)
 			},
+			clearCells: () => clearAndSay('clear'),
+			cutCells() {
+				const text = copyText()
+				const cleared = clearAndSay('cut')
+				return cleared ? cleared.then(() => text) : text
+			},
+			selectAllCells() {
+				requireCellSelection()
+				range.selectAll({ reason: 'imperative' })
+				activeIntoRange()
+			},
+			selectCellRows(fromRowId, toRowId = fromRowId) {
+				requireCellSelection()
+				const first = layout().leaves[0]
+				if (!first) throw new Error('No column is in view, so there is no cell to select.')
+				const from = requireCell({ rowId: fromRowId, columnId: first.id }, 'select')
+				const to = requireCell({ rowId: toRowId, columnId: first.id }, 'select')
+				range.selectRows(from.row, to.row, { reason: 'imperative' })
+				activeIntoRange()
+			},
+			selectCellColumns(fromColumnId, toColumnId = fromColumnId) {
+				requireCellSelection()
+				requireVisible(fromColumnId, 'select')
+				requireVisible(toColumnId, 'select')
+				const index = layout().index
+				range.selectColumns(index.get(fromColumnId) ?? 0, index.get(toColumnId) ?? 0, {
+					reason: 'imperative',
+				})
+				activeIntoRange()
+			},
+			undo: () => travelOrThrow('undo'),
+			redo: () => travelOrThrow('redo'),
+			clearHistory() {
+				requireHistory()
+				history.clear()
+			},
+			getHistory() {
+				const { steps, position } = history.read()
+				return {
+					entries: steps.map((step) => ({
+						id: step.id,
+						reason: step.reason,
+						source: step.source,
+						cells: step.cells.length,
+					})),
+					position,
+				}
+			},
+		}
+
+		function requireCellSelection(): void {
+			if (cellSelection()) return
+			throw new Error('This table has no cell selection. Set its `cellSelection` option to true.')
+		}
+
+		function requireHistory(): void {
+			if (historyOn()) return
+			throw new Error('This table has no history. Set its `history` option.')
+		}
+
+		function travelOrThrow(direction: 'undo' | 'redo'): void {
+			requireHistory()
+			// An editor that is open holds a value that is no step yet. It is saved first.
+			if (!edit.release()) {
+				throw new Error(
+					'The editor of a cell is open, and its value was refused or is checked now. Call `cancelEdit` first, or give it a value that passes.',
+				)
+			}
+			const reason = travel(direction)
+			if (reason !== undefined) throw new Error(reason)
+		}
+
+		/**
+		 * Selects the cells of a column, for a control in its header. With
+		 * Shift, the columns from the active cell to this one.
+		 */
+		function selectColumnCells(columnId: string, event?: Event): void {
+			requireCellSelection()
+			requireVisible(columnId, 'select')
+			const to = layout().index.get(columnId) ?? 0
+			const active = state().active
+			const shift =
+				event instanceof MouseEvent || event instanceof KeyboardEvent ? event.shiftKey : false
+			const from = shift && active && inBody(active.row) ? active.col : to
+			range.selectColumns(from, to, { reason: event ? 'item-press' : 'imperative', event })
+			if (!shift) {
+				const bounds = selectedCells()
+				if (bounds) activate({ row: bounds.top, col: to })
+			}
 		}
 
 		/** Changes the width of a column by a number of pixels, as a key on its header does. */
@@ -2929,13 +3526,20 @@ export const table = definePrimitive({
 				const cell = id === null ? undefined : cellOf(id)
 				// A second save while the first is checked would check a value that is never reported.
 				if (!cell || edit.checking()) return
-				edit.settle(saveCell(cell.node, cell.column, { value }, 'imperative', event), {
-					reason: 'imperative',
-					event,
-				})
+				// In a sheet, Enter in an editor of the caller saves and moves down, as in the text field.
+				const reason =
+					sheet() && event instanceof KeyboardEvent && event.key === 'Enter'
+						? 'enter-key'
+						: 'imperative'
+				edit.settle(saveCell(cell.node, cell.column, { value }, reason, event), { reason, event })
 			},
 			onCopy,
 			onPaste,
+			onCut,
+			sheet,
+			sheetKeydown,
+			historyKeydown,
+			selectColumnCells,
 			sticky,
 			rowWindow,
 			/** What the body renders of the rows of the list, or `undefined` when it renders them all. */
@@ -3055,6 +3659,7 @@ export const table = definePrimitive({
 				editErrors: [],
 				searchDraft: [],
 				searchPending: [],
+				history: [],
 			}),
 			// A resize changes the width of the table at each step, and the rows must
 			// not render for it. So the two attributes that follow the widths are
@@ -3078,6 +3683,7 @@ export const table = definePrimitive({
 					'aria-multiselectable':
 						api.selectionMode() === 'multiple' || api.cellSelection() ? 'true' : undefined,
 					'data-cell-selection': api.cellSelection() ? '' : undefined,
+					'data-sheet': api.sheet() ? '' : undefined,
 					'data-sized': sized ? '' : undefined,
 					'data-row-window': api.windowed() ? '' : undefined,
 					'aria-busy': api.loading() ? 'true' : undefined,
@@ -3278,6 +3884,13 @@ export const table = definePrimitive({
 				'shift+ ',
 				'mod+ ',
 				'mod+a',
+				'Delete',
+				'Backspace',
+				'Tab',
+				'shift+Tab',
+				'mod+z',
+				'mod+shift+z',
+				'mod+y',
 			],
 			// A cell reads the range and the editor only for its own place and its own id.
 			selects: selects({
@@ -3380,6 +3993,9 @@ export const table = definePrimitive({
 					const leaf = !!header?.leaf && !!column
 					// A column that is picked up owns every key until it is dropped.
 					if (onCell && leaf && api.reorder.keydown(event, column.id)) return
+					// Undo and redo act on the values of the table from any cell. In a
+					// field inside a cell, the key is the field's: the browser undoes the typing there.
+					if (onCell && api.historyKeydown(event)) return
 					// Alt with an arrow changes the width of the column, from its header.
 					if (
 						onCell &&
@@ -3412,6 +4028,7 @@ export const table = definePrimitive({
 					// Enter, F2 or a character opens the editor of a cell that can be
 					// edited. It comes before the move into the cell: the cell holds a
 					// value, and the editor is its control.
+					if (onCell && !props.header && api.sheetKeydown(event, props)) return
 					const id = onCell && !props.header ? api.cellIdAt(props.row, props.col) : undefined
 					if (id !== undefined && api.edit.keydown(event, id)) return
 					if (
@@ -3520,6 +4137,9 @@ export const table = definePrimitive({
 				},
 				paste: (event, { api, props, el }) => {
 					if (event.target === el && !props.header) api.onPaste(event)
+				},
+				cut: (event, { api, props, el }) => {
+					if (event.target === el && !props.header) api.onCut(event)
 				},
 			},
 			bind: (el, { api, props }) => {
@@ -3687,6 +4307,13 @@ export const table = definePrimitive({
 			'copyCells',
 			'exportData',
 			'pasteCells',
+			'clearCells',
+			'cutCells',
+			'selectAllCells',
+			'selectCellRows',
+			'selectCellColumns',
+			'undo',
+			'redo',
 		],
 	},
 })

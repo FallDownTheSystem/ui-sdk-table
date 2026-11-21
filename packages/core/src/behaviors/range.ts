@@ -25,6 +25,20 @@ export type TableRange<State> = {
 	): { 'aria-selected': string; 'data-selected'?: string; 'data-range-edge'?: string }
 	/** Selects a range, or `null` for no range. */
 	select(range: CellRange | null, details?: { reason: CellRangeReason; event?: Event }): boolean
+	/** Selects every cell of the body. The active cell stays where it is. */
+	selectAll(details?: { reason: CellRangeReason; event?: Event }): boolean
+	/** Selects whole rows, from one grid row to another. Rows outside the body are left out. */
+	selectRows(
+		from: number,
+		to?: number,
+		details?: { reason: CellRangeReason; event?: Event },
+	): boolean
+	/** Selects whole columns, from one to another, over the rows of the body. */
+	selectColumns(
+		from: number,
+		to?: number,
+		details?: { reason: CellRangeReason; event?: Event },
+	): boolean
 	bind(el: HTMLElement, cell: GridCell): () => void
 	/**
 	 * Handles a key on a cell. Shift with an arrow, Home or End grows the
@@ -135,6 +149,9 @@ export function createTableRange<State extends object>(
 		contains: (state, cell) => range.contains(state, cell),
 		cellAttrs: (state, cell) => range.cellAttrs(state, cell),
 		select: (next, details) => range.select(next, details),
+		selectAll: (details) => range.selectAll(details),
+		selectRows: (from, to, details) => range.selectRows(from, to, details),
+		selectColumns: (from, to, details) => range.selectColumns(from, to, details),
 		bind: (el, cell) => range.bind(el, cell),
 		// From a header cell or the footer row, a range has no start. The keys move focus there.
 		keydown: (event) =>

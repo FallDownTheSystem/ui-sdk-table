@@ -129,6 +129,57 @@ describe('values of an edit', () => {
 		expect(parse('7', { id: 'note', parse: (text) => `#${text}` })).toEqual({ value: '#7' })
 	})
 
+	test('`applyEdits` finds the row of an edit by its id when the owner replaced the object already', () => {
+		type Row = { id: string; name: string; score: number }
+		const name: ColumnDef<Row> = { id: 'name' }
+		const score: ColumnDef<Row> = { id: 'points', key: 'score' }
+		const first: Row[] = [
+			{ id: 'a', name: 'Aino', score: 1 },
+			{ id: 'b', name: 'Eero', score: 2 },
+		]
+		const edit = (row: Row, column: ColumnDef<Row>, value: unknown): CellEdit<Row> => ({
+			rowId: row.id,
+			columnId: column.id,
+			row,
+			column,
+			value,
+			previous: undefined,
+		})
+		const [a, b] = first as [Row, Row]
+		const second = applyEdits(first, [edit(a, name, 'Aina')])
+		expect(second[1]).toBe(b)
+		// A second report of the same turn still holds the row object of the first rows.
+		const third = applyEdits(second, [edit(a, score, 9), edit(b, name, 'Eeli')])
+		expect(third).toEqual([
+			{ id: 'a', name: 'Aina', score: 9 },
+			{ id: 'b', name: 'Eeli', score: 2 },
+		])
+		// A row that no edit names is the same object, and an edit of a row that left changes nothing.
+		const gone = applyEdits(third, [edit({ id: 'z', name: '', score: 0 }, name, 'Zoe')])
+		expect(gone.map((row, index) => row === third[index])).toEqual([true, true])
+
+		// Rows without an `id` are found by their place, as the table counts them, or by `getRowId`.
+		type Plain = { code: string; name: string }
+		const plain: Plain[] = [
+			{ code: 'x', name: 'One' },
+			{ code: 'y', name: 'Two' },
+		]
+		const column: ColumnDef<Plain> = { id: 'name' }
+		const stale = { code: 'y', name: 'Old' }
+		const byPlace = {
+			rowId: '1',
+			columnId: 'name',
+			row: stale,
+			column,
+			value: 'Deux',
+			previous: 'Two',
+		}
+		expect(applyEdits(plain, [byPlace])[1]?.name).toBe('Deux')
+		const byCode = { ...byPlace, rowId: 'y' }
+		expect(applyEdits(plain, [byCode])[1]?.name).toBe('Two')
+		expect(applyEdits(plain, [byCode], (row) => row.code)[1]?.name).toBe('Deux')
+	})
+
 	test('a schema passes a value, refuses it, or answers later', async () => {
 		expect(checkValue(undefined, 'x')).toEqual({ value: 'x' })
 		expect(checkValue(atLeastZero, 4)).toEqual({ value: 4 })
@@ -474,7 +525,7 @@ describe('cell editing', () => {
 		}
 	})
 
-	test('`editCell` checks the value and throws with the reason', () => {
+	test('`editCell` checks the value and throws with the reason', async () => {
 		const { view, rows, edits } = setup()
 		try {
 			void view.api.editCell('b', 'score', 55)
@@ -492,7 +543,9 @@ describe('cell editing', () => {
 			// A text is read as the editor reads it.
 			void view.api.editCell('b', 'score', '56')
 			expect(edits[1]?.edits[0]?.value).toBe(56)
-			// The same value is no edit.
+			// The same value is no edit. The owner of this test keeps its rows, and
+			// after the turn the table reads them again.
+			await view.settle()
 			void view.api.editCell('b', 'score', 20)
 			expect(edits).toHaveLength(2)
 
@@ -653,7 +706,7 @@ describe('cell range', () => {
 		}
 	})
 
-	test('a paste fills cells from the first selected cell, through the check of each column', () => {
+	test('a paste fills cells from the first selected cell, through the check of each column', async () => {
 		const { view, rows, edits, cell } = setup({ cellSelection: true })
 		try {
 			view.api.selectCells({ rowId: 'b', columnId: 'name' })
@@ -679,7 +732,9 @@ describe('cell range', () => {
 			)
 			expect(edits).toHaveLength(1)
 
-			// One value fills every selected cell.
+			// One value fills every selected cell. The owner of this test keeps its
+			// rows, and after the turn the table reads them again: Eero has 20.
+			await view.settle()
 			view.api.selectCells({ rowId: 'a', columnId: 'score' }, { rowId: 'c', columnId: 'score' })
 			void view.api.pasteCells('20')
 			expect(edits[1]?.edits.map((edit) => [edit.rowId, edit.value])).toEqual([

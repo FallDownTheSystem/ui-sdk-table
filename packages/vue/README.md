@@ -22,7 +22,7 @@ const columns: ColumnDef<Person>[] = [
 - The package ships TypeScript source (`exports` points at `src`), so an app compiles it with its own compiler options.
 - The export is named `Table`. An app that registers a component of its own with that name (for example by file name) imports this one under another name: `import { Table as HeadlessTable } from 'ui-sdk-table-vue'`.
 - `rowAttrs` and `cellAttrs` give attributes to rows and cells. The table spreads them first and its own attributes after them, so a caller cannot replace a part prop (`value`, `index`, `row`, `col`, `colspan`) or a state attribute (`aria-*`, `data-*` of the table).
-- `createTableController()` can be used before the table mounts: `subscribe` waits for the table and runs once when it is there.
+- `createTableController()` can be used before the table mounts: `subscribe` waits for the table and runs once when it is there. `useTableSearch` and `useTableView` can be called before the table too.
 
 ## What a styled table builds on
 
@@ -33,7 +33,8 @@ const columns: ColumnDef<Person>[] = [
 | A checkbox or an expand column | A column with `lead: true`: always first, never in the column order or the pins, and it sticks with the first column that is pinned to the start. Its cells carry `data-lead`, for a width of their own |
 | Controls beside the table | `createTableController()`, then `getView()` for the state and the pages, `subscribe()` for when to read again, and one method for each action. In Vue, `useTableView(controller)` is a ref of the view that follows the table, and is `undefined` until the table is there |
 | A search field | `useTableSearch(controller)`: see below |
-| Filter controls | `getFacets(columnId)`: see below |
+| Filter controls | `getFacets(columnId)`: see below. `sliderBounds(range, { steps: 100 })` gives a slider its ends and a step that a thumb can use: 1, 2 or 5 times a power of ten of the step of a cell, and about a hundred stops |
+| A data sheet | The `sheet` option: see below |
 | Totals | The footer row, the cells of a group row, `getTotals()`, and the `totals` option for totals that only a server knows |
 
 ## Group rows
@@ -96,3 +97,55 @@ Without Vue, the same is `controller.inputSearch(text, event)`, `controller.flus
 ## Columns back to their start
 
 `controller.hideAllColumns()` hides every column that can be hidden, in one change; a column with `hideable: false` and a `lead` column stay, and the first column in view stays when no other would. `resetColumnVisibility()`, `resetColumnOrder()` and `resetColumnPinning()` bring a state back to what the table started with (its `default…` prop, else the empty state), with the reason `reset`. `resetColumnWidths()` takes every width away. A `v-model:column-visibility` that hides every column gives a table without columns; the table does not correct the state of its owner.
+
+## A data sheet
+
+```vue
+<script setup lang="ts">
+import { applyEdits, createTableController, Table, useTableView } from 'ui-sdk-table-vue'
+
+const controller = createTableController()
+const view = useTableView(controller)
+</script>
+
+<template>
+	<button :disabled="!view?.canUndo" @click="controller.undo()">Undo</button>
+	<button :disabled="!view?.canRedo" @click="controller.redo()">Redo</button>
+	<Table
+		:rows="rows"
+		:columns="columns"
+		:controller="controller"
+		sheet
+		@cell-edit="(edits) => (rows = applyEdits(rows, edits))"
+	/>
+</template>
+```
+
+`sheet` is the table with the rules of a data sheet, and a preset: `editable`, `cell-selection` and `history` are on unless one is set to false. Each of them also works alone, so `<Table editable history>` is a table with undo. Without them, a table behaves as before.
+
+| Key | With `sheet` |
+| --- | --- |
+| A character on a cell | Opens the editor with that character (`mode` is `replace`) |
+| Enter in the editor | Saves and moves down, with Shift up. Inside a range it walks the range column by column |
+| Tab in the editor | Saves and moves to the next cell. Inside a range it walks the range row by row |
+| An arrow in the editor | After a character: saves and moves one cell (reason `list-navigation`). After F2, Enter or a double press: moves the caret. F2 in the editor turns the first into the second |
+| Tab on a cell | Leaves the table. With a range of more than one cell it walks the range, and Escape drops the range |
+| Delete, Backspace on a cell | Empties the selected cells (reason `clear`) |
+| Control or Command with X | Cuts: the text of a copy, then a clear (reason `cut`) |
+| Control or Command with V | Pastes. A block repeats over a range that it fits a whole number of times |
+| Control or Command with Z; with Y or Shift+Z | Undo and redo, with `history` |
+
+- **The owner applies every change.** An undo is a report through `cell-edit` with the reason `undo` (a redo: `redo`), with the old values as `value`. An owner that puts edits into its rows with `applyEdits` needs no code for undo. `details.cancel()` refuses an undo as it refuses an edit, and the step stays.
+- **`applyEdits(rows, edits, getRowId?)`** finds the row of an edit by its object, and by its id when the object was replaced already, as at the second of two reports in one turn. Pass the `getRowId` of the table when it has one.
+- **A step** is one report that no listener refused: one edit, one paste, one cut, one clear, one `editCell`. Typing in an open editor is no step; there, Control+Z is the text field's. Sort, filter, column moves and selection are not in the history.
+- **An undo runs no `parse` and no schema.** It puts back what the data held. A cell whose row or column left the table is skipped and counted in the announcement; a step with no cell left is dropped. Rows need stable ids.
+- **Limits:** `:history="{ limit: 100, maxCells: 100000 }"` are the defaults. A step with more cells than `maxCells` empties the history, and the table says so.
+- **Other data:** call `controller.clearHistory()` when the rows become another document. With `manual-page`, another page, sort or filter empties the history.
+- **Empty values:** `emptyValue(row, column)` is what a clear writes: the `parse` of the column for an empty text, else `null` for a number or a date, `false` for a boolean and an empty text for the rest. It goes through the schema, and one refusal stops the whole clear.
+- **Controller:** `undo()`, `redo()`, `clearHistory()`, `getHistory()`, `clearCells()`, `cutCells()` (returns the text), `selectAllCells()`, `selectCellRows(from, to?)`, `selectCellColumns(from, to?)`. `undo` and `redo` throw with the reason: no history, nothing to undo, a refused report, a check that runs.
+- **View:** `canUndo`, `canRedo`, `activeCell` (`{ rowId, columnId }` or `null`) and `cellSelection` (`{ from, to, rows, columns }`, by id, data rows only).
+- **Slots:** `#header` gets `selectColumn(event?)`, for a control that selects the cells of the column (with Shift, from the active cell on). `#editor` and `#edit-{id}` get `mode` (`replace` or `edit`) and `typed`, the character that opened the editor; `save(value, event)` with an Enter key moves down.
+- **Attributes:** `data-sheet` on the table.
+- **Messages:** `cellsCleared`, `cellsCut`, `clearRefused`, `clearNowhere`, `undone`, `redone`, `undoRefused`, `nothingToUndo`, `nothingToRedo`, `historyBusy`, `historyTooLarge`.
+
+Not built yet: row numbers, the fill handle, the summary of a selection, the function of the sum row at run time, and formats of cells.

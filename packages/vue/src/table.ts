@@ -141,6 +141,8 @@ const OPTIONS = [
 	'stickyHeader',
 	'stickyFooter',
 	'hasDetail',
+	'sheet',
+	'history',
 	'editable',
 	'cellSelection',
 	'manualSort',
@@ -175,6 +177,7 @@ const BOOLEANS: readonly string[] = [
 	'rowWindow',
 	'stickyHeader',
 	'stickyFooter',
+	'sheet',
 	'editable',
 	'cellSelection',
 	'manualSort',
@@ -301,12 +304,17 @@ const OWN_ATTRS: ReadonlySet<string> = new Set([
 	'data-range-edge',
 	'data-row-window',
 	'data-selected',
+	'data-sheet',
 	'data-sized',
 	'data-slot',
 	'data-sort-index',
 	'data-sorted',
 	'data-sticky',
 ])
+
+// An option that takes `true` or another value. Without `Boolean` in its
+// type, the short form `<Table history>` passes an empty text.
+const MIXED: Readonly<Record<string, unknown[]>> = { history: [Boolean, Object] }
 
 /** The attributes of a caller without the names that belong to the table. */
 function callerAttrs(attrs: PartAttrs | undefined): PartAttrs | undefined {
@@ -326,7 +334,11 @@ export type TableProps<Row> = Omit<TableOptions<Row>, `on${string}`> & TableAttr
 const PROPS = Object.fromEntries(
 	[...OPTIONS, ...ATTRS].map((name) => [
 		name,
-		BOOLEANS.includes(name) ? { type: Boolean, default: undefined } : null,
+		BOOLEANS.includes(name)
+			? { type: Boolean, default: undefined }
+			: name in MIXED
+				? { type: MIXED[name], default: undefined }
+				: null,
 	]),
 ) as ComponentObjectPropsOptions<TableProps<unknown>>
 
@@ -372,6 +384,12 @@ export type HeaderSlotProps<Row> = {
 	sortIndex: number | undefined
 	toggleSort: (event?: Event) => void
 	pin: 'start' | 'end' | undefined
+	/**
+	 * Selects the cells of the column, for a control in its header. With
+	 * Shift in the event, the columns from the active cell to this one. It
+	 * throws for a header group and without the `cellSelection` option.
+	 */
+	selectColumn: (event?: Event) => void
 }
 
 export type CellSlotProps<Row> = {
@@ -403,6 +421,14 @@ export type EditorSlotProps<Row> = {
 	error: string | undefined
 	/** A check that takes time runs for a saved value. A save does nothing until it answers. */
 	checking: boolean
+	/**
+	 * How the editor was opened. `replace`: the person typed a character on
+	 * the cell, which is `typed`, and means to write over the value. `edit`:
+	 * Enter, F2, a double press or code opened it, to change the value.
+	 */
+	mode: 'replace' | 'edit'
+	/** The character that opened the editor, or `undefined`. */
+	typed: string | undefined
 	/**
 	 * Saves a value, with the check of the column, and closes the editor. A
 	 * value that is refused keeps the editor open, and `error` says why.
@@ -604,6 +630,14 @@ const TableImpl = defineComponent(
 												sortIndex: cell.leaf ? api.sortIndexOf(column.id) : undefined,
 												toggleSort,
 												pin: cell.pin,
+												selectColumn: (event?: Event) => {
+													if (!cell.leaf) {
+														throw new Error(
+															`"${column.id}" is a header group. \`selectColumn\` selects the cells of one column.`,
+														)
+													}
+													api.selectColumnCells(column.id, event)
+												},
 											})
 										: cell.leaf && column.sortable
 											? h('button', { type: 'button', onClick: toggleSort }, label)
@@ -825,6 +859,8 @@ const TableImpl = defineComponent(
 					text: editText(node.row, column),
 					error,
 					checking,
+					mode: api.edit.mode() ?? 'edit',
+					typed: api.edit.typed(),
 					save: (value: unknown, event?: Event) => api.saveEdit(value, event),
 					cancel: () => api.cancelEdit(),
 				})

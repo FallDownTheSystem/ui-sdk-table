@@ -1,4 +1,5 @@
 import type { ColumnDef } from '../rows'
+import { ownId } from '../rows/nodes'
 
 /** One cell that got a new value. The table does not write it: the caller puts it in the rows. */
 export type CellEdit<Row = unknown> = {
@@ -36,16 +37,41 @@ export function parseCellKey(key: string): { rowId: string; columnId: string } |
  * property. It returns a new array with a new object for each row that
  * changed; the other rows are the same objects. It reads the top level only:
  * the child rows of a tree need code of the caller.
+ *
+ * An edit is about a row id. Its `row` is the object that the table had at
+ * the report, and a caller that got two reports in one turn (two calls from
+ * code, an undo after an undo) has replaced that object already at the
+ * second. So an edit whose object is not among the rows is put into the row
+ * with its id: the `id` of the row, else its place, as the table counts
+ * them. Pass the `getRowId` of the table when it has one.
  */
-export function applyEdits<Row>(rows: readonly Row[], edits: readonly CellEdit<Row>[]): Row[] {
-	const changes = new Map<Row, Record<string, unknown>>()
+export function applyEdits<Row>(
+	rows: readonly Row[],
+	edits: readonly CellEdit<Row>[],
+	getRowId?: (row: Row, index: number, parent: null) => string | number,
+): Row[] {
+	type Change = Record<string, unknown>
+	const byId = new Map<string, Change>()
+	const byRow = new Map<Row, Change>()
 	for (const edit of edits) {
-		const change = changes.get(edit.row) ?? {}
+		let change = byId.get(edit.rowId)
+		if (!change) byId.set(edit.rowId, (change = {}))
 		change[edit.column.key ?? edit.column.id] = edit.value
-		changes.set(edit.row, change)
+		byRow.set(edit.row, change)
 	}
-	return rows.map((row) => {
-		const change = changes.get(row)
-		return change ? { ...row, ...change } : row
+	const applied = new Set<Change>()
+	const next = rows.map((row) => {
+		const change = byRow.get(row)
+		if (!change) return row
+		applied.add(change)
+		return { ...row, ...change }
+	})
+	if (applied.size === byId.size) return next
+	return next.map((row, index) => {
+		const before = rows[index] as Row
+		if (row !== before) return row
+		const id = getRowId ? String(getRowId(before, index, null)) : (ownId(before) ?? String(index))
+		const change = byId.get(id)
+		return change && !applied.has(change) ? { ...row, ...change } : row
 	})
 }

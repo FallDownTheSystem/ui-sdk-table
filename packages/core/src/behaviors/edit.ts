@@ -1,6 +1,18 @@
-import { createInlineEdit, type InlineEditReason, type PrimitiveContext } from '@ui-sdk/core'
+import {
+	createInlineEdit,
+	isComposing,
+	type InlineEditReason,
+	type PrimitiveContext,
+} from '@ui-sdk/core'
 
-export type CellEditReason = InlineEditReason
+/** Why an edit started or ended. `list-navigation` is an arrow key that saved the text and moved on. */
+export type CellEditReason = InlineEditReason | 'list-navigation'
+
+/**
+ * How an editor was opened. `replace`: a character opened it, and the text
+ * starts with that character. `edit`: every other way, with the value.
+ */
+export type CellEditMode = 'replace' | 'edit'
 
 export type CellEditDetails = { reason: CellEditReason; event?: Event }
 
@@ -31,8 +43,16 @@ export type CellEditor<State> = {
 	dblclick(event: MouseEvent, id: string): boolean
 	/** Joins the input of the editor. Return the result from the `bind` of its slot. */
 	bindInput(el: HTMLInputElement | HTMLTextAreaElement): () => void
-	/** Handles a key in the input: Enter and Tab save, Escape puts the text back. */
+	/**
+	 * Handles a key in the input: Enter and Tab save, Escape puts the text
+	 * back. With the `arrows` rule, an arrow key saves in `replace` mode, and
+	 * F2 turns that mode into `edit`.
+	 */
 	inputKeydown(event: KeyboardEvent): boolean
+	/** How the open editor was started, or `undefined` when none is open. */
+	mode(): CellEditMode | undefined
+	/** The character that opened the editor, in `replace` mode. */
+	typed(): string | undefined
 	/** Saves the text of the input and ends the edit. Returns whether it ended. */
 	end(reason?: CellEditReason, event?: Event): boolean
 	/** Ends the edit without a save. */
@@ -60,6 +80,8 @@ export type CellEditor<State> = {
 	 */
 	focusout(event: FocusEvent, within: HTMLElement | null | undefined): void
 }
+
+const ARROWS: readonly string[] = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
 
 /**
  * Editing of one cell at a time. It wraps `createInlineEdit` of UI SDK, which
@@ -95,6 +117,13 @@ export function createCellEdit<State extends object>(
 		 * input out, and that function puts it right again.
 		 */
 		done?: (id: string, details: CellEditDetails & { saved: boolean }) => void | (() => void)
+		/**
+		 * Whether an arrow key in the input saves the text and ends the edit
+		 * while the editor is in `replace` mode, as in a spreadsheet: a person
+		 * who typed over a value moves on with an arrow. In `edit` mode an
+		 * arrow moves the caret. Defaults to false.
+		 */
+		arrows?: () => boolean
 	},
 ): CellEditor<State> {
 	const { store } = context
@@ -116,6 +145,15 @@ export function createCellEdit<State extends object>(
 	// The check of a text that takes time. A second save waits for the first.
 	let pending: { id: string } | undefined
 	let afterLeave: (() => void) | undefined
+	// How the editor of a cell was opened. `createInlineEdit` does not keep it.
+	let opened: { id: string; mode: CellEditMode; typed?: string } | undefined
+	// The reason of an end that `createInlineEdit` has no name for.
+	let endReason: CellEditReason | undefined
+	const modeNow = (): CellEditMode | undefined => {
+		const id = editingId()
+		if (id === null) return undefined
+		return opened?.id === id ? opened.mode : 'edit'
+	}
 
 	function wait(next: { id: string } | undefined): void {
 		pending = next
@@ -131,6 +169,7 @@ export function createCellEdit<State extends object>(
 		gone = true
 		pending = undefined
 		afterLeave = undefined
+		opened = undefined
 	})
 
 	function finish(id: string, details: CellEditDetails & { saved: boolean }): void {
@@ -146,8 +185,9 @@ export function createCellEdit<State extends object>(
 		key: options.key,
 		value: options.text,
 		disabled: (id) => !options.canEdit(id),
-		commit: (id, text, details) => {
+		commit: (id, text, given) => {
 			if (pending) return false
+			const details: CellEditDetails = endReason ? { ...given, reason: endReason } : given
 			const result = options.save(id, text, details)
 			if (result === true) return true
 			if (typeof result === 'string') {
@@ -207,13 +247,27 @@ export function createCellEdit<State extends object>(
 			if (!api.release(id, details.event)) return false
 			setError(id, undefined)
 			afterLeave = undefined
-			return edit.start(id, details)
+			const { reason } = details
+			const started = edit.start(id, {
+				...details,
+				reason: reason === 'list-navigation' ? 'imperative' : reason,
+			})
+			if (started) {
+				opened =
+					reason === 'type' ? { id, mode: 'replace', typed: details.text } : { id, mode: 'edit' }
+			}
+			return started
 		},
 		keydown(event, id) {
 			if (!options.canEdit(id) || editingId() === id) return false
 			// An editor that the person left open in another cell ends before a key opens this one.
 			if (!api.release(id, event)) return false
-			return edit.keydown(event, id)
+			const handled = edit.keydown(event, id)
+			if (handled && editingId() === id) {
+				const typed = event.key !== 'Enter' && event.key !== 'F2'
+				opened = typed ? { id, mode: 'replace', typed: event.key } : { id, mode: 'edit' }
+			}
+			return handled
 		},
 		dblclick(event, id) {
 			if (!options.canEdit(id)) return false
@@ -258,6 +312,30 @@ export function createCellEdit<State extends object>(
 				event.stopPropagation()
 				return true
 			}
+			const plain = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+			if (options.arrows?.() && modeNow() === 'replace' && plain && !isComposing(event)) {
+				if (event.key === 'F2') {
+					opened = { id, mode: 'edit' }
+					event.preventDefault()
+					return true
+				}
+				if (ARROWS.includes(event.key)) {
+					// The arrow is a command here, and the caret stays where it is.
+					event.preventDefault()
+					endReason = 'list-navigation'
+					let ended: boolean
+					try {
+						ended = edit.end('imperative', event)
+					} finally {
+						endReason = undefined
+					}
+					if (ended) {
+						setError(id, undefined)
+						finish(id, { reason: 'list-navigation', event, saved: true })
+					}
+					return true
+				}
+			}
 			const handled = edit.inputKeydown(event)
 			// Handled, and the edit is over: the text was saved, or it was the same as before.
 			if (handled && editingId() === null) {
@@ -272,7 +350,7 @@ export function createCellEdit<State extends object>(
 		end(reason = 'imperative', event) {
 			const id = editingId()
 			if (id === null) return false
-			const ended = edit.end(reason, event)
+			const ended = edit.end(reason === 'list-navigation' ? 'imperative' : reason, event)
 			if (ended) {
 				setError(id, undefined)
 				if (reason !== 'focus-out') finish(id, { reason, event, saved: true })
@@ -313,6 +391,8 @@ export function createCellEdit<State extends object>(
 			return true
 		},
 		checking: () => pending !== undefined,
+		mode: modeNow,
+		typed: () => (modeNow() === 'replace' ? opened?.typed : undefined),
 		settle(result, details = { reason: 'imperative' }) {
 			const id = editingId()
 			if (id === null || pending) return

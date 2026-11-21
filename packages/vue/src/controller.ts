@@ -19,11 +19,16 @@ const ARRIVED = Symbol('table arrived')
 export function createTableController(): TableController {
 	const inner = createController<TableController>()
 	const waiting = new Set<Waiting>()
+	// Whether a table ever arrived.
+	let met = false
 
 	function subscribe(listener: Listener): () => void {
 		if (typeof listener !== 'function') throw new Error('`subscribe` takes a function.')
+		// Before the first table, the listener only waits. The controller of UI SDK
+		// is not asked then: in development it warns about each method that is
+		// called before a component is there, and a wait is no mistake.
 		// With a table, the controller answers with the stop function; without one, with nothing.
-		const stop: unknown = inner.subscribe(listener)
+		const stop: unknown = met ? inner.subscribe(listener) : undefined
 		if (typeof stop === 'function') return stop as () => void
 		const entry: Waiting = { listener }
 		waiting.add(entry)
@@ -34,6 +39,7 @@ export function createTableController(): TableController {
 	}
 
 	function arrived(): void {
+		met = true
 		for (const entry of waiting) {
 			const stop: unknown = inner.subscribe(entry.listener)
 			if (typeof stop !== 'function') return
