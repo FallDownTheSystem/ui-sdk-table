@@ -120,6 +120,10 @@ Each value is the median of 9 runs (5 for a parse), in milliseconds, on the clou
 | First sort by a plain column | not estimated | 62.4 |
 | First sort by a computed column, a new column object | under 10 more than a plain column | 96.9 (34.5 more) |
 | Sort again by the computed column, its values kept | not estimated | 65.0 |
+| `WEEKOF([created], 2)` over 50,000 moments in a zone, first read | under 30 | 62.0 |
+| The same again, the values kept | under 5 | 1.8 |
+| Sort and group by `WEEKOF`, a new column that computes every row | not estimated | 107 |
+| Sort and group by `WEEKOF`, the values kept | not estimated | 40.6 |
 | One report of 11 cells, an edit and 10 dependents (P7, before the engine) | under 2 more than one edit | 0.26, against 0.20 for one edit |
 | One report of 100,000 cells through a paste (P7) | under 100 | 162 |
 | 50,000 same-row formulas after 50,000 changed values, read through the values of the turn (P7) | part of the above | 34.9 |
@@ -130,6 +134,7 @@ What the numbers show:
 
 - A cell reads its column through `cellValue` and the closure of each node, where the sketch read `row.price`: about six times the sketch for the shortest formula. The first sort by a computed column computes each row once, so it costs one pass of the formula more than a plain sort, and a sort again reads the kept values.
 - The first version of the engine cut every comparison to 15 digits with `toPrecision`; `IFS` was 70 ms and `IF` with `ROUND` 62 ms. A comparison now cuts only two numbers that are closer than 1e-13 of their size, which gives the same answers.
+- A date function first read the zone of its column with `timeZoneOf` for each row, which asks `Intl` whether the zone exists: 386 ms for the first read of 50,000 moments. The zone is now kept for each column object, and the offset of the zone for each day of UTC (`formulas/zone.ts`), so a row reads `Intl` only on a day that the clock changes.
 - A report of 100,000 cells through a paste reads each text with `parseText`; a report of dependents will not. The budgets of the report are written again before slice 5, with the real path of dependents.
 
 ## Size of the build
@@ -149,8 +154,9 @@ The formula engine is the entry `ui-sdk-table-core/formulas` (`vp pack src/index
 | `master` at `f96f84c`, without the entry | 133.29 kB | 45.25 kB | none | none |
 | Slice 1, built without the entry | 133.29 kB, the same bytes | 45.25 kB | none | none |
 | Slice 1, built with the entry | 131.29 kB, and a shared chunk of the row helpers of 2.15 kB | 44.72 kB, and 0.99 kB | 18.61 kB | 6.68 kB |
+| Slice 2, with the date functions, built with the entry | 131.29 kB, the row helpers 2.17 kB | 44.71 kB, and 1.01 kB | 25.38 kB | 9.05 kB |
 
-The main entry holds no text of the engine. The plan estimated about 20 kB for the entry with all its functions; slice 1 has 33 of them.
+The main entry holds no text of the engine. The format `period` is in the main entry, as the plan says: the chunk of the formats, which the main entry and the export entry share, grows from 12.59 kB to 13.76 kB (4.66 kB to 5.09 kB compressed). The plan estimated about 20 kB for the entry with about 45 functions; slice 2 has 51 of them in 25.38 kB.
 
 The sheet behaviors are options of the table primitive and not plugins, so a table without them carries them: 38.4 kB minified, 13.0 kB compressed. The plan of the sheet behaviors estimated under 6 kB; that estimate was wrong by a factor of six. `definePrimitive` has static `state`, `slots` and `selects`, so a behavior cannot add a slot or a state key from outside, and a split into plugins is no small change. The export writers stay in their own entry (13.4 kB), which a table without an export does not load.
 

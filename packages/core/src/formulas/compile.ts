@@ -16,7 +16,12 @@ import { describeFormulaIssue } from './words'
 type Run = (context: FormulaContext) => unknown
 
 export type FormulaOptions = {
-	/** The zone of a day text that a formula compares with a moment. Without it, local time. */
+	/**
+	 * The zone of a date that is no reference to a column with a zone of its
+	 * own (`formatOptions.timeZone`), such as a date that a function gives.
+	 * Without it, local time: a result that is saved should not depend on the
+	 * computer that made it, so pass one when a formula reads a moment.
+	 */
 	timeZone?: string
 }
 
@@ -135,7 +140,7 @@ function compileNode(node: FormulaNode, columns: ReadonlyMap<string, ColumnDef<n
 				length: parts.length,
 				value: (index) => parts[index]?.(args.context),
 				column: (index) => refs[index] as ColumnDef | undefined,
-				context: { row: undefined, time: () => Number.NaN },
+				context: { row: undefined, time: () => Number.NaN, zone: undefined },
 			}
 			return (context) => {
 				const outer = args.context
@@ -211,5 +216,5 @@ export function compileRowFormula<Row>(
 	const timeZone = options.timeZone
 	const time = (date: string | Date) =>
 		date instanceof Date ? date.getTime() : (toTime(date, timeZone) ?? Number.NaN)
-	return (row) => resultOf(run({ row, time }))
+	return (row) => resultOf(run({ row, time, zone: timeZone }))
 }

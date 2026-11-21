@@ -345,7 +345,7 @@ describe('the issues of a formula', () => {
 	})
 
 	test('every function of the list has a name, its arguments and a line of help', () => {
-		expect(FORMULA_FUNCTIONS.length).toBe(33)
+		expect(FORMULA_FUNCTIONS.length).toBe(51)
 		for (const info of FORMULA_FUNCTIONS) {
 			expect(info.name).toMatch(/^[A-Z]+$/)
 			expect(info.args).not.toBe('')

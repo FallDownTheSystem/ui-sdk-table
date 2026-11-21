@@ -11,5 +11,6 @@ export {
 	type FormulaTextOptions,
 } from './compile'
 export { FORMULA_FUNCTIONS, type FormulaFunctionInfo } from './functions'
+export { formulaShows, type FormulaShows } from './kinds'
 export { formulaSigns, type FormulaSigns } from './tokens'
 export { describeFormulaIssue } from './words'

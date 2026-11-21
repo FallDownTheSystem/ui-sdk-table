@@ -7,6 +7,8 @@ export type FormulaContext = {
 	row: unknown
 	/** The time of a date in the zone that the formula uses: the start of a day, or the moment of a `Date`. */
 	time: (date: string | Date) => number
+	/** The zone of a date that is no reference to a column: the `timeZone` of the formula, or local time. */
+	zone: string | undefined
 }
 
 /** The arguments of one call. A function reads only the ones it needs. */

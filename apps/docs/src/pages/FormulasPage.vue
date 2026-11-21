@@ -10,9 +10,11 @@ import { computed, shallowRef } from 'vue'
 
 // Orders, and columns whose values are formulas of their own row. The page
 // is the place of the browser tests of the formulas (`e2e/formulas.spec.ts`).
-// `?locale=fi-FI` types and shows the formulas with a decimal comma.
+// `?locale=fi-FI` types and shows the formulas with a decimal comma. The
+// moments of the orders are read on the clock of Helsinki, the zone of their
+// column, whatever the zone of the computer.
 
-type Order = { id: string; product: string; qty: number; price: number }
+type Order = { id: string; product: string; created: Date; qty: number; price: number }
 
 const query = new URLSearchParams(location.search)
 const locale = query.get('locale') ?? 'en-US'
@@ -25,9 +27,15 @@ function createOrders(count: number): Order[] {
 		state = (state * 1664525 + 1013904223) % 4294967296
 		return state / 4294967296
 	}
+	const start = Date.UTC(2025, 11, 1)
+	const span = Date.UTC(2027, 0, 1) - start
 	return Array.from({ length: count }, (_, index) => ({
 		id: `o${index + 1}`,
 		product: PRODUCTS[Math.floor(random() * PRODUCTS.length)] ?? 'Bolt',
+		// The first order is at 00:30 on the first of December in Helsinki: still November in UTC.
+		created: new Date(
+			index === 0 ? Date.UTC(2026, 10, 30, 22, 30) : start + Math.floor(random() * span),
+		),
 		qty: 1 + Math.floor(random() * 40),
 		price: Math.round(random() * 6000) / 100,
 	}))
@@ -37,6 +45,14 @@ const rows = createOrders(48)
 
 const base: ColumnDef<Order>[] = [
 	{ id: 'product', header: 'Product', sortable: true, width: 140 },
+	{
+		id: 'created',
+		header: 'Created',
+		sortable: true,
+		format: 'datetime',
+		formatOptions: { timeZone: 'Europe/Helsinki' },
+		width: 200,
+	},
 	{ id: 'qty', header: 'Quantity', sortable: true, format: 'integer', width: 110 },
 	{ id: 'price', header: 'Price', sortable: true, format: 'decimal', width: 110 },
 ]
@@ -75,7 +91,33 @@ const band = computed(() =>
 	),
 )
 
-const columns = computed(() => [...base, total.value, band.value])
+// The formulas of the period column. Each gives a period, so the column gets the format `period`.
+const PERIODS = [
+	'=WEEKOF([created])',
+	'=WEEKOF([created], 2)',
+	'=MONTHOF([created])',
+	'=QUARTEROF([created])',
+	'=YEAROF([created])',
+	'=DAYOF([created])',
+	'=HOUROF([created])',
+	'=WEEKDAY([created], 2)',
+]
+const periodFormula = shallowRef(PERIODS[1] ?? '')
+const periodColumn = computed(() =>
+	formulaColumn(
+		{
+			id: 'period',
+			header: 'Period',
+			formula: periodFormula.value,
+			sortable: true,
+			groupable: true,
+			width: 220,
+		},
+		base,
+	),
+)
+
+const columns = computed(() => [...base, total.value, band.value, periodColumn.value])
 
 function save() {
 	const parsed = parseFormula(draft.value, { columns: base, locale, self: 'total' })
@@ -88,14 +130,31 @@ function save() {
 	draft.value = printFormula(parsed.formula, { columns: base, locale })
 }
 
-const grouping = shallowRef<'none' | 'band'>('none')
-const groupBy = computed(() => (grouping.value === 'band' ? ['band'] : []))
+const grouping = shallowRef<'none' | 'band' | 'period'>('none')
+const groupBy = computed(() => (grouping.value === 'none' ? [] : [grouping.value]))
 const filter = shallowRef<{ columns?: Record<string, unknown> }>({})
 const range = shallowRef<{ min: string; max: string }>({ min: '', max: '' })
 
+const days = shallowRef<{ from: string; to: string }>({ from: '', to: '' })
+
 function filterTotal() {
 	const read = (text: string) => (text === '' ? null : Number(text))
-	filter.value = { columns: { total: { min: read(range.value.min), max: read(range.value.max) } } }
+	filter.value = {
+		columns: {
+			...filter.value.columns,
+			total: { min: read(range.value.min), max: read(range.value.max) },
+		},
+	}
+}
+
+function filterPeriod() {
+	const read = (text: string) => (text === '' ? null : text)
+	filter.value = {
+		columns: {
+			...filter.value.columns,
+			period: { from: read(days.value.from), to: read(days.value.to) },
+		},
+	}
 }
 </script>
 
@@ -120,7 +179,22 @@ function filterTotal() {
 			<select v-model="grouping" data-testid="grouping">
 				<option value="none">No groups</option>
 				<option value="band">By band</option>
+				<option value="period">By period</option>
 			</select>
+		</label>
+		<label>
+			Period
+			<select v-model="periodFormula" data-testid="period">
+				<option v-for="formula in PERIODS" :key="formula" :value="formula">{{ formula }}</option>
+			</select>
+		</label>
+		<label>
+			Period from
+			<input v-model="days.from" type="date" data-testid="period-from" @change="filterPeriod" />
+		</label>
+		<label>
+			to
+			<input v-model="days.to" type="date" data-testid="period-to" @change="filterPeriod" />
 		</label>
 		<label>
 			Total from

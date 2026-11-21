@@ -1,3 +1,4 @@
+import { DATE_FUNCTIONS } from './dates'
 import { LOGIC_FUNCTIONS } from './logic'
 import { MATH_FUNCTIONS } from './math'
 import type { FormulaFunction } from './shared'
@@ -10,6 +11,7 @@ export const FUNCTIONS: Readonly<Record<string, FormulaFunction>> = {
 	...MATH_FUNCTIONS,
 	...LOGIC_FUNCTIONS,
 	...TEXT_FUNCTIONS,
+	...DATE_FUNCTIONS,
 }
 
 export type FormulaFunctionInfo = { name: string; args: string; help: string }

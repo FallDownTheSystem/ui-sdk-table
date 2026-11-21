@@ -1,5 +1,6 @@
 import { date, datetime, time } from './date'
 import { currency, decimal, integer, percentage } from './number'
+import { period } from './period'
 import { relativeTime } from './relative-time'
 import { INVALID, type CellFormatter, type PrepareFormatter } from './shared'
 import { boolean, email, text, truncate, url } from './special'
@@ -19,6 +20,7 @@ const formatters: { [N in FormatName]: PrepareFormatter<FormatOptionsByName[N]> 
 	boolean,
 	truncate,
 	relativeTime,
+	period,
 	text,
 }
 

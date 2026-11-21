@@ -92,7 +92,7 @@ test('a new formula from the field changes the column, and a wrong one is refuse
 	await field.fill('=[Pric]*2')
 	await field.press('Enter')
 	await expect(page.getByRole('alert')).toHaveText(
-		'No column `Pric`. Columns: Product, Quantity, Price.',
+		'No column `Pric`. Columns: Product, Created, Quantity, Price.',
 	)
 	await expect(page.getByTestId('stored')).toHaveText('=ROUND([price]*[qty]*1.24, 2)')
 })
@@ -123,4 +123,131 @@ test('in fi-FI, a formula is typed with a decimal comma and `;`, and stored as i
 	await expect(page.getByRole('alert')).toHaveText(
 		'This language puts `;` between the values of a function, such as IF([a]>1; "yes"; "no").',
 	)
+})
+
+const spaces = (text: string) => text.replace(/[\s\u2009\u202f\u00a0]+/g, ' ').trim()
+/** The labels of the groups in the page, without their counts, and the counts. */
+async function groups(table: Locator) {
+	const texts = (await groupRows(table).getByRole('button').allInnerTexts()).map(spaces)
+	return texts.map((text) => {
+		const found = /^(.*) \((\d+)\)$/.exec(text)
+		return { label: found?.[1] ?? text, count: Number(found?.[2]) }
+	})
+}
+/** The first day of the label of a week, such as `Nov 30 – Dec 6, 2026` or `Dec 29, 2025 – Jan 4, 2026`. */
+function weekStart(label: string): Date {
+	const [first = '', last = ''] = label.split(' – ')
+	const year = /\d{4}$/.exec(last)?.[0] ?? ''
+	return new Date(/\d{4}$/.test(first) ? first : `${first}, ${year}`)
+}
+
+async function groupByPeriod(page: Page, table: Locator, formula: string) {
+	await page.getByTestId('period').selectOption(formula)
+	await page.getByTestId('grouping').selectOption('period')
+	// A sort by the column puts the groups in time order: a group keeps the order of its rows.
+	await table.locator('thead th[data-column="period"]').getByRole('button').click()
+	await expect(groupRows(table).first()).toBeVisible()
+	return groups(table)
+}
+
+test('a group by WEEKOF starts each week on Sunday, and with type 2 on Monday, in time order', async ({
+	page,
+}) => {
+	const table = await open(page)
+	for (const [formula, weekday] of [
+		['=WEEKOF([created])', 0],
+		['=WEEKOF([created], 2)', 1],
+	] as const) {
+		const found = await groupByPeriod(page, table, formula)
+		const starts = found.map((group) => weekStart(group.label))
+		expect(starts.every((start) => start.getDay() === weekday)).toBe(true)
+		const times = starts.map((start) => start.getTime())
+		expect(times).toEqual([...times].sort((a, b) => a - b))
+		expect(found.reduce((sum, group) => sum + group.count, 0)).toBe(48)
+		// Back to no sort, so the next round sorts up again.
+		await table.locator('thead th[data-column="period"]').getByRole('button').click()
+		await table.locator('thead th[data-column="period"]').getByRole('button').click()
+	}
+})
+
+test('a group by MONTHOF holds the orders of its month, and the other periods have their texts', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const months = await groupByPeriod(page, table, '=MONTHOF([created])')
+	expect(months.every((group) => /^[A-Z][a-z]+ \d{4}$/.test(group.label))).toBe(true)
+	const times = months.map((group) => new Date(`1 ${group.label}`).getTime())
+	expect(times).toEqual([...times].sort((a, b) => a - b))
+	// Every order of the first group was created in that month, on the clock of Helsinki.
+	const first = groupRows(table).first()
+	await first.getByRole('button').click()
+	const [name = '', year = ''] = months[0]?.label.split(' ') ?? []
+	const created = await dataRows(table).locator('td[data-column="created"]').allInnerTexts()
+	expect(created).toHaveLength(months[0]?.count ?? 0)
+	for (const text of created)
+		expect(text).toMatch(new RegExp(`^${name.slice(0, 3)} \\d+, ${year},`))
+	await first.getByRole('button').click()
+
+	const patterns: [string, RegExp][] = [
+		['=QUARTEROF([created])', /^Q[1-4] \d{4}$/],
+		['=YEAROF([created])', /^\d{4}$/],
+		['=DAYOF([created])', /^[A-Z][a-z]{2} \d{1,2}, \d{4}$/],
+		['=HOUROF([created])', /^[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{1,2}:00 [AP]M$/],
+	]
+	for (const [formula, pattern] of patterns) {
+		await table.locator('thead th[data-column="period"]').getByRole('button').click()
+		await table.locator('thead th[data-column="period"]').getByRole('button').click()
+		const found = await groupByPeriod(page, table, formula)
+		expect(found.every((group) => pattern.test(group.label))).toBe(true)
+		expect(found.reduce((sum, group) => sum + group.count, 0)).toBe(48)
+	}
+	expect((await groups(table)).map((group) => group.label)).toContain('Dec 1, 2026, 12:00 AM')
+})
+
+test('busy days: a group by WEEKDAY with type 2 gives the days from Monday to Sunday', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const found = await groupByPeriod(page, table, '=WEEKDAY([created], 2)')
+	const week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+	expect(found.map((group) => group.label)).toEqual(
+		week.filter((day) => found.some((group) => group.label === day)),
+	)
+	expect(found.reduce((sum, group) => sum + group.count, 0)).toBe(48)
+})
+
+test('a date range filter on the week column keeps the weeks that start in the range', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await page.getByTestId('period').selectOption('=WEEKOF([created], 2)')
+	await page.getByTestId('period-from').fill('2026-03-01')
+	await page.getByTestId('period-to').fill('2026-05-31')
+	await page.getByTestId('period-to').press('Tab')
+	const labels = (await dataRows(table).locator('td[data-column="period"]').allInnerTexts()).map(
+		spaces,
+	)
+	expect(labels.length).toBeGreaterThan(0)
+	expect(labels.length).toBeLessThan(48)
+	for (const label of labels) {
+		const start = weekStart(label).getTime()
+		expect(start).toBeGreaterThanOrEqual(new Date(2026, 2, 1).getTime())
+		expect(start).toBeLessThanOrEqual(new Date(2026, 4, 31).getTime())
+	}
+})
+
+test.describe('in a browser in New York', () => {
+	test.use({ timezoneId: 'America/New_York' })
+
+	test('an order at 00:30 on the first of December in Helsinki is in December', async ({
+		page,
+	}) => {
+		const table = await open(page)
+		await page.getByTestId('period').selectOption('=MONTHOF([created])')
+		const row = dataRows(table).filter({ hasText: 'Dec 1, 2026, 12:30 AM' })
+		await expect(row).toHaveCount(1)
+		await expect(cellOf(row, 'period')).toHaveText('December 2026')
+		// The computer is in New York, where that moment is still the 30th of November.
+		expect(await page.evaluate(() => new Date(Date.UTC(2026, 10, 30, 22, 30)).getDate())).toBe(30)
+	})
 })

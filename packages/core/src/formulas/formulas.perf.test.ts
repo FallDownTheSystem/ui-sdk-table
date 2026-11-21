@@ -85,7 +85,47 @@ describe.runIf(requested)('formulas with 50,000 rows', () => {
 		results['sort again by the computed column, its values kept'] = median(() =>
 			sortBy([...base, kept], 'sum').sorted(),
 		)
-		expect(Object.keys(results).length).toBe(7)
+		// The periods of 50,000 moments of one year in a zone.
+		type Event = { id: string; created: Date }
+		const year = Date.UTC(2026, 0, 1)
+		const events = (): Event[] =>
+			Array.from({ length: ROWS }, (_, index) => ({
+				id: `e${index}`,
+				created: new Date(
+					year + Math.floor((index * 365 * 86_400_000) / ROWS) + (index % 977) * 1000,
+				),
+			}))
+		const moments: ColumnDef<Event>[] = [
+			{ id: 'created', format: 'datetime', formatOptions: { timeZone: 'Europe/Helsinki' } },
+		]
+		const rounds = Array.from({ length: 5 }, () => events())
+		let round = 0
+		results['WEEKOF over 50,000 moments in a zone, first read'] = median(() => {
+			const week = formulaColumn({ id: 'week', formula: '=WEEKOF([created], 2)' }, moments)
+			for (const event of rounds[round++] ?? []) week.value?.(event)
+		}, 5)
+		const fresh = events()
+		const week = formulaColumn({ id: 'week', formula: '=WEEKOF([created], 2)' }, moments)
+		for (const event of fresh) week.value?.(event)
+		results['the same again, the values kept'] = median(() => {
+			for (const event of fresh) week.value?.(event)
+		})
+		const byWeek = (rows: readonly Event[], column: ColumnDef<Event>) => {
+			const sort: readonly SortRule[] = [{ id: 'week' }]
+			const groupBy = ['week']
+			return createRowModel<Event>({
+				rows: () => rows,
+				columns: () => [...moments, column],
+				sort: () => sort,
+				groupBy: () => groupBy,
+			}).grouped()
+		}
+		results['sort and group by WEEKOF, a new column (computes every row)'] = median(() =>
+			byWeek(fresh, formulaColumn({ id: 'week', formula: '=WEEKOF([created], 2)' }, moments)),
+		)
+		results['sort and group by WEEKOF, the values kept'] = median(() => byWeek(fresh, week))
+		expect(byWeek(fresh, week).length).toBe(53)
+		expect(Object.keys(results).length).toBe(11)
 		console.log(JSON.stringify(results, null, '\t'))
 	}, 120_000)
 })
