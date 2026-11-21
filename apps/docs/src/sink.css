@@ -715,6 +715,69 @@ input {
 		var(--tile-chip);
 }
 
+/* Formulas: a bar with the address and the formula of the active cell, as in a spreadsheet. */
+.formula-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.formula-address {
+	min-inline-size: 40px;
+	padding: 0 8px;
+	border-inline-end: 1px solid var(--tile-rule);
+	color: var(--tile-ink-2);
+	font: 500 13px/32px var(--mono);
+	text-align: center;
+}
+
+.tile .formula-field {
+	flex: 1;
+	font-family: var(--mono);
+	font-size: 13px;
+}
+
+.tile .formula-field[aria-invalid='true'] {
+	border-color: var(--tile-danger);
+}
+
+.formula-issue {
+	min-block-size: 1.5em;
+}
+
+.formula-code {
+	color: var(--tile-ink-2);
+	font: 12px/1.3 var(--mono);
+}
+
+.tile .readout .formula-display {
+	font-family: var(--mono);
+	font-size: 24px;
+	letter-spacing: -0.02em;
+}
+
+/* A cell with a formula of its own carries a small mark in its corner. */
+.tile [data-slot='table-cell'][data-formula]::before {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-end: 0;
+	border-block-start: 6px solid var(--tile-accent);
+	border-inline-start: 6px solid transparent;
+	content: '';
+	pointer-events: none;
+}
+
+/* An error of a formula takes the colour of an alert. */
+.tile [data-slot='table-cell'][data-formula-error] {
+	color: var(--tile-danger);
+	font-weight: 500;
+}
+
+/* The header of a computed column says it is computed. */
+.tile [data-slot='table'] thead th[data-formula-column] {
+	font-style: italic;
+}
+
 /* What the agent called, in mono, and its answer in words. Two lines always, so the table under it stays put. */
 .agent-reply {
 	display: grid;

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Plugin } from 'vite'
 
-const LIBRARY = /^ui-sdk-table-(?:vue|core)(?:\/export)?$/
+const LIBRARY = /^ui-sdk-table-(?:vue|core)(?:\/(?:export|formulas))?$/
 
 // Attributes of the `Table` element that are not options of the table.
 const PLAIN = /^(?:class|style|id|ref|key|dir|lang|role|tabindex|aria-.*|data-.*|v-(?!model:).*)$/

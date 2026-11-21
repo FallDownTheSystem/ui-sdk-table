@@ -451,6 +451,77 @@ test('a sheet in a tile takes a typed number, goes down, and Control+Z takes it 
 	await expect(food).toBeFocused()
 })
 
+test('the tiles of formulas: a typed formula, a refused circle, a period, a decimal comma, a saved file', async ({
+	page,
+}) => {
+	await open(page, '&eager&only=formula')
+
+	// A price changes, and the total of its line and the sum under it follow; Control+Z takes it back.
+	const sheet = tableOf(page, 'formula-sheet')
+	const sum = cell(sheet, 'Order total', 'total')
+	await expect(sum).toHaveText('1,849.00')
+	await cell(sheet, 'Desk lamp', 'price').click()
+	await page.keyboard.type('40')
+	await page.keyboard.press('Enter')
+	await expect(cell(sheet, 'Desk lamp', 'total')).toHaveText('160.00')
+	await expect(sum).toHaveText('1,853.00')
+	await page.keyboard.press('Control+z')
+	await expect(sum).toHaveText('1,849.00')
+	// The bar shows the formula of the active cell and takes a new one.
+	await sum.click()
+	await expect(page.getByTestId('formula-address')).toHaveText('D15')
+	const field = tile(page, 'formula-sheet').getByRole('textbox', {
+		name: 'Formula of the active cell',
+	})
+	await expect(field).toHaveValue('=SUM(D1:D14)')
+	await field.fill('=SUM(D1:D3)')
+	await field.press('Enter')
+	await expect(sum).toHaveText('511.00')
+	await expect(sum).toBeFocused()
+
+	// A division by zero shows its code; a circle is refused with its path.
+	const errors = tile(page, 'formula-errors')
+	await expect(cell(tableOf(page, 'formula-errors'), 'Sales', 'each')).toHaveAttribute(
+		'data-formula-error',
+	)
+	await errors.getByRole('button', { name: 'Make B1 read D1' }).click()
+	await expect(errors.getByRole('status')).toContainText('B1 reads D1 reads B1')
+
+	// The period of a date: as many groups as the sales have weeks, months or quarters.
+	const period = tile(page, 'formula-period')
+	await expect(period.locator('.readout .display')).toHaveText('11 weeks')
+	await period.getByRole('radio', { name: 'Month' }).click()
+	await expect(period.locator('.readout .display')).toHaveText('3 months')
+	await expect(tableOf(page, 'formula-period').locator('tbody tr').first()).toContainText(
+		'September 2026',
+	)
+
+	// The same formula in two languages: only its signs change.
+	const typed = page.getByTestId('locale-formula')
+	await expect(typed).toHaveText('=ROUND(B1*1,5; 1)')
+	await tile(page, 'formula-locale').getByRole('radio', { name: 'English' }).click()
+	await expect(typed).toHaveText('=ROUND(B1*1.5, 1)')
+
+	// A formula of a column that cannot be read is refused, and the one before stays.
+	const own = tile(page, 'formula-own')
+	await own.getByRole('button', { name: 'Broken' }).click()
+	await expect(own.getByRole('status')).toContainText('ends too soon')
+	await expect(cell(tableOf(page, 'formula-own'), 'Hall', 'area')).toHaveText('7.28')
+	await own.getByRole('button', { name: 'IF' }).click()
+	await expect(cell(tableOf(page, 'formula-own'), 'Hall', 'area')).toHaveText('0.00')
+
+	// A saved file: the results that are out of date are computed again, and the Excel file comes.
+	const file = tile(page, 'formula-file')
+	const year = cell(tableOf(page, 'formula-file'), 'Year', 'profit')
+	await expect(year).toHaveText('18,000')
+	await file.getByRole('button', { name: 'Check the formulas' }).click()
+	await expect(page.getByTestId('file-fixed')).toHaveText('5 fixed')
+	await expect(year).toHaveText('42,250')
+	const download = page.waitForEvent('download')
+	await file.getByRole('button', { name: 'Excel', exact: true }).click()
+	expect((await download).suggestedFilename()).toBe('year.xlsx')
+})
+
 test('the square of a fill tile goes on with a series, and another tile does not move', async ({
 	page,
 }) => {
@@ -735,6 +806,8 @@ const CONTRAST_TILES = [
 	'sheet-formats',
 	'sheet-saved',
 	'sheet-letters',
+	'formula-sheet',
+	'formula-errors',
 ]
 
 type Pair = [what: string, part: Locator, kind: ContrastKind, least: number]
@@ -993,6 +1066,8 @@ for (const tone of TONES) {
 			],
 			['a text in an alert colour', part('sheet-saved', 'td[data-color="alert"]'), 'text', TEXT],
 			['a text on a fill', part('sheet-saved', 'td[data-fill="accent"]'), 'text', TEXT],
+			['the error of a formula', part('formula-errors', 'td[data-formula-error]'), 'text', TEXT],
+			['the address of a formula bar', part('formula-sheet', '.formula-address'), 'text', TEXT],
 			['a coloured text on a fill that is selected', year, 'text', TEXT],
 			[
 				'a pressed button of a format',
@@ -1030,6 +1105,16 @@ for (const tone of TONES) {
 				page,
 				await colourOf(part('filter-range', '[data-slot="slider-thumb"]'), 'border-top-color'),
 				await colourOf(tile(page, 'filter-range'), 'background-color'),
+			),
+			EDGE,
+		)
+		// The mark of a cell with a formula is drawn by the cell over the card, which shows through it.
+		hold(
+			'the mark of a formula',
+			await contrastOfPair(
+				page,
+				await colourOf(part('formula-errors', 'td[data-formula]'), 'border-top-color', '::before'),
+				await colourOf(tile(page, 'formula-errors'), 'background-color'),
 			),
 			EDGE,
 		)

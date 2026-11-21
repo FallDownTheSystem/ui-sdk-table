@@ -3,6 +3,7 @@ import { defineAsyncComponent, type Component } from 'vue'
 import { tiles as columns } from './tiles/columns'
 import { tiles as edit } from './tiles/edit'
 import { tiles as filter } from './tiles/filter'
+import { tiles as formula } from './tiles/formula'
 import { tiles as group } from './tiles/group'
 import { tiles as more } from './tiles/more'
 import { tiles as rows } from './tiles/rows'
@@ -21,6 +22,7 @@ export const groups: Record<string, TileCopy[]> = {
 	columns,
 	edit,
 	sheet,
+	formula,
 	server,
 	more,
 	style,

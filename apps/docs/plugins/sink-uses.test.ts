@@ -19,6 +19,11 @@ describe('usesOf', () => {
 		expect(usesOf(source)).toEqual(['toCsv', 'toXlsx'])
 	})
 
+	it('reads the formulas entry', () => {
+		const source = `import { createFormulaEngine, formulaColumn } from 'ui-sdk-table-vue/formulas'`
+		expect(usesOf(source)).toEqual(['createFormulaEngine', 'formulaColumn'])
+	})
+
 	it('reads the options, models, events and slots of the table element', () => {
 		const source = `
 			<Table

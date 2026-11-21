@@ -1,5 +1,6 @@
 import * as library from 'ui-sdk-table-vue'
 import * as writers from 'ui-sdk-table-vue/export'
+import * as formulas from 'ui-sdk-table-vue/formulas'
 import { uses } from 'virtual:sink-uses'
 import { describe, expect, it } from 'vite-plus/test'
 import columnSource from '../../../../packages/core/src/rows/types.ts?raw'
@@ -33,7 +34,7 @@ const slots = [
 const events = [...typeBlock(vueSource, 'export type TableEmits = {').matchAll(/^\t(\w+):/gm)].map(
 	([, name = '']) => `on${name.charAt(0).toUpperCase()}${name.slice(1)}`,
 )
-const exported = [...Object.keys(library), ...Object.keys(writers)]
+const exported = [...Object.keys(library), ...Object.keys(writers), ...Object.keys(formulas)]
 
 /** Every name that a tile can show, in the form of a tag. */
 const real = new Set([
@@ -52,20 +53,6 @@ const used = new Set(Object.values(uses).flat())
  * slot or column key of the library must get a tile or a line here.
  */
 const NOT_SHOWN: Record<string, string> = {
-	formulas: 'The tiles for formulas come in a later slice.',
-	cellFormulas: 'The tiles for formulas come in a later slice.',
-	defaultCellFormulas: 'The tiles for formulas come in a later slice.',
-	getColumnFormula: 'The tiles for formulas come in a later slice.',
-	setColumnFormula: 'The tiles for formulas come in a later slice.',
-	getAddress: 'The tiles for formulas come in a later slice.',
-	cellAt: 'The tiles for formulas come in a later slice.',
-	getCellFormula: 'The tiles for formulas come in a later slice.',
-	setCellFormula: 'The tiles for formulas come in a later slice.',
-	recalculate: 'The tiles for formulas come in a later slice.',
-	getFormulaSummary: 'The tiles for formulas come in a later slice.',
-	evaluateFormula: 'The tiles for formulas come in a later slice.',
-	getFormulaFunctions: 'The tiles for formulas come in a later slice.',
-	'column.allowFormula': 'The tiles for formulas come in a later slice.',
 	getRowId: 'Every tile has rows with an `id`, which is the default.',
 	sortChildren: 'A sorted tree; the tree tile is not sorted.',
 	canGroup: 'The group tiles say it by `column.groupable`.',
