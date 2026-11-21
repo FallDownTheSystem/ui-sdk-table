@@ -397,6 +397,26 @@ body {
 	user-select: none;
 }
 
+/* The row of letters above the headers: a press on a letter selects its column, on the corner every cell. */
+.sheet [data-slot='table'] tr[data-kind='letters'] > th {
+	background: color-mix(in srgb, currentColor 6%, Canvas);
+	color: color-mix(in srgb, currentColor 75%, Canvas);
+	font-weight: 400;
+	text-align: center;
+	cursor: default;
+	user-select: none;
+}
+
+.sheet [data-slot='table'] tr[data-kind='letters'] > th[data-selected] {
+	background: color-mix(in srgb, Highlight 30%, Canvas);
+	color: CanvasText;
+}
+
+.sheet [data-slot='table'] tr[data-kind='letters'] > th[data-corner] {
+	position: sticky;
+	inset-inline-start: 0;
+}
+
 .sheet [data-slot='table'] tr[data-sticky] > [data-lead] {
 	inset-inline-start: 0;
 	z-index: 3;

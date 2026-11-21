@@ -1,3 +1,4 @@
+import { isLead, type ColumnLayout } from '../columns/layout'
 import type { ColumnDef } from '../rows'
 
 /**
@@ -34,6 +35,25 @@ export function columnLetter(index: number): string {
 	let letters = ''
 	for (let rest = index; rest >= 0; rest = Math.floor(rest / 26) - 1) {
 		letters = String.fromCharCode(65 + (rest % 26)) + letters
+	}
+	return letters
+}
+
+/**
+ * Which letter each column shows in the row of letters, by column id. This
+ * is the one rule for it, and every part of the table reads it here: the
+ * text of a letter cell, its name, and which cells a press on it selects.
+ *
+ * A letter is the place of a column among the columns in view, counted
+ * without the columns that lead the table (row numbers, a checkbox): those
+ * have no letter. A column that moves or that stands after a hidden column
+ * takes the letter of its new place, as the rows take their numbers.
+ */
+export function lettersByColumn(layout: ColumnLayout): ReadonlyMap<string, string> {
+	const letters = new Map<string, string>()
+	for (const column of layout.leaves) {
+		if (isLead(column)) continue
+		letters.set(column.id, columnLetter(letters.size))
 	}
 	return letters
 }

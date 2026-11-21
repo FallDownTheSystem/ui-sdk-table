@@ -1734,6 +1734,48 @@ input {
 	color: color-mix(in oklab, var(--tile-danger) 60%, var(--tile-ink));
 }
 
+/*
+ * The row of letters above the headers: a press on a letter selects its
+ * column, on the corner every cell. It has no ground of its own, except where
+ * it sticks or is pinned, so the rows that scroll under it stay hidden.
+ */
+.tile [data-slot='table'] tr[data-kind='letters'] {
+	--row-fill: transparent;
+	block-size: 24px;
+}
+
+.tile [data-slot='table'] tr[data-kind='letters']:is([data-sticky]),
+.tile [data-slot='table'] tr[data-kind='letters'] > :is([data-pinned], [data-corner]) {
+	--row-fill: var(--tile-bg);
+}
+
+.tile [data-slot='table'] tr[data-kind='letters'] > th {
+	padding-inline: 4px;
+	color: var(--tile-ink-2);
+	font-size: 12px;
+	text-align: center;
+	cursor: default;
+	user-select: none;
+}
+
+/* The letter of a column whose cells are all selected. */
+.tile [data-slot='table'] tr[data-kind='letters'] > th[data-selected] {
+	color: var(--tile-ink);
+	font-weight: 600;
+	box-shadow: inset 0 -2px 0 var(--tile-accent);
+}
+
+/* The corner stays above the numbers of the rows while the table scrolls sideways. */
+.tile [data-slot='table'] tr[data-kind='letters'] > th[data-corner] {
+	position: sticky;
+	z-index: 1;
+	inset-inline-start: 0;
+}
+
+.tile [data-slot='table'] tr[data-sticky][data-kind='letters'] > th[data-corner] {
+	z-index: 3;
+}
+
 /* A button of one letter is as wide as it is high. */
 .tile [data-slot='button'].look {
 	inline-size: 28px;

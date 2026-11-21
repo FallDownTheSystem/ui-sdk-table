@@ -459,6 +459,36 @@ test('the square of a fill tile goes on with a series, and another tile does not
 	)
 })
 
+test('the tile of letters: a letter selects its column over a header group, Shift more columns, and the arrows go down through the group', async ({
+	page,
+}) => {
+	await open(page, '&eager&only=sheet-letters')
+	const table = tableOf(page, 'sheet-letters')
+	const said = page.getByTestId('letters-said')
+	const letter = (id: string) => table.locator(`th[data-kind="letter"][data-column="${id}"]`)
+	await expect(table.locator('tr[data-kind="letters"] > th')).toHaveText(['', 'A', 'B', 'C', 'D'])
+	await expect(letter('#')).toHaveAccessibleName('All cells')
+	await letter('items').click()
+	await expect(said).toHaveText('14 by 1 cells')
+	await expect(letter('items')).toHaveAttribute('data-selected', '')
+	await letter('city').click({ modifiers: ['Shift'] })
+	await expect(said).toHaveText('14 by 2 cells')
+	await expect(table.locator('th[data-kind="letter"][data-selected]')).toHaveCount(2)
+	await letter('#').click()
+	await expect(said).toHaveText('14 by 4 cells')
+
+	// The letter of a column under a group is a cell of one column. Down goes to the group, then to the column.
+	await letter('total').click()
+	await expect(letter('total')).toBeFocused()
+	await page.keyboard.press('ArrowDown')
+	await expect(table.locator('thead th[data-column="order"]')).toBeFocused()
+	await page.keyboard.press('ArrowDown')
+	await expect(table.locator('thead th[data-column="total"]:not([data-kind])')).toBeFocused()
+	await page.keyboard.press('ArrowUp')
+	await page.keyboard.press('ArrowUp')
+	await expect(letter('total')).toBeFocused()
+})
+
 test('the tiles of a sheet: a number selects its row, a format is data, a total changes its function', async ({
 	page,
 }) => {
@@ -643,6 +673,7 @@ const CONTRAST_TILES = [
 	'sheet-fill',
 	'sheet-formats',
 	'sheet-saved',
+	'sheet-letters',
 ]
 
 type Pair = [what: string, part: Locator, kind: ContrastKind, least: number]
@@ -668,6 +699,9 @@ for (const tone of TONES) {
 		await tile(page, 'sheet-formats').getByRole('button', { name: 'Mark', exact: true }).click()
 		await expect(year).toHaveAttribute('data-fill', 'accent')
 		await cell(tableOf(page, 'sheet-fill'), 'Aino', 'week').click()
+		await tableOf(page, 'sheet-letters')
+			.locator('th[data-kind="letter"][data-column="city"]')
+			.click()
 
 		// A state that the pairs below read: a typed text, an open and refused editor, a hovered row.
 		const price = cell(tableOf(page, 'edit-price'), 'Espresso beans', 'price')
@@ -869,6 +903,18 @@ for (const tone of TONES) {
 				part('sheet-fill', '[data-slot="table-fill-handle"]'),
 				'fill',
 				EDGE,
+			],
+			[
+				'the letter of a column',
+				part('sheet-letters', 'th[data-kind="letter"]:not([data-selected], [data-lead])'),
+				'text',
+				TEXT,
+			],
+			[
+				'the letter of a selected column',
+				part('sheet-letters', 'th[data-kind="letter"][data-selected]'),
+				'text',
+				TEXT,
 			],
 			['a text in an alert colour', part('sheet-saved', 'td[data-color="alert"]'), 'text', TEXT],
 			['a text on a fill', part('sheet-saved', 'td[data-fill="accent"]'), 'text', TEXT],

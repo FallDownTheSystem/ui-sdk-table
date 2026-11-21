@@ -383,3 +383,18 @@ test('the header group above a pinned column stays at the edge with it', async (
 	expect(await left(group)).toBe(before)
 	expect(await left(header(table, 'team'))).toBe(before)
 })
+
+test('with header groups, each sticky header row stands under the one before it', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const rows = table.locator('thead tr')
+	await expect(rows).toHaveCount(2)
+	// Each header row is a part of its own, so both join the rows that stick and get their own place.
+	const offsets = await rows.evaluateAll((list) =>
+		list.map((row) => (row as HTMLElement).style.getPropertyValue('--table-sticky-offset')),
+	)
+	const height = Math.round((await rows.first().boundingBox())?.height ?? 0)
+	expect(offsets[0]).toMatch(/^calc\(0px/)
+	expect(offsets[1]).toMatch(new RegExp(`^calc\\(${height}px`))
+})

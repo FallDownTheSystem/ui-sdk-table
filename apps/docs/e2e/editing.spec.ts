@@ -636,9 +636,12 @@ test('the keys of a sheet do nothing in a table', async ({ page }) => {
 	await expect(table.locator('[role="rowheader"]')).toHaveCount(0)
 	await expect(
 		table.locator(
-			'[data-bold], [data-italic], [data-align], [data-color], [data-fill], [data-fill-target], [data-row-header]',
+			'[data-bold], [data-italic], [data-align], [data-color], [data-fill], [data-fill-target], [data-row-header], [data-corner], tr[data-kind="letters"], th[data-kind="letter"]',
 		),
 	).toHaveCount(0)
+	// No row of letters: the header row is the first row of the grid.
+	await expect(table.locator('thead tr').first()).toHaveAttribute('aria-rowindex', '1')
+	await expect(table.locator('thead tr').first()).not.toHaveAttribute('data-kind')
 	// A cut without the sheet option is the browser's, and a cell holds no text to cut.
 	await page.keyboard.press('Control+x')
 	expect(await clipboard(page)).toBe('kept')

@@ -155,6 +155,7 @@ const OPTIONS = [
 	'fillHandle',
 	'editable',
 	'cellSelection',
+	'columnLetters',
 	'manualSort',
 	'manualFilter',
 	'facets',
@@ -193,6 +194,7 @@ const BOOLEANS: readonly string[] = [
 	'sheet',
 	'editable',
 	'cellSelection',
+	'columnLetters',
 	'manualSort',
 	'manualFilter',
 	'manualPage',
@@ -202,6 +204,8 @@ const BOOLEANS: readonly string[] = [
 /** What `rowAttrs` gets: which row of the table asks for its attributes. */
 export type RowAttrsContext<Row> =
 	| { kind: 'header'; index: number }
+	/** The row of letters, with the `columnLetters` option. */
+	| { kind: 'letters' }
 	| {
 			kind: 'row'
 			row: Row
@@ -225,6 +229,8 @@ export type RowAttrsContext<Row> =
 /** What `cellAttrs` gets: which cell of the table asks for its attributes. */
 export type CellAttrsContext<Row> =
 	| { kind: 'header'; column: ColumnDef<Row>; leaf: boolean }
+	/** A cell of the row of letters. `letter` is `undefined` for a column that leads the table. */
+	| { kind: 'letter'; column: ColumnDef<Row>; letter: string | undefined; corner: boolean }
 	| { kind: 'cell'; column: ColumnDef<Row>; row: Row; node: DataRow<Row>; value: unknown }
 	| { kind: 'group'; group: GroupRow<Row>; path: readonly GroupPathEntry<Row>[] }
 	| {
@@ -304,6 +310,7 @@ const OWN_ATTRS: ReadonlySet<string> = new Set([
 	'data-checking',
 	'data-color',
 	'data-column',
+	'data-corner',
 	'data-dragging',
 	'data-editable',
 	'data-editing',
@@ -489,6 +496,22 @@ export type RowHeaderSlotProps<Row> = {
 	selectRow: (event?: Event) => void
 }
 
+export type LetterSlotProps<Row> = {
+	column: ColumnDef<Row>
+	/** The letter of the column: its place among the columns in view. `undefined` for a column that leads the table. */
+	letter: string | undefined
+	/** Whether the cell is the corner, above the row numbers, which selects every cell. */
+	corner: boolean
+	/**
+	 * Selects what a press on the cell selects: the cells of the column, with
+	 * Shift in the event from the active cell on, or every cell from the
+	 * corner. A press on the cell does the same; this is for a control inside
+	 * it. It throws for an empty cell of a column that leads, and without the
+	 * `cellSelection` option.
+	 */
+	selectColumn: (event?: Event) => void
+}
+
 export type DetailSlotProps<Row> = {
 	row: Row
 	node: DataRow<Row>
@@ -579,6 +602,8 @@ export type TableSlots<Row> = {
 	'group-total'?: (props: GroupTotalSlotProps<Row>) => VNodeChild
 	/** The cell with the number of a row, in a column with `rowHeader`. */
 	'row-header'?: (props: RowHeaderSlotProps<Row>) => VNodeChild
+	/** A cell of the row of letters, with the `columnLetters` option. Without it, the cell shows the letter. */
+	letter?: (props: LetterSlotProps<Row>) => VNodeChild
 	/** The detail row of a row, for the rows that `hasDetail` names. */
 	detail?: (props: DetailSlotProps<Row>) => VNodeChild
 	/** Shown in place of the rows when no row passes the filters. */
@@ -654,17 +679,59 @@ const TableImpl = defineComponent(
 		// The key of a cell part. The two prefixes keep a header cell apart from the
 		// cell of a row that has the id "header".
 		const headerKey = (columnId: string) => `h|${columnId}`
+		const letterKey = (columnId: string) => `l|${columnId}`
 		const cellId = (rowId: string, columnId: string) => `r|${rowId}|${columnId}`
 		const groupKey = (rowId: string) => `g|${rowId}`
 		const groupTotalKey = (rowId: string, columnId: string) => `t|${rowId}|${columnId}`
 		const detailKey = (rowId: string) => `d|${rowId}`
 		const footKey = (columnId: string) => `f|${columnId}`
 
+		/** The row of letters above the header rows: one cell for each column in view. */
+		function letterRow() {
+			return h(
+				TableHeaderRow,
+				{ ...rowAttrs({ kind: 'letters' }), key: 'letters', value: 'letters', index: 0 },
+				() =>
+					api.columns().map((column, col) => {
+						const letter = api.letterOf(column.id)
+						const corner = api.isCorner(col)
+						return h(
+							TableHeaderCell,
+							{
+								...cellAttrs({ kind: 'letter', column, letter, corner }),
+								key: column.id,
+								value: letterKey(column.id),
+								row: 0,
+								col,
+								header: true,
+							},
+							() =>
+								slots.letter
+									? slots.letter({
+											column,
+											letter,
+											corner,
+											selectColumn: (event?: Event) => api.selectLetterColumn(column.id, event),
+										})
+									: (letter ?? ''),
+						)
+					}),
+			)
+		}
+
 		function headerRows() {
-			return api.headerRows().map((cells, index) =>
-				h(
+			// The header rows come after the row of letters in the grid.
+			const above = api.letterRowCount()
+			const rows = api.headerRows().map((cells, layoutIndex) => {
+				const index = layoutIndex + above
+				return h(
 					TableHeaderRow,
-					{ ...rowAttrs({ kind: 'header', index }), key: `header-${index}`, index },
+					{
+						...rowAttrs({ kind: 'header', index: layoutIndex }),
+						key: `header-${layoutIndex}`,
+						value: `header-${layoutIndex}`,
+						index,
+					},
 					() =>
 						cells.map((cell) => {
 							const column = cell.column
@@ -675,7 +742,7 @@ const TableImpl = defineComponent(
 									// The key is the column, so the element stays with its column when the order changes.
 									key: cell.key,
 									value: headerKey(cell.key),
-									row: cell.row,
+									row: cell.row + above,
 									col: cell.col,
 									colspan: cell.colSpan,
 									rowspan: cell.rowSpan,
@@ -712,8 +779,9 @@ const TableImpl = defineComponent(
 								},
 							)
 						}),
-				),
-			)
+				)
+			})
+			return above ? [letterRow(), ...rows] : rows
 		}
 
 		function groupRow(

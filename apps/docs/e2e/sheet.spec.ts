@@ -10,12 +10,14 @@ async function open(page: Page, query = '') {
 	return table
 }
 
-// Rows and columns as `aria-rowindex` and `aria-colindex` count them, from 1.
-// Row 1 is the header row, rows 2 to 13 are the products p1 to p12, row 14 is
-// the footer. Column 1 holds the numbers of the rows; then product, group,
-// price, discount, stock, date.
+// The page has the row of letters, which is `aria-rowindex` 1. The tests count
+// the rows after it, from 1: row 1 is the header row, rows 2 to 13 are the
+// products p1 to p12, row 14 is the footer. Column 1 holds the numbers of the
+// rows; then product, group, price, discount, stock, date.
+const LETTERS = 1
+const rowAt = (table: Locator, row: number) => table.locator(`tr[aria-rowindex="${row + LETTERS}"]`)
 const cell = (table: Locator, row: number, col: number) =>
-	table.locator(`tr[aria-rowindex="${row}"] > [aria-colindex="${col}"]`)
+	rowAt(table, row).locator(`> [aria-colindex="${col}"]`)
 // The footer cell of a column holds the picker of its function, and then its text.
 const total = (table: Locator, col: number) =>
 	table.locator(`tfoot [aria-colindex="${col}"] .total-text`)
@@ -192,7 +194,8 @@ test('with 50,000 rows and the row window, an undo of a row far away scrolls to 
 }) => {
 	const table = await open(page)
 	await page.getByRole('button', { name: '50,000 rows' }).click()
-	await expect(table).toHaveAttribute('aria-rowcount', '50002')
+	await expect(table).toHaveAttribute('aria-rowcount', '50003')
+	// The row of letters, the header row, 50,000 products and the footer.
 	const price = cell(table, 2, PRICE)
 	await price.click()
 	await page.keyboard.type('9')
@@ -399,7 +402,7 @@ test('with groups, Enter passes over a group row to the next row of values', asy
 	const table = await open(page)
 	await page.getByRole('checkbox', { name: 'Group by group' }).check()
 	// Row 2 is the group of the fasteners, rows 3 to 6 are its products, row 7 is the group of the tools.
-	await expect(table.locator('tr[aria-rowindex="7"]')).toContainText('Tools')
+	await expect(rowAt(table, 7)).toContainText('Tools')
 	await cell(table, 6, STOCK).click()
 	await page.keyboard.type('5')
 	await page.keyboard.press('Enter')
@@ -683,6 +686,182 @@ test('the numbers stay at the start while the table scrolls sideways, and a pinn
 	expect((await cell(table, 1, NUMBER).boundingBox())?.x).toBeCloseTo(before[0]?.x ?? -1, 0)
 })
 
+// --- Column letters --------------------------------------------------------
+
+const letter = (table: Locator, col: number) =>
+	table.locator(`tr[aria-rowindex="1"] > [aria-colindex="${col}"]`)
+const letterRow = (table: Locator) => table.locator('tr[aria-rowindex="1"]')
+
+test('the letters stand above the headers: a press selects a column, Shift more columns, and a drag three columns', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await expect(letterRow(table)).toHaveAttribute('data-kind', 'letters')
+	await expect(letterRow(table).locator('> th')).toHaveText(['', 'A', 'B', 'C', 'D', 'E', 'F'])
+	await expect(table).toHaveAttribute('aria-rowcount', '15')
+	// The header row is the second row of the grid, and the first product the third.
+	await expect(table.locator('tr[aria-rowindex="2"] > [aria-colindex="2"]')).toContainText(
+		'Product',
+	)
+	await expect(table.locator('tr[aria-rowindex="3"] > [aria-colindex="2"]')).toHaveText('Bolt M6')
+
+	await letter(table, PRICE).click()
+	await expect(letter(table, PRICE)).toBeFocused()
+	await expect(status(page)).toHaveText('No cell, 12 by 1 cells from p1 price to p12 price')
+	await expect(selected(table)).toHaveCount(12)
+	await expect(letter(table, PRICE)).toHaveAttribute('data-selected', '')
+	await page.keyboard.press('Control+c')
+	expect((await clipboard(page)).split('\n').slice(0, 2)).toEqual(['0.12', '0.05'])
+
+	// Shift goes from the active cell: the letter of the price, to the stock.
+	await letter(table, STOCK).click({ modifiers: ['Shift'] })
+	await expect(status(page)).toHaveText('No cell, 12 by 3 cells from p1 price to p12 stock')
+	await expect(letter(table, PRICE)).toBeFocused()
+	// From a cell of the body, Shift on a letter takes the columns from that cell's column.
+	await cell(table, 3, GROUP).click()
+	await letter(table, PRICE).click({ modifiers: ['Shift'] })
+	await expect(status(page)).toHaveText('p2 group, 12 by 2 cells from p1 group to p12 price')
+
+	// A drag over three letters, back to the first, and out again.
+	await drag(page, letter(table, PRODUCT), letter(table, DISCOUNT), false)
+	await expect(status(page)).toHaveText('No cell, 12 by 4 cells from p1 product to p12 discount')
+	const back = await center(letter(table, PRODUCT))
+	await page.mouse.move(back.x, back.y, { steps: 4 })
+	await expect(status(page)).toHaveText('No cell, 12 by 1 cells from p1 product to p12 product')
+	const end = await center(letter(table, PRICE))
+	// Down into the rows: the drag still takes whole columns.
+	await page.mouse.move(end.x, end.y + 120, { steps: 4 })
+	await page.mouse.up()
+	await expect(status(page)).toHaveText('No cell, 12 by 3 cells from p1 product to p12 price')
+	await expect(table.locator('tr[aria-rowindex="1"] > [data-selected]')).toHaveCount(3)
+	// The letters are no cells of a range, and neither are the numbers of the rows.
+	await expect(selected(table)).toHaveCount(36)
+})
+
+test('the corner selects every cell, without the numbers of the rows', async ({ page }) => {
+	const table = await open(page)
+	const corner = letter(table, NUMBER)
+	await expect(corner).toHaveAccessibleName('All cells')
+	await expect(corner).toHaveText('')
+	await corner.click()
+	await expect(status(page)).toHaveText('No cell, 12 by 6 cells from p1 product to p12 date')
+	await expect(selected(table)).toHaveCount(72)
+	await page.keyboard.press('Control+c')
+	expect((await clipboard(page)).split('\n')[0]).toBe(
+		'Bolt M6\tFasteners\t0.12\t0\t4200\t2026-01-12',
+	)
+	await expect(summary(page)).toContainText('72 cells with a value')
+})
+
+test('the arrows reach the letters, Space selects a column, Shift with an arrow the next, Delete empties them, and Tab leaves', async ({
+	page,
+}) => {
+	const table = await open(page)
+	// Up from a product passes the header of its column to its letter.
+	await cell(table, 2, STOCK).click()
+	await page.keyboard.press('ArrowUp')
+	await page.keyboard.press('ArrowUp')
+	await expect(letter(table, STOCK)).toBeFocused()
+	await page.keyboard.press('Space')
+	await expect(status(page)).toHaveText('No cell, 12 by 1 cells from p1 stock to p12 stock')
+	await expect(polite(page).filter({ hasText: '12 rows by 1 column selected.' })).not.toHaveCount(0)
+	await page.keyboard.press('Shift+ArrowLeft')
+	await expect(status(page)).toHaveText('No cell, 12 by 2 cells from p1 discount to p12 stock')
+	await page.keyboard.press('Escape')
+	await expect(selected(table)).toHaveCount(0)
+	// Control+Space, the key of a spreadsheet, selects the column too.
+	await page.keyboard.press('Control+Space')
+	await expect(selected(table)).toHaveCount(12)
+	await page.keyboard.press('Delete')
+	await expect(log(page).first()).toHaveText(
+		'clear: p1.stock=null p2.stock=null p3.stock=null p4.stock=null p5.stock=null p6.stock=null and 6 more',
+	)
+	await expect(letter(table, STOCK)).toBeFocused()
+	await page.keyboard.press('Control+z')
+	await expect(cell(table, 2, STOCK)).toHaveText('4,200')
+	// The undo put focus on the first cell that changed. Up twice is its letter again.
+	await page.keyboard.press('ArrowUp')
+	await page.keyboard.press('ArrowUp')
+	await expect(letter(table, STOCK)).toBeFocused()
+	// Left of the first letter is the corner, and Enter there selects every cell.
+	await page.keyboard.press('Home')
+	await expect(letter(table, NUMBER)).toBeFocused()
+	await page.keyboard.press('Enter')
+	await expect(selected(table)).toHaveCount(72)
+	// Down from a letter is the header of its column.
+	await page.keyboard.press('ArrowRight')
+	await page.keyboard.press('ArrowDown')
+	await expect(cell(table, 1, PRODUCT)).toBeFocused()
+	await page.keyboard.press('ArrowUp')
+	await page.keyboard.press('Tab')
+	await expect(table.locator(':focus')).toHaveCount(0)
+})
+
+test('with Product pinned, its letter and the corner stay while the table scrolls sideways', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 520, height: 700 })
+	const table = await open(page)
+	await page.getByRole('checkbox', { name: 'Pin Product' }).check()
+	await expect(letter(table, PRODUCT)).toHaveAttribute('data-pinned', 'start')
+	await expect(letter(table, NUMBER)).toHaveAttribute('data-pinned', 'start')
+	const before = [
+		await letter(table, NUMBER).boundingBox(),
+		await letter(table, PRODUCT).boundingBox(),
+	]
+	await frame(page).evaluate((el) => el.scrollTo({ left: 300, behavior: 'instant' }))
+	await expect.poll(() => frame(page).evaluate((el) => el.scrollLeft)).toBe(300)
+	expect((await letter(table, NUMBER).boundingBox())?.x).toBeCloseTo(before[0]?.x ?? -1, 0)
+	expect((await letter(table, PRODUCT).boundingBox())?.x).toBeCloseTo(before[1]?.x ?? -1, 0)
+	// A letter that is not pinned scrolls with its column.
+	const price = await letter(table, PRICE).boundingBox()
+	const priceCell = await cell(table, 3, PRICE).boundingBox()
+	expect(price?.x).toBeCloseTo(priceCell?.x ?? -1, 0)
+	await letter(table, PRICE).click()
+	await expect(selected(table)).toHaveCount(12)
+})
+
+test('with 50,000 rows the letters stick above the header, and a letter selects the column of every row', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await page.getByRole('button', { name: '50,000 rows' }).click()
+	await expect(table).toHaveAttribute('aria-rowcount', '50003')
+	await frame(page).evaluate((el) => el.scrollTo({ top: 300 * 36, behavior: 'instant' }))
+	const box = await frame(page).boundingBox()
+	// The letters stick at the top edge of the frame, inside its border of one pixel.
+	await expect
+		.poll(async () =>
+			Math.abs(((await letter(table, PRICE).boundingBox())?.y ?? 0) - (box?.y ?? 0)),
+		)
+		.toBeLessThanOrEqual(1)
+	const letters = await letter(table, PRICE).boundingBox()
+	const header = await cell(table, 1, PRICE).boundingBox()
+	expect(header?.y).toBeCloseTo((letters?.y ?? 0) + (letters?.height ?? 0), 0)
+	await letter(table, PRICE).click()
+	await expect(status(page)).toHaveText('No cell, 50000 by 1 cells from p1 price to p50000 price')
+	await expect(summary(page)).toContainText('50000 of 50000 cells with a value', {
+		timeout: 10_000,
+	})
+	// The rows did not move for the press.
+	expect(await frame(page).evaluate((el) => el.scrollTop)).toBe(300 * 36)
+})
+
+test('from right to left, Shift with the left arrow on a letter takes the column after it', async ({
+	page,
+}) => {
+	const table = await open(page, '&dir=rtl')
+	await letter(table, PRICE).click()
+	await page.keyboard.press('Shift+ArrowLeft')
+	await expect(status(page)).toHaveText('No cell, 12 by 2 cells from p1 price to p12 discount')
+	// The corner is at the right edge, over the numbers.
+	const corner = await letter(table, NUMBER).boundingBox()
+	const product = await letter(table, PRODUCT).boundingBox()
+	expect(corner?.x ?? 0).toBeGreaterThan(product?.x ?? 0)
+	await drag(page, letter(table, PRICE), letter(table, STOCK))
+	await expect(status(page)).toHaveText('No cell, 12 by 3 cells from p1 price to p12 stock')
+})
+
 // --- Fill ------------------------------------------------------------------
 
 test('a drag of the handle down three rows repeats a value, marks the cells on its way, and Ctrl+Z takes it back', async ({
@@ -818,7 +997,7 @@ test('with 50,000 rows, a drag of the handle to the edge of the frame scrolls an
 	await page.setViewportSize({ width: 1280, height: 1100 })
 	const table = await open(page)
 	await page.getByRole('button', { name: '50,000 rows' }).click()
-	await expect(table).toHaveAttribute('aria-rowcount', '50002')
+	await expect(table).toHaveAttribute('aria-rowcount', '50003')
 	await cell(table, 2, STOCK).click()
 	const from = await center(handle(table))
 	const box = await frame(page).boundingBox()
@@ -833,7 +1012,7 @@ test('with 50,000 rows, a drag of the handle to the edge of the frame scrolls an
 		.toBeGreaterThan(200 * 36)
 	// The rows of the start left the page long ago, and the drag goes on. The row of the active
 	// cell is kept in the page, so the row after it is the one to look for.
-	await expect(table.locator('tr[aria-rowindex="3"]')).toHaveCount(0)
+	await expect(rowAt(table, 3)).toHaveCount(0)
 	await page.mouse.up()
 	const line = (await log(page).first().textContent()) ?? ''
 	expect(line).toMatch(/^fill: p2\.stock=4200 p3\.stock=4200 .* and \d+ more$/)
@@ -1065,7 +1244,7 @@ test('a whole column shown as a percentage holds for rows that come later', asyn
 
 	// Other rows: none of them was there when the format was given.
 	await page.getByRole('button', { name: '50,000 rows' }).click()
-	await expect(table).toHaveAttribute('aria-rowcount', '50002')
+	await expect(table).toHaveAttribute('aria-rowcount', '50003')
 	await expect(cell(table, 20, STOCK)).toHaveText('4,000%')
 
 	await cell(table, 20, STOCK).click()

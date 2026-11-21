@@ -42,8 +42,12 @@ export const priceSchema = (later = false, seen?: unknown[]): StandardSchemaV1 =
 	},
 })
 
-/** Grid row 0 is the header row. Each body row has one cell for each column. */
-function markup(ids: readonly string[], columnIds: readonly string[]): string {
+/**
+ * Grid row 0 is the header row, and with `letters` the row of letters, whose
+ * cells have the id `l|{column}`. Each body row has one cell for each column.
+ */
+function markup(ids: readonly string[], columnIds: readonly string[], letters = false): string {
+	const head = letters ? 2 : 1
 	const cells = (id: string, row: number, header = false) =>
 		columnIds
 			.map(
@@ -52,9 +56,10 @@ function markup(ids: readonly string[], columnIds: readonly string[]): string {
 			)
 			.join('')
 	const rows = ids.map(
-		(id, index) => `<row value="${id}" index="${index + 1}">${cells(id, index + 1)}</row>`,
+		(id, index) => `<row value="${id}" index="${index + head}">${cells(id, index + head)}</row>`,
 	)
-	return `<root aria-label="Parts"><header-row index="0">${cells('h', 0, true)}</header-row>${rows.join('')}</root>`
+	const top = letters ? `<header-row index="0">${cells('l', 0, true)}</header-row>` : ''
+	return `<root aria-label="Parts">${top}<header-row index="${head - 1}">${cells('h', head - 1, true)}</header-row>${rows.join('')}</root>`
 }
 
 export function sheetTable(
@@ -107,7 +112,9 @@ export function sheetTable(
 		} as TableOptions,
 		markup(
 			ids,
-			columns.map((column) => column.id),
+			// Columns of the test in place of the columns of the harness: one level, in their order of display.
+			(options.columns ?? columns).map((column) => column.id),
+			!!options.columnLetters,
 		),
 	)
 	const cell = (rowId: string, columnId: string) =>

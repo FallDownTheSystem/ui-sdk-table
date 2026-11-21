@@ -41,6 +41,12 @@ export const tiles: TileCopy[] = [
 		tone: 'sun',
 	},
 	{
+		id: 'sheet-letters',
+		title: 'Select a column.',
+		blurb: 'A press on a letter takes its column, and the corner takes every cell.',
+		tone: 'mist',
+	},
+	{
 		id: 'sheet-totals',
 		title: 'Pick the total.',
 		blurb: 'The footer turns a sum into an average, and the group rows follow.',

@@ -1,4 +1,4 @@
-export { columnLetter, rowNumberColumn } from './chrome'
+export { columnLetter, lettersByColumn, rowNumberColumn } from './chrome'
 export { fillLine, fillValues } from './fill'
 export { moveFrom, type Move, type MoveLimits } from './moves'
 export { summarize, type RangeSummary } from './summary'

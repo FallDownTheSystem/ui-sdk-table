@@ -81,6 +81,8 @@ export type TableMessages = {
 	historyTooLarge: (details: { cells: number }) => string
 	/** The name of the header of a row: its number, from 1. A screen reader says it with each cell of the row. */
 	rowNumber: (details: { number: number }) => string
+	/** The name of the corner cell of the row of letters, which selects every cell. */
+	cornerCell: () => string
 	/** What a screen reader says after a fill. */
 	cellsFilled: (details: { cells: number }) => string
 	/** Why a fill did nothing: a column refuses one of its values. */
@@ -174,6 +176,7 @@ export const defaultMessages: TableMessages = {
 	historyTooLarge: ({ cells }) =>
 		`A change of ${cellCount(cells)} is too large to undo. The history is empty now.`,
 	rowNumber: ({ number }) => `Row ${number}`,
+	cornerCell: () => 'All cells',
 	cellsFilled: ({ cells }) => `${cellCount(cells)} filled.`,
 	fillRefused: ({ column, text, message }) =>
 		`Nothing was filled. ${column} refuses "${text}": ${message}`,

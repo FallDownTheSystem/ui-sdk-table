@@ -105,6 +105,12 @@ describe('a table without `sheet` and without `history`', () => {
 		const { view, told, cell } = sheetTable({ editable: true, cellSelection: true })
 		try {
 			expect(view.root.hasAttribute('data-sheet')).toBe(false)
+			// No row of letters: the header row is grid row 0, and no column has a letter.
+			expect(view.root.getAttribute('aria-rowcount')).toBe('5')
+			expect(view.api.headerRowCount()).toBe(1)
+			expect(view.api.headerAt(0, 0)?.column.id).toBe('name')
+			expect(view.api.letterOf('name')).toBeUndefined()
+			expect(view.root.querySelector('[data-kind="letter"], [data-corner]')).toBeNull()
 			// No cell holds the fill handle, whatever is selected.
 			view.api.selectCells({ rowId: 'a', columnId: 'stock' })
 			expect(view.api.fillHandleAt({ row: 1, col: 3 })).toBe(false)

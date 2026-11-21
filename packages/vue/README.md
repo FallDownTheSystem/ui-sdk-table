@@ -158,6 +158,22 @@ const columns = [rowNumberColumn<Row>(), { id: 'name' }, { id: 'price' }]
 
 `rowNumberColumn(options?)` is a column with `lead: true` and `rowHeader: true`: it stays first, sticks with the start pins, and is outside every range, copy, paste, fill, format and export. Its cells are `th` elements with the role `rowheader` and `data-row-header`, with the name "Row 3" (message `rowNumber`), so a screen reader says the number with each cell of the row. The number is the place of the row among the data rows, counted over the pages; group rows have none. A press on a number selects the cells of its row, with Shift the rows from the active cell on, and a drag over numbers selects those rows. The `#row-header` slot gets `{ row, node, column, number, selectRow }`. Give the cell `position: sticky; inset-inline-start: 0` and an opaque background to keep it in view without a pinned column.
 
+### Column letters
+
+```vue
+<Table :columns="[rowNumberColumn<Row>(), ...columns]" cell-selection column-letters />
+```
+
+`column-letters` adds a row of letters above the header rows: A, B, C, then AA. It is not part of `sheet`; turn it on as you add `rowNumberColumn()`. The letters are where a person selects whole columns, as the row numbers are for rows; a press on a header still sorts, moves and resizes.
+
+- **Pointer:** a press on a letter selects the cells of its column, with Shift the columns from the active cell to it, and a drag over letters selects those columns (it stays whole columns when the pointer goes down into the rows). The corner, the letter cell above a first column that leads, selects every column with a letter, so a column of row numbers or of checkboxes stays out. The letter cell of another column that leads is empty and selects nothing.
+- **Keys:** the arrows reach the letters from the header rows. Space, Control+Space, Shift+Space and Enter select the column of a letter (every column from the corner); Shift with Left or Right grows the selection by a column, also from right to left; Control+A selects what the corner does; Escape drops the range. Delete, a cut, a copy, a fill and the format keys act on the selected cells, as from a row number. Tab leaves the table.
+- **The letter** is the place of the column among the columns in view: a moved column, and the columns after a hidden one, take the letter of their new place. `lettersByColumn(layout)` gives the letters by column id; it is the one rule for them.
+- **The grid:** the row of letters is grid row 0, so the header rows start at row 1, `aria-rowcount` is one more, and `cellRange` counts it. It sticks with `sticky-header`, pinned columns pin their letter, and an export does not hold it.
+- **Slot:** `#letter` gets `{ column, letter, corner, selectColumn }`; `letter` is `undefined` for a column that leads. `selectColumn(event?)` selects what a press selects, and throws for a column that leads and is no corner.
+- **Attributes:** the row has `data-kind="letters"`; a letter cell is a `th` with the role `columnheader`, `data-kind="letter"`, `data-column`, and `data-selected` when every row of its column is selected. The corner has `data-corner` and the name "All cells" (message `cornerCell`); the cells of leading columns have `data-lead`. `rowAttrs` gets `{ kind: 'letters' }` and `cellAttrs` gets `{ kind: 'letter', column, letter, corner }`.
+- **Styling:** the row needs no style to work. A styled table gives the letters a small centred text, a look for `[data-selected]`, and an opaque background where the row sticks (`tr[data-sticky]`) or a cell is pinned (`[data-pinned]`), plus `position: sticky; inset-inline-start: 0` on `[data-corner]` when the row numbers stick that way.
+
 ### Fill
 
 The fill handle is the part `[data-slot='table-fill-handle']`, an empty `span` inside the cell at the end corner of the selected cells. Place it with `position: absolute` at `inset-block-end` and `inset-inline-end` of its cell, which needs `position: relative`; the logical sides put it at the left corner from right to left. Give it `touch-action: none`.
@@ -223,11 +239,11 @@ controller.getCellFormat(rowId, columnId)                              // for th
 
 ### New names of the sheet, in one list
 
-- **Options:** `fill-handle`, `column-aggregates` and `default-column-aggregates` (`v-model:column-aggregates`), `cell-formats` and `default-cell-formats` (`v-model:cell-formats`), `format-colors`; column key `rowHeader`.
+- **Options:** `column-letters`, `fill-handle`, `column-aggregates` and `default-column-aggregates` (`v-model:column-aggregates`), `cell-formats` and `default-cell-formats` (`v-model:cell-formats`), `format-colors`; column key `rowHeader`.
 - **Events:** `column-aggregates-change`, `cell-formats-change`.
 - **Controller and agent actions:** `fillCells`, `setColumnAggregate`, `formatCells`, `clearCellFormats`, `toggleCellFormat`, `getCellFormat`, `getSelectionSummary`.
 - **View:** `columnAggregates`, `cellFormats`.
-- **Slots:** `#row-header`; `aggregate` and `setAggregate` in `#foot`, `aggregate` in `#group-total`, `format` in `#cell`.
-- **Attributes:** `data-row-header`, `data-filling`, `data-fill-target`, `data-fill-edge`, `data-aggregate`, `data-align`, `data-bold`, `data-italic`, `data-color`, `data-fill`; the part `table-fill-handle`.
-- **Messages:** `rowNumber`, `cellsFilled`, `fillRefused`, `fillNowhere`, `fillOverPinned`, `cellsFormatted`, `aggregateLabel`, `totalLabel`.
-- **Exports:** `rowNumberColumn`, `columnLetter`, `useSelectionSummary`, `summarize`, `fillValues`, `fillLine`, `setFormats`, `revertFormats`, `pruneFormats`, `resolveFormat`, `aggregateName`, `CELL_FORMAT_NAMES`, `CELL_ALIGNS`, `CELL_DATE_STYLES`, `TableFillHandle`, and the types `CellFormat`, `CellFormats`, `CellFormatPatch`, `CellFormatName`, `FormatPlace`, `FormatTarget`, `ColumnAggregates`, `AggregateName`, `RangeSummary`, `FillWay`, `FillDirection`, `FillDraft`, `RowHeaderSlotProps`, `TableStepReason`.
+- **Slots:** `#row-header`, `#letter`; `aggregate` and `setAggregate` in `#foot`, `aggregate` in `#group-total`, `format` in `#cell`.
+- **Attributes:** `data-row-header`, `data-corner`, `data-kind="letters"` on a row and `data-kind="letter"` on a cell, `data-filling`, `data-fill-target`, `data-fill-edge`, `data-aggregate`, `data-align`, `data-bold`, `data-italic`, `data-color`, `data-fill`; the part `table-fill-handle`.
+- **Messages:** `rowNumber`, `cornerCell`, `cellsFilled`, `fillRefused`, `fillNowhere`, `fillOverPinned`, `cellsFormatted`, `aggregateLabel`, `totalLabel`.
+- **Exports:** `rowNumberColumn`, `columnLetter`, `lettersByColumn`, `useSelectionSummary`, `summarize`, `fillValues`, `fillLine`, `setFormats`, `revertFormats`, `pruneFormats`, `resolveFormat`, `aggregateName`, `CELL_FORMAT_NAMES`, `CELL_ALIGNS`, `CELL_DATE_STYLES`, `TableFillHandle`, and the types `CellFormat`, `CellFormats`, `CellFormatPatch`, `CellFormatName`, `FormatPlace`, `FormatTarget`, `ColumnAggregates`, `AggregateName`, `RangeSummary`, `FillWay`, `FillDirection`, `FillDraft`, `RowHeaderSlotProps`, `LetterSlotProps`, `TableStepReason`.

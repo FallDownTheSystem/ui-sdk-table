@@ -52,7 +52,8 @@ test('P3: a cut event reaches a cell that has focus, and a table without `sheet`
 	await page.goto('/?page=sheet')
 	const sheet = page.locator('[data-slot="table"]')
 	let seen = await record(page)
-	await sheet.locator('tr[aria-rowindex="2"] > [aria-colindex="2"]').click()
+	// Row 1 of the sheet is the row of letters, and row 2 the header row.
+	await sheet.locator('tr[aria-rowindex="3"] > [aria-colindex="2"]').click()
 	await page.keyboard.press('Control+x')
 	const cut = (await seen()).find((event) => event.type === 'cut')
 	// A `td` with a tab index is the target of the event, as it is for a copy.
@@ -75,7 +76,7 @@ test('P3: the keys of a sheet that a browser also uses reach the page and can be
 }) => {
 	await page.goto('/?page=sheet')
 	const seen = await record(page)
-	await page.locator('[data-slot="table"] tr[aria-rowindex="2"] > [aria-colindex="2"]').click()
+	await page.locator('[data-slot="table"] tr[aria-rowindex="3"] > [aria-colindex="2"]').click()
 	// Control+Y is the history of the browser, Control+D a bookmark, Control+R a reload.
 	await page.keyboard.press('Control+y')
 	await page.keyboard.press('Control+d')

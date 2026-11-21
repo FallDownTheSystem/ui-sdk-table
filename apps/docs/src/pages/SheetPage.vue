@@ -259,8 +259,9 @@ const steps = computed(() => {
 const status = computed(() => {
 	const at = view.value?.activeCell
 	const cells = view.value?.cellSelection
-	if (!at) return 'No cell'
-	const where = `${at.rowId} ${at.columnId}`
+	if (!at && !cells) return 'No cell'
+	// A letter or the corner is active: it is no cell of the data, and it can select cells.
+	const where = at ? `${at.rowId} ${at.columnId}` : 'No cell'
 	if (!cells || (cells.rows === 1 && cells.columns === 1)) return where
 	return `${where}, ${cells.rows} by ${cells.columns} cells from ${cells.from.rowId} ${cells.from.columnId} to ${cells.to.rowId} ${cells.to.columnId}`
 })
@@ -293,8 +294,10 @@ const focusOnMount = (el: unknown) => {
 	<p>
 		Drag the square at the corner of the selected cells to fill, or press Ctrl+D and Ctrl+R: one
 		line repeats, and two numbers or two days go on with their step. A press on a row number selects
-		the row. Ctrl+B and Ctrl+I make the selected cells bold and italic, and the buttons below give
-		them a format. The footer picks the function of each total.
+		the row, and a press on a letter above the headers its column; the corner selects every cell.
+		Space on a letter selects its column, and Shift with an arrow takes the next one. Ctrl+B and
+		Ctrl+I make the selected cells bold and italic, and the buttons below give them a format. The
+		footer picks the function of each total.
 	</p>
 	<div class="toolbar">
 		<button type="button" :aria-pressed="!large" @click="load(false)">12 rows</button>
@@ -429,6 +432,7 @@ const focusOnMount = (el: unknown) => {
 			:row-window="large"
 			:row-height="large ? ROW_HEIGHT : undefined"
 			sheet
+			column-letters
 			sticky-header
 			sticky-footer
 			aria-label="Price list"

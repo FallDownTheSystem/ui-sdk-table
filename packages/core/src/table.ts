@@ -28,6 +28,7 @@ import {
 	textToCells,
 	type CellBounds,
 	type CellRange,
+	type CellRangeReason,
 } from './behaviors/range'
 import { createColumnReorder, type ReorderDraft } from './behaviors/reorder'
 import {
@@ -48,6 +49,7 @@ import {
 	type CellFormats,
 	type FormatPlace,
 } from './sheet/formats'
+import { lettersByColumn } from './sheet/chrome'
 import { createColumnResize, type ResizeDraft } from './behaviors/resize'
 import { createStickyRows } from './behaviors/sticky'
 import {
@@ -814,6 +816,23 @@ export type TableOptions<Row = unknown> = {
 	/** Whether a person can select a range of cells, to copy it or to paste into it. Defaults to the `sheet` option. */
 	cellSelection?: boolean
 	/**
+	 * A row of letters above the header rows, as a spreadsheet has: A, B, C,
+	 * then AA. It is the place where a person selects whole columns, as the
+	 * row numbers of `rowNumberColumn()` are for whole rows: a press on a
+	 * letter selects the cells of its column, with Shift the columns from the
+	 * active cell to it, and a drag over letters selects those columns. Space
+	 * on a letter selects its column, and Shift with an arrow takes the next
+	 * columns. The cell above the row numbers selects every cell. A column
+	 * that leads the table has an empty letter cell that selects nothing.
+	 *
+	 * A letter is the place of the column among the columns in view. The row
+	 * is grid row 0: it counts in `aria-rowindex`, `aria-rowcount` and the rows
+	 * of `cellRange`, and it sticks with `stickyHeader`. An export does not
+	 * hold it. Selecting needs `cellSelection`; this option is not part of
+	 * `sheet`. Defaults to false.
+	 */
+	columnLetters?: boolean
+	/**
 	 * The selected range of cells, from the cell where it started to the cell
 	 * it reaches, or `null`. A cell is a place in the grid: `row` counts the
 	 * header rows first, as `aria-rowindex` does, from 0. A range holds body
@@ -1106,6 +1125,7 @@ export const table = definePrimitive({
 		editable: 'boolean',
 		onCellEdit: 'callback',
 		cellSelection: 'boolean',
+		columnLetters: 'boolean',
 		cellRange: 'value',
 		defaultCellRange: 'value',
 		onCellRangeChange: 'callback',
@@ -1273,8 +1293,16 @@ export const table = definePrimitive({
 			)
 		}
 		const headerMap = memo(headerCellMap)
-		/** The header cell that covers a place of the header. */
-		const headerAt = (row: number, col: number) => headerMap(layout())[row]?.[col]
+		/** The row of letters above the header rows: grid row 0 with `columnLetters`. */
+		const letterRowCount = () => (options().columnLetters ? 1 : 0)
+		const isLetterRow = (row: number) => row < letterRowCount()
+		const letterMap = memo(lettersByColumn)
+		/** The letter that a column shows, or `undefined` without the row of letters and for a column that leads the table. */
+		const letterOf = (columnId: string): string | undefined =>
+			letterRowCount() ? letterMap(layout()).get(columnId) : undefined
+		/** The header cell that covers a place of the header. The header rows come after the row of letters. */
+		const headerAt = (row: number, col: number) =>
+			headerMap(layout())[row - letterRowCount()]?.[col]
 
 		function column(id: string, purpose: string): ColumnDef {
 			const found = layout().byId.get(id)
@@ -1542,7 +1570,8 @@ export const table = definePrimitive({
 			selectable: canSelect,
 		})
 
-		const headerRowCount = () => layout().headerRows.length
+		/** The rows of the grid before the body: the row of letters and the header rows. */
+		const headerRowCount = () => letterRowCount() + layout().headerRows.length
 		/** Without rows, the body holds one row that says so. */
 		const bodyRowCount = () => bodyRows().length || 1
 		const hasTotals = memo((columns: readonly ColumnDef[], chosen: ColumnAggregates) =>
@@ -1653,12 +1682,14 @@ export const table = definePrimitive({
 
 		function area(cell: GridCell): GridArea {
 			const columns = layout()
-			const head = columns.headerRows.length
+			const head = headerRowCount()
+			// A letter is a cell of one column, also above a header group.
+			if (isLetterRow(cell.row)) return { row: cell.row, col: cell.col, rowSpan: 1, colSpan: 1 }
 			if (cell.row < head) {
 				const header = headerAt(cell.row, cell.col)
 				if (header) {
 					return {
-						row: header.row,
+						row: header.row + letterRowCount(),
 						col: header.col,
 						rowSpan: header.rowSpan,
 						colSpan: header.colSpan,
@@ -2364,6 +2395,7 @@ export const table = definePrimitive({
 				return count ? { first, last: first + count - 1 } : undefined
 			},
 			firstCol: firstRangeCol,
+			columnsFrom: () => letteredFrom(),
 			set: (next, details) => change('cellRange', next, details),
 			commit: (next, details) => commit('cellRange', next, details),
 			reveal: (cell) => {
@@ -2910,6 +2942,8 @@ export const table = definePrimitive({
 		// pin, the place holds another column; the person looked at a column, so
 		// the active cell goes with it.
 		let seenLayout = layout()
+		let seenHead = headerRowCount()
+		let seenLetters = letterRowCount()
 		let activeColumn: string | undefined
 
 		function followColumns(): void {
@@ -2917,16 +2951,25 @@ export const table = definePrimitive({
 			const track = columnTrack(committed())
 			if (!sameContent(track, state().columnTrack)) context.store.set({ columnTrack: track })
 			const active = state().active
-			if (active && columns !== seenLayout) {
-				const before = seenLayout.headerRows.length
-				const head = columns.headerRows.length
+			const before = seenHead
+			const head = headerRowCount()
+			const lettersBefore = seenLetters
+			const letters = letterRowCount()
+			const changed = columns !== seenLayout || head !== before
+			// What was seen is updated first: the change of the active cell below runs this again.
+			seenLayout = columns
+			seenHead = head
+			seenLetters = letters
+			// The row of letters coming or going moves every row under it, as a header group does.
+			if (active && changed) {
 				const moved = activeColumn === undefined ? undefined : columns.index.get(activeColumn)
 				const col = moved ?? active.col
 				const row =
-					active.row < before ? Math.min(active.row, head - 1) : active.row - before + head
+					active.row < before
+						? Math.max(0, Math.min(active.row - lettersBefore + letters, head - 1))
+						: active.row - before + head
 				if (row !== active.row || col !== active.col) context.store.set({ active: { row, col } })
 			}
-			seenLayout = columns
 			grid.settle()
 			const now = state().active
 			activeColumn = now ? columns.leaves[now.col]?.id : undefined
@@ -4436,6 +4479,148 @@ export const table = definePrimitive({
 			if (!shift) activate(to)
 		}
 
+		/** Whether a range of the state holds every row of the body in a column: the letter of that column then shows as selected. */
+		function wholeColumnSelected(current: TableState, col: number): boolean {
+			const now = current.cellRange
+			const count = bodyRows().length
+			if (!now || !count || !cellSelection()) return false
+			const first = headerRowCount()
+			return (
+				Math.min(now.anchor.row, now.end.row) <= first &&
+				Math.max(now.anchor.row, now.end.row) >= first + count - 1 &&
+				Math.min(now.anchor.col, now.end.col) <= col &&
+				Math.max(now.anchor.col, now.end.col) >= col
+			)
+		}
+
+		/** The first column in view with a letter. The columns before it lead the table. */
+		function letteredFrom(): number {
+			const leaves = layout().leaves
+			const letters = letterMap(layout())
+			const index = leaves.findIndex((leaf) => letters.has(leaf.id))
+			return index === -1 ? leaves.length : index
+		}
+
+		/** Whether a place of the row of letters is the corner: the letter cell of a first column that leads the table. */
+		const isCorner = (col: number): boolean => {
+			const first = layout().leaves[0]
+			return col === 0 && letterRowCount() > 0 && !!first && isLead(first)
+		}
+
+		/** Selects every column that has a letter, over the rows of the body: what the corner does. */
+		function selectLetteredColumns(details: { reason: CellRangeReason; event?: Event }): void {
+			const last = layout().leaves.length - 1
+			const from = letteredFrom()
+			if (from > last) return
+			if (range.selectWholeColumns(from, last, details)) sayRange()
+		}
+
+		/** Says the size of the selected cells, as a key of the range does. */
+		function sayRange(): void {
+			const bounds = selectedCells()
+			if (!bounds) return
+			announce(
+				message('cellsSelected')({
+					rows: bounds.bottom - bounds.top + 1,
+					columns: bounds.right - bounds.left + 1,
+				}),
+			)
+		}
+
+		/**
+		 * Selects by the cell of a column in the row of letters: the column of a
+		 * letter, every column from the corner. For a control in a letter cell.
+		 */
+		function selectLetterColumn(columnId: string, event?: Event): void {
+			requireCellSelection()
+			const col = layout().index.get(columnId)
+			if (col !== undefined && isCorner(col)) {
+				selectLetteredColumns({ reason: event ? 'item-press' : 'imperative', event })
+				return
+			}
+			if (col !== undefined && letterOf(columnId) === undefined) {
+				const valid = [...letterMap(layout()).keys()]
+				throw new Error(
+					`Column "${columnId}" leads the table and has no letter. Columns with a letter: ${listed(valid)}.`,
+				)
+			}
+			selectColumnCells(columnId, event)
+		}
+
+		/** A press on a cell of the row of letters. The press on a letter takes its column, and a drag more columns. */
+		function pressLetter(event: PointerEvent, cell: GridCell): void {
+			const id = layout().leaves[cell.col]?.id
+			if (cellSelection() && id !== undefined && letterOf(id) !== undefined) {
+				range.pointerdownColumns(event, cell)
+				return
+			}
+			grid.focus(cell, { reason: 'item-press', event })
+			if (cellSelection() && isCorner(cell.col)) {
+				selectLetteredColumns({ reason: 'item-press', event })
+			}
+		}
+
+		/**
+		 * The keys on a cell of the row of letters. Space (also with Shift or
+		 * Control) and Enter select the column of the letter, or every column
+		 * from the corner; Control+A every column; Shift with an arrow takes the
+		 * next column; Escape drops the range. The keys of a
+		 * sheet act on the selected cells, as from a row number. Tab leaves the table.
+		 */
+		function letterKeydown(event: KeyboardEvent, cell: GridCell): boolean {
+			if (!cellSelection() || event.altKey || event.key === 'Tab') return false
+			const mod = event.ctrlKey || event.metaKey
+			const id = layout().leaves[cell.col]?.id
+			const lettered = id !== undefined && letterOf(id) !== undefined
+			const why = { reason: 'list-navigation' as const, event }
+			// Control+A selects every cell, as the corner does: also here, the checkbox of a row is no cell of a range.
+			if (matchesShortcut(event, 'mod+a')) {
+				event.preventDefault()
+				selectLetteredColumns(why)
+				return true
+			}
+			// Space alone, Control+Space as in a spreadsheet, and Shift+Space as on a row number.
+			const space = event.key === ' ' && !(mod && event.shiftKey)
+			if (space || (event.key === 'Enter' && !mod && !event.shiftKey)) {
+				if (!lettered && !isCorner(cell.col)) return false
+				event.preventDefault()
+				if (lettered) {
+					if (range.selectWholeColumns(cell.col, cell.col, why)) sayRange()
+				} else selectLetteredColumns(why)
+				return true
+			}
+			if (
+				event.shiftKey &&
+				!mod &&
+				lettered &&
+				(event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+			) {
+				event.preventDefault()
+				const rtl = event.target instanceof Element && isRTL(event.target)
+				const step = (event.key === 'ArrowRight') !== rtl ? 1 : -1
+				const now = state().cellRange
+				const body = { first: headerRowCount(), last: headerRowCount() + bodyRows().length - 1 }
+				// A range of whole columns grows at its end. Any other range starts again from this letter.
+				const whole =
+					!!now &&
+					Math.min(now.anchor.row, now.end.row) === body.first &&
+					Math.max(now.anchor.row, now.end.row) === body.last
+				const anchor = whole && now ? now.anchor.col : cell.col
+				const from = whole && now ? now.end.col : cell.col
+				const end = Math.max(letteredFrom(), Math.min(layout().leaves.length - 1, from + step))
+				if (range.selectWholeColumns(anchor, end, why)) sayRange()
+				return true
+			}
+			if (event.key === 'Escape' && state().cellRange) {
+				event.preventDefault()
+				range.select(null, why)
+				return true
+			}
+			// Delete, a cut, a fill or a format from a letter act on the selected cells, as from a row number.
+			const body = { row: headerRowCount(), col: cell.col }
+			return formatKeydown(event, body) || sheetKeydown(event, body)
+		}
+
 		/** Changes the width of a column by a number of pixels, as a key on its header does. */
 		function resizeColumnBy(columnId: string, delta: number, event?: Event): boolean {
 			requireVisible(columnId, 'resize')
@@ -4554,6 +4739,17 @@ export const table = definePrimitive({
 			fillHandleAt: (cell: GridCell): boolean => fillHandle.holds(cell),
 			isRowHeader,
 			rowNumber,
+			letterRowCount,
+			isLetterRow,
+			letterOf,
+			isCorner,
+			letterKeydown,
+			pressLetter,
+			selectLetterColumn,
+			wholeColumnSelected,
+			/** Whether a copy, a cut or a paste on a cell acts on the selected cells: a cell of the body, and a letter. */
+			holdsRange: (cell: { row: number; header?: boolean }) =>
+				!cell.header || isLetterRow(cell.row),
 			sticky,
 			rowWindow,
 			/** What the body renders of the rows of the list, or `undefined` when it renders them all. */
@@ -4778,13 +4974,16 @@ export const table = definePrimitive({
 			},
 		}),
 		// The header rows are a slot of their own, so no row id of the data can be mistaken for one.
-		'header-row': slot<{ index: number }>({
-			props: { index: 'number' },
+		// `value` is the key of the part: without one, every header row would be one part with one
+		// element, and only the last row would join the rows that stick.
+		'header-row': slot<{ value?: string; index: number }>({
+			props: { value: 'string', index: 'number' },
 			role: 'row',
 			// The row reads options and its own props, and no state.
 			selects: selects(SILENT),
 			attrs: (_state, { props, api }) => ({
 				'aria-rowindex': String(props.index + 1),
+				'data-kind': api.isLetterRow(props.index) ? 'letters' : undefined,
 				'data-sticky': api.stickyHeader() ? 'top' : undefined,
 			}),
 			bind: (el, { api }) => api.sticky.bind(el, () => (api.stickyHeader() ? 'top' : undefined)),
@@ -4934,7 +5133,23 @@ export const table = definePrimitive({
 			selects: selects({
 				...QUIET,
 				active: byCell,
-				cellRange: byCellRange,
+				// A letter hears the columns of a range: it shows when its whole column is selected.
+				cellRange: {
+					values: (context) =>
+						context.props.header && context.api.isLetterRow(context.props.row)
+							? [`letter:${context.props.col}`]
+							: byCellRange.values(context),
+					moved: (previous, next, notify) => {
+						byCellRange.moved(previous, next, notify)
+						for (const range of [previous, next]) {
+							if (!range) continue
+							const right = Math.max(range.anchor.col, range.end.col)
+							for (let col = Math.min(range.anchor.col, range.end.col); col <= right; col++) {
+								notify(`letter:${col}`)
+							}
+						}
+					},
+				},
 				editing: ({ props, api }) => api.cellIds(props),
 				editChecking: ({ props, api }) => api.cellIds(props),
 				editErrors: ({ props, api }) => api.cellIds(props),
@@ -4974,6 +5189,29 @@ export const table = definePrimitive({
 				props.header ? {} : api.fillHandle.cellAttrs(state, props),
 			),
 			attrs: (state, { props, api }) => {
+				if (props.header && api.isLetterRow(props.row)) {
+					// A cell of the row of letters: the letter of a column, or the corner, or the empty cell of a column that leads.
+					const column = api.columns()[props.col]
+					const pin = column ? api.columnPin(column.id) : undefined
+					const offset = pin && column ? api.pins.offset(column.id) : undefined
+					const letter = column ? api.letterOf(column.id) : undefined
+					const corner = api.isCorner(props.col)
+					return {
+						'data-kind': 'letter',
+						'data-corner': corner ? '' : undefined,
+						'data-column': column?.id,
+						'data-lead': letter === undefined ? '' : undefined,
+						'data-selected':
+							letter !== undefined && api.wholeColumnSelected(state, props.col) ? '' : undefined,
+						'aria-label': corner ? api.message('cornerCell')() : undefined,
+						'aria-colindex': String(props.col + 1),
+						tabindex: api.grid.tabIndex(state, props),
+						'data-active': api.grid.isActive(state, props) ? '' : undefined,
+						'data-pinned': pin,
+						'data-pinned-edge': pin && column && api.isPinEdge(column.id) ? '' : undefined,
+						style: offset ? `--table-pin-offset:${offset}` : undefined,
+					}
+				}
 				const header = props.header ? api.headerAt(props.row, props.col) : undefined
 				const column = props.header ? header?.column : api.columns()[props.col]
 				const span = props.colspan ?? 1
@@ -5088,6 +5326,14 @@ export const table = definePrimitive({
 					// Undo and redo act on the values of the table from any cell. In a
 					// field inside a cell, the key is the field's: the browser undoes the typing there.
 					if (onCell && api.historyKeydown(event)) return
+					// A letter selects its column, and the keys of a sheet act on what it selected.
+					if (
+						onCell &&
+						props.header &&
+						api.isLetterRow(props.row) &&
+						api.letterKeydown(event, props)
+					)
+						return
 					// Alt with an arrow changes the width of the column, from its header.
 					if (
 						onCell &&
@@ -5197,14 +5443,18 @@ export const table = definePrimitive({
 						}
 						const ranged =
 							!props.header && event.button === 0 && api.cellSelection() && api.inBody(props.row)
+						const letter = !!props.header && event.button === 0 && api.isLetterRow(props.row)
 						// The cell is under the pointer, so focus must not scroll it: a row
 						// that the header cuts would move away from the pointer. Focus
 						// that is here already is not moved again by the grid. A press
 						// with Shift stretches the range, and focus stays at its start.
-						if (!ranged || !event.shiftKey) el?.focus({ preventScroll: true })
+						if (!(ranged || (letter && api.cellSelection())) || !event.shiftKey) {
+							el?.focus({ preventScroll: true })
+						}
 						// A press on a cell of the body starts a range, and a drag paints it.
-						// A press on the number of a row takes the row.
-						if (ranged && api.isRowHeader(props)) api.range.pointerdownRows(event, props)
+						// A press on the number of a row takes the row, and on a letter the column.
+						if (letter) api.pressLetter(event, props)
+						else if (ranged && api.isRowHeader(props)) api.range.pointerdownRows(event, props)
 						else if (ranged) api.range.pointerdown(event, props)
 						else api.grid.focus(props, { reason: 'item-press', event })
 					}
@@ -5230,13 +5480,13 @@ export const table = definePrimitive({
 				},
 				// Copy and paste act on the cells when focus is on a cell, and not in a field inside one.
 				copy: (event, { api, props, el }) => {
-					if (event.target === el && !props.header) api.onCopy(event)
+					if (event.target === el && api.holdsRange(props)) api.onCopy(event)
 				},
 				paste: (event, { api, props, el }) => {
-					if (event.target === el && !props.header) api.onPaste(event)
+					if (event.target === el && api.holdsRange(props)) api.onPaste(event)
 				},
 				cut: (event, { api, props, el }) => {
-					if (event.target === el && !props.header) api.onCut(event)
+					if (event.target === el && api.holdsRange(props)) api.onCut(event)
 				},
 			},
 			bind: (el, { api, props }) => {
