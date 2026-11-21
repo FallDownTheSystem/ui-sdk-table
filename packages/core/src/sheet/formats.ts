@@ -477,6 +477,12 @@ export function resolveFormat(
 	return found
 }
 
+/** A value with the two layers of `cellFormats`, as `cellFormulas` has them too. */
+type CellLayers = {
+	readonly columns?: Readonly<Record<string, unknown>>
+	readonly cells?: Readonly<Record<string, unknown>>
+}
+
 /**
  * For `selects` of a cell slot: a change of the formats wakes the cells of
  * the rows and of the columns whose formats changed, and no other cell. A
@@ -484,8 +490,8 @@ export function resolveFormat(
  */
 export const byCellFormat = {
 	moved: (
-		previous: CellFormats | undefined,
-		next: CellFormats | undefined,
+		previous: CellLayers | undefined,
+		next: CellLayers | undefined,
 		notify: (name: string) => void,
 	): void => {
 		const diff = (

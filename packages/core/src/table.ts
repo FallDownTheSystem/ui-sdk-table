@@ -50,7 +50,14 @@ import {
 	type FormatPlace,
 } from './sheet/formats'
 import { lettersByColumn } from './sheet/chrome'
-import type { CellFormulas, FormulaEngine, FormulaIssue } from './formula/types'
+import { isFormulaError } from './formula/errors'
+import type {
+	CellFormulas,
+	FormulaEngine,
+	FormulaEntry,
+	FormulaIssue,
+	FormulaView,
+} from './formula/types'
 import { createColumnResize, type ResizeDraft } from './behaviors/resize'
 import { createStickyRows } from './behaviors/sticky'
 import {
@@ -362,6 +369,19 @@ export type TableController = {
 	/** The cell of an address such as `D7`. It throws for an address that the table does not have. Needs the `formulas` option. */
 	cellAt(address: string): CellRef
 	/**
+	 * The formula of a cell: the stored form, the text as a person reads it,
+	 * the address, the value and the words of its error. `null` for a cell
+	 * without a formula of its own. Needs the `formulas` option.
+	 */
+	getCellFormula(rowId: string, columnId: string): FormulaView | null
+	/**
+	 * Gives a cell a formula, as a person types it or in the stored form, or
+	 * takes it away with `null` (the cell keeps its value). One report with
+	 * every cell that follows, and one step. It throws when the cell cannot
+	 * hold a formula, the formula cannot be read, or it reads its own cell.
+	 */
+	setCellFormula(rowId: string, columnId: string, formula: string | null): void
+	/**
 	 * Changes the format of cells: how their values become text (`format`,
 	 * `decimals`, `currency`, `dateStyle`) and how they look (`align`, `bold`,
 	 * `italic`, `color`, `fill`). A key with `null` takes that property away.
@@ -482,6 +502,8 @@ export type TableView = {
 	formulas: boolean
 	/** The formulas of the table. */
 	cellFormulas: CellFormulas
+	/** The formula of the active cell or of its column, for a formula bar. `null` without formulas and without an active cell. */
+	formula: FormulaView | null
 	/** Whether `undo` has a step to take back. Always false without the `history` option. */
 	canUndo: boolean
 	canRedo: boolean
@@ -810,7 +832,11 @@ export type TableOptions<Row = unknown> = {
 	 */
 	cellFormulas?: CellFormulas
 	defaultCellFormulas?: CellFormulas
-	onCellFormulasChange?: (value: CellFormulas, details: TableChangeDetails) => void
+	/** A formula that a person entered changes with the reason of the edit (`enter-key`, `paste`). */
+	onCellFormulasChange?: (
+		value: CellFormulas,
+		details: ChangeDetails<TableReason | TableEditReason>,
+	) => void
 	/**
 	 * The names that `color` and `fill` of a cell format can have, such as
 	 * `['red', 'amber', 'green']`. The table writes a name into `data-color`
@@ -1403,6 +1429,8 @@ export const table = definePrimitive({
 		/** The text of a value by the definition of its column alone. A search and the label of a group read this: neither follows a format that a person gave a cell. */
 		function columnText(row: unknown, column: ColumnDef): string {
 			const value = cellValue(row, column)
+			// An error of a formula shows its code, also in a column of numbers.
+			if (isFormulaError(value)) return value
 			return column.format
 				? formatValue(value, column.format, column.formatOptions, { locale: options().locale })
 				: toText(value)
@@ -1420,6 +1448,7 @@ export const table = definePrimitive({
 			if (!hasFormats(formats)) return columnText(row, column)
 			const shown = resolveFormat(column, formats, rowId)
 			const value = cellValue(row, column)
+			if (isFormulaError(value)) return value
 			return shown.format
 				? formatValue(value, shown.format, shown.options, { locale: options().locale })
 				: toText(value)
@@ -1448,7 +1477,7 @@ export const table = definePrimitive({
 			change: (next, details) => change('columnAggregates', next, details),
 			dispatch: (next, details) => dispatch(context, 'onColumnAggregatesChange', next, details),
 		})
-		const formulasNow = createHeldKey<CellFormulas, TableReason>({
+		const formulasNow = createHeldKey<CellFormulas, TableReason | TableEditReason>({
 			given: () => options().cellFormulas,
 			state: () => state().cellFormulas,
 			change: (next, details) => change('cellFormulas', next, details),
@@ -2087,22 +2116,91 @@ export const table = definePrimitive({
 			return { refused, source }
 		}
 
-		/** Tells the caller about new values. Returns whether a listener refused them. A report that went through is a step of the history. */
-		function report(edits: CellEdit[], reason: string, event?: Event): boolean {
+		/**
+		 * With formulas: the edits of a report with every formula cell that
+		 * follows from them, and the formulas after it. A value over a formula
+		 * cell takes its formula away. The words of an issue refuse the whole report.
+		 */
+		function joinFormulas(
+			edits: CellEdit[],
+		):
+			| { edits: CellEdit[]; before: CellFormulas; after: CellFormulas; cells: number }
+			| string
+			| undefined {
+			const found = engine()
+			if (!found || (options().manualPage ?? false)) return undefined
+			const before = formulasNow.read()
+			if (!before.cells && !edits.some((edit) => edit.formula !== undefined)) return undefined
+			const joined = found.join(
+				edits.map((edit) =>
+					edit.formula === undefined
+						? { rowId: edit.rowId, columnId: edit.columnId, value: edit.value }
+						: { rowId: edit.rowId, columnId: edit.columnId, formula: edit.formula },
+				),
+				before,
+				formulaSheet,
+			)
+			if ('issues' in joined) return joined.issues.map((issue) => issueText(found, issue)).join(' ')
+			const all: CellEdit[] = []
+			let cells = 0
+			for (const edit of edits) {
+				// A formula that was entered comes back with its value among the results.
+				if (typeof edit.formula === 'string') continue
+				const lost =
+					edit.formula === undefined && formulaIn(before, edit.rowId, edit.columnId) !== undefined
+				if (lost || edit.formula === null) cells++
+				all.push(lost ? { ...edit, formula: null } : edit)
+			}
+			const columns = layout().byId
+			for (const result of joined.results) {
+				const node = model.rowById(result.rowId)
+				const column = columns.get(result.columnId)
+				if (!node || !column) continue
+				if (result.formula !== undefined) cells++
+				all.push({
+					rowId: node.id,
+					columnId: column.id,
+					row: node.row,
+					column,
+					value: result.value,
+					previous: result.previous,
+					...(result.formula === undefined ? undefined : { formula: result.formula }),
+				})
+			}
+			return { edits: all, before, after: joined.formulas, cells }
+		}
+
+		/**
+		 * Tells the caller about new values. Returns whether a listener refused
+		 * them, or the words of a formula that refuses them. A report that went
+		 * through is a step of the history. The values go first and the formulas
+		 * after them: a value without its formula is a state that makes sense.
+		 */
+		function report(edits: CellEdit[], reason: string, event?: Event): boolean | string {
 			const why = editReason(reason)
-			const { refused, source } = tell(edits, why, event)
+			const joined = joinFormulas(edits)
+			if (typeof joined === 'string') return joined
+			const all = joined ? joined.edits : edits
+			const { refused, source } = tell(all, why, event)
 			if (refused) return true
+			const formulas =
+				joined &&
+				joined.after !== joined.before &&
+				formulasNow.change(joined.after, { reason: why, event })
+					? { before: joined.before, after: joined.after, cells: joined.cells }
+					: undefined
 			if (historyOn()) {
 				history.record({
 					id: ++stepIds,
 					reason: why,
 					source,
-					cells: edits.map((edit) => ({
+					cells: all.map((edit) => ({
 						rowId: edit.rowId,
 						columnId: edit.columnId,
 						before: edit.previous,
 						after: edit.value,
 					})),
+					...(formulas ? { formulas } : undefined),
 				})
 			}
 			return false
@@ -2129,7 +2227,7 @@ export const table = definePrimitive({
 			direction: 'undo' | 'redo',
 			event?: Event,
 		): HistoryResult {
-			if (step.formulas) {
+			if (step.formulas && !step.cells.length) {
 				// A step of formulas: the formulas that the step changed go back, and
 				// what the owner changed beside it since stays.
 				const { before, after } = step.formulas
@@ -2187,6 +2285,17 @@ export const table = definePrimitive({
 			// Nothing of the step is in the table any more.
 			if (gone === step.cells.length) return 'gone'
 			if (edits.length && tell(edits, direction, event).refused) return 'refused'
+			// The values first, then the formulas of the step, as the report had them.
+			if (step.formulas) {
+				const { before, after } = step.formulas
+				const now = formulasNow.read()
+				const engineNow = requireFormulas()
+				const next =
+					direction === 'undo'
+						? engineNow.revertFormulas(now, after, before)
+						: engineNow.revertFormulas(now, before, after)
+				if (next !== now) formulasNow.change(next, { reason: direction, event })
+			}
 			applied = { cells: edits.length, gone, hidden }
 			showCells(places)
 			return 'done'
@@ -2298,15 +2407,16 @@ export const table = definePrimitive({
 			reason: string,
 			event?: Event,
 		): SaveResult | LateSave {
-			const finish = (checked: Checked): SaveResult => {
+			const finish = (checked: Checked & { formula?: string }): SaveResult => {
 				if ('issues' in checked) return checked.issues[0] ?? message('invalidValue')()
 				// The rows can be other objects after a check that took time: the
 				// caller looks for the row object of the edit in its rows of now.
 				const now = model.rowById(node.id)
 				if (!now) return message('editRowGone')()
 				const previous = valueNow(now, column)
-				if (sameValue(previous, checked.value)) return true
-				const edits = [
+				const { formula } = checked
+				if (formula === undefined && sameValue(previous, checked.value)) return true
+				const edits: CellEdit[] = [
 					{
 						rowId: now.id,
 						columnId: column.id,
@@ -2314,10 +2424,20 @@ export const table = definePrimitive({
 						column,
 						value: checked.value,
 						previous,
+						...(formula === undefined ? undefined : { formula }),
 					},
 				]
-				return report(edits, reason, event) ? message('editRefused')() : true
+				const refused = report(edits, reason, event)
+				return refused === false ? true : refused === true ? message('editRefused')() : refused
 			}
+			// The rule of `=` comes before `parse`: a formula, or a text after `'`.
+			const entry = 'text' in input ? formulaEntry(node, column, input.text) : undefined
+			if (entry && 'issues' in entry) return entryRefusal(entry)
+			if (entry && 'formula' in entry) {
+				if (entry.formula === formulaOf(node.id, column.id)) return true
+				return finish({ value: undefined, formula: entry.formula })
+			}
+			if (entry) input = { ...input, text: entry.text }
 			// A `parse` or a schema that throws refuses the value with its own words.
 			// Only the check is inside: an error of a listener of `onCellEdit` is an
 			// error of the page, and the person must not read it as a reason.
@@ -2351,17 +2471,26 @@ export const table = definePrimitive({
 
 		const writes = createCellWrites<TableEditReason>(context, {
 			rowById: (id) => model.rowById(id),
-			check: (input: WriteInput, row, column, rowId) =>
-				resolveValue(
-					input,
+			check: (input: WriteInput, row, column, rowId) => {
+				const node = 'text' in input ? model.rowById(rowId) : undefined
+				const entry = node && 'text' in input ? formulaEntry(node, column, input.text) : undefined
+				if (entry && 'issues' in entry) return { issues: [entryRefusal(entry)] }
+				if (entry && 'formula' in entry) return { value: undefined, formula: entry.formula }
+				return resolveValue(
+					entry ? { text: entry.text } : input,
 					row,
 					column,
 					parseTexts(),
 					options().locale,
 					shownFormat(column, rowId),
-				),
+				)
+			},
 			valueOf: valueNow,
-			report: (edits, details) => report(edits, details.reason, details.event),
+			report: (edits, details) => {
+				const refused = report(edits, details.reason, details.event)
+				if (typeof refused === 'string') throw new Error(refused)
+				return refused
+			},
 			refusal: {
 				value: ({ reason, column, text, message: why }) =>
 					reason === 'clear' || reason === 'cut'
@@ -2418,9 +2547,17 @@ export const table = definePrimitive({
 			errors: 'editErrors',
 			text: (id) => {
 				const cell = cellOf(id)
-				return cell
-					? fieldText(cell.node.row, cell.column, shownFormat(cell.column, cell.node.id))
-					: ''
+				if (!cell) return ''
+				const plain = fieldText(cell.node.row, cell.column, shownFormat(cell.column, cell.node.id))
+				// A formula cell starts with its formula, and a text with `=` with `'`.
+				return holdsFormula(cell.node, cell.column)
+					? requireFormulas().field(
+							formulaOf(cell.node.id, cell.column.id),
+							plain,
+							{ rowId: cell.node.id, columnId: cell.column.id },
+							formulaSheet,
+						)
+					: plain
 			},
 			canEdit: (id) => {
 				const cell = cellOf(id)
@@ -2947,6 +3084,11 @@ export const table = definePrimitive({
 			}
 		}
 
+		function activeFormula(): FormulaView | null {
+			const ref = engine() ? activeCellRef() : null
+			return ref ? formulaView(ref.rowId, ref.columnId, false) : null
+		}
+
 		function activeCellRef(): CellRef | null {
 			const active = state().active
 			const id = active ? cellIdAt(active.row, active.col) : undefined
@@ -3341,6 +3483,106 @@ export const table = definePrimitive({
 		/** The words of an issue: those of the app in `messages`, else those of the engine. */
 		const issueText = (found: FormulaEngine, issue: FormulaIssue) =>
 			options().messages?.formulaIssue?.(issue) ?? found.describe(issue)
+		const entryRefusal = (entry: { issues: FormulaIssue[] }) =>
+			entry.issues.map((issue) => issueText(requireFormulas(), issue)).join(' ')
+
+		const formulaIn = (formulas: CellFormulas, rowId: string, columnId: string) =>
+			formulas.cells?.[rowId]?.[columnId]
+		/** The formula of a cell of its own now, also one that this turn gave it. */
+		const formulaOf = (rowId: string, columnId: string) =>
+			formulaIn(formulasNow.read(), rowId, columnId)
+
+		/** Whether a cell takes a text with `=` as a formula: a cell that can be edited, in a column that allows it and is not computed. */
+		function holdsFormula(node: DataRow<unknown>, column: ColumnDef): boolean {
+			return (
+				!!engine() &&
+				column.allowFormula !== false &&
+				formulasNow.read().columns?.[column.id] === undefined &&
+				canEdit(node, column)
+			)
+		}
+
+		/** What a person typed into a cell, read by the rule of `=`, or `undefined` for a plain value. */
+		function formulaEntry(
+			node: DataRow<unknown>,
+			column: ColumnDef,
+			text: string,
+		): FormulaEntry | undefined {
+			const found = engine()
+			if (!found || (text[0] !== '=' && !text.startsWith("'=")) || !holdsFormula(node, column)) {
+				return undefined
+			}
+			// Without the whole document, no address names a row.
+			if (text[0] === '=' && text.length > 1 && (options().manualPage ?? false)) {
+				return { issues: [{ code: 'noDocument' }] }
+			}
+			return found.entry(text, { rowId: node.id, columnId: column.id }, formulaSheet)
+		}
+
+		/** The formula of a cell, or of its column, as a formula bar and an agent read it. */
+		function formulaView(rowId: string, columnId: string, own: boolean): FormulaView | null {
+			const found = requireFormulas()
+			const node = model.rowById(rowId)
+			const column = layout().byId.get(columnId)
+			if (!node || !column) return null
+			const at = { rowId, columnId }
+			const formula = formulaOf(rowId, columnId)
+			const ofColumn = formulasNow.read().columns?.[columnId]
+			if (own && formula === undefined) return null
+			const value = valueNow(node, column)
+			const error = isFormulaError(value) ? value : null
+			const stored = formula ?? ofColumn
+			return {
+				rowId,
+				columnId,
+				address: found.address(at, formulaSheet) ?? '',
+				formula: formula ?? null,
+				text:
+					stored === undefined
+						? text(node.row, column, rowId)
+						: found.print(stored, formula === undefined ? { columnId } : at, formulaSheet),
+				value,
+				error,
+				ofColumn: formula === undefined && ofColumn !== undefined,
+			}
+		}
+		/** Why a value is an error of a formula: the words of the app, else those of the engine. */
+		const errorText = (code: Parameters<NonNullable<TableMessages['formulaError']>>[0]) =>
+			options().messages?.formulaError?.(code) ?? requireFormulas().errorText(code)
+
+		function writeCellFormula(rowId: string, columnId: string, text: string | null): void {
+			const found = requireFormulas()
+			if (historyBusy()) {
+				throw new Error('A new value is checked now. Wait for its answer, then set the formula.')
+			}
+			const node = requireRow(String(rowId), 'give a formula')
+			const target = formulaTarget(columnId, 'give a formula')
+			if (!holdsFormula(node, target)) {
+				throw new Error(issueText(found, { code: 'notHere', column: target.id }))
+			}
+			if (options().manualPage ?? false) throw new Error(issueText(found, { code: 'noDocument' }))
+			if (text !== null && (typeof text !== 'string' || !text.startsWith('='))) {
+				throw new Error('A formula is a text that starts with `=`, or null to take it away.')
+			}
+			const at = { rowId: node.id, columnId: target.id }
+			let formula: string | null = null
+			if (text !== null) {
+				const parsed = found.parse(text, at, formulaSheet)
+				if ('issues' in parsed) {
+					throw new Error(`The formula "${text}" cannot be set: ${entryRefusal(parsed)}`)
+				}
+				formula = parsed.formula
+			}
+			const now = formulaOf(node.id, target.id)
+			if ((now ?? null) === formula) return
+			const value = valueNow(node, target)
+			const refused = report(
+				[{ ...at, row: node.row, column: target, value, previous: value, formula }],
+				'imperative',
+			)
+			if (refused === true) throw new Error(message('editRefused')())
+			if (refused) throw new Error(`The formula "${String(text)}" cannot be set: ${refused}`)
+		}
 
 		function readColumnFormula(columnId: string) {
 			const found = requireFormulas()
@@ -3661,6 +3903,13 @@ export const table = definePrimitive({
 			resetColumnPinning: () => resetColumns('columnPinning'),
 			setColumnAggregate: (columnId, aggregate) => chooseAggregate(columnId, aggregate),
 			getColumnFormula: (columnId) => readColumnFormula(columnId),
+			getCellFormula(rowId, columnId) {
+				requireFormulas()
+				const node = requireRow(String(rowId), 'read the formula of')
+				const target = formulaTarget(columnId, 'read the formula of')
+				return formulaView(node.id, target.id, true)
+			},
+			setCellFormula: (rowId, columnId, formula) => writeCellFormula(rowId, columnId, formula),
 			setColumnFormula: (columnId, formula) => writeColumnFormula(columnId, formula),
 			getAddress(rowId, columnId) {
 				const found = requireFormulas()
@@ -3979,6 +4228,7 @@ export const table = definePrimitive({
 					cellFormats: current.cellFormats,
 					formulas: !!options().formulas,
 					cellFormulas: current.cellFormulas,
+					formula: activeFormula(),
 					canUndo: history.canUndo(current),
 					canRedo: history.canRedo(current),
 					activeCell: activeCellRef(),
@@ -5081,6 +5331,47 @@ export const table = definePrimitive({
 			groupText,
 			/** Whether the table has the `formulas` option. */
 			hasFormulas: () => !!engine(),
+			/**
+			 * The attributes of a body cell for its formula: whether it has one
+			 * of its own, and the code and the words of an error value.
+			 */
+			formulaAttrs: (current: TableState, id: string) => {
+				const ref = parseCellKey(id)
+				const node = ref && model.rowById(ref.rowId)
+				const column = ref && layout().byId.get(ref.columnId)
+				if (!ref || !node || !column) return undefined
+				const value = cellValue(node.row, column)
+				const error = isFormulaError(value) ? value : undefined
+				return {
+					'data-formula':
+						formulaIn(current.cellFormulas, ref.rowId, ref.columnId) === undefined ? undefined : '',
+					'data-formula-error': error?.replace(/[^A-Za-z0-9]/g, '').toLowerCase(),
+					'aria-description': error && errorText(error),
+				}
+			},
+			/** For the slot props of a cell: the formula as a person reads it, and the error with its words. */
+			cellFormula: (rowId: string, columnId: string) => {
+				const view = engine() ? formulaView(rowId, columnId, false) : null
+				if (!view || (view.formula === null && !view.error)) return undefined
+				return {
+					text: view.text,
+					...(view.error
+						? { error: { code: view.error, message: errorText(view.error) } }
+						: undefined),
+				}
+			},
+			/** For the slot props of a header: the formula of a computed column as a person reads it. */
+			headerFormula: (columnId: string) => {
+				const formula = engine() ? state().cellFormulas.columns?.[columnId] : undefined
+				return formula === undefined
+					? undefined
+					: requireFormulas().print(formula, { columnId }, formulaSheet)
+			},
+			/** For the slot props of an editor: the formula of the cell as a person reads it. */
+			editorFormula: (rowId: string, columnId: string) => {
+				const view = engine() ? formulaView(rowId, columnId, true) : null
+				return view ? view.text : undefined
+			},
 			/** Whether a column is computed by a formula of the `columns` layer. */
 			isFormulaColumn: (columnId: string) =>
 				!!engine() && state().cellFormulas.columns?.[columnId] !== undefined,
@@ -5387,6 +5678,11 @@ export const table = definePrimitive({
 					values: ({ props, api }) => api.formatNamesAt(props),
 					moved: byCellFormat.moved,
 				},
+				// The formulas have the two layers of the formats, so a change wakes the same cells.
+				cellFormulas: {
+					values: ({ props, api }) => api.formatNamesAt(props),
+					moved: byCellFormat.moved,
+				},
 				expanded: [],
 			}),
 			state: (state, { props, api }) => {
@@ -5485,6 +5781,7 @@ export const table = definePrimitive({
 					'data-color': format?.color,
 					'data-fill': format?.fill,
 					'data-formula-column': column && api.isFormulaColumn(column.id) ? '' : undefined,
+					...(id !== undefined && api.hasFormulas() ? api.formulaAttrs(state, id) : undefined),
 					...(ranged ? api.rangeAttrs(state, props) : undefined),
 					'data-kind': inGroup,
 					'data-row-header': rowHeader ? '' : undefined,
@@ -5887,6 +6184,8 @@ export const table = definePrimitive({
 			'setColumnFormula',
 			'getAddress',
 			'cellAt',
+			'getCellFormula',
+			'setCellFormula',
 			'pinRow',
 			'scrollToRow',
 			'editCell',

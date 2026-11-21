@@ -1,4 +1,5 @@
 import type { FormatName, FormatOptions } from '../format/types'
+import type { FormulaError } from './errors'
 import type { ColumnDef } from '../rows/types'
 
 /**
@@ -41,6 +42,10 @@ export type FormulaIssue =
 	| { code: 'circle'; cells: readonly string[] }
 	/** One change would read more cells than `limit`. */
 	| { code: 'tooLarge'; reads: number; limit: number }
+	/** The cell cannot hold a formula: its column has `allowFormula: false` or is computed, or it cannot be edited. */
+	| { code: 'notHere'; column: string }
+	/** The table has its rows from a server page by page (`manualPage`), so no address names a row. */
+	| { code: 'noDocument' }
 
 export type FormulaIssueCode = FormulaIssue['code']
 
@@ -111,6 +116,39 @@ export type FormulaChange = FormulaPlace & { value?: unknown; formula?: string |
 /** A new value for a formula cell, and the value that the cell held before. */
 export type FormulaResult = FormulaPlace & { value: unknown; previous: unknown }
 
+/** The formula of a cell, or of its column, as a formula bar and an agent read it. */
+export type FormulaView = {
+	rowId: string
+	columnId: string
+	/** The address of the cell, such as `D7`, or `''` for a column without a letter. */
+	address: string
+	/** The formula of the cell itself in the stored form, or `null` when it has none. */
+	formula: string | null
+	/** The formula as a person reads it, or the text of the value for a cell without one. */
+	text: string
+	value: unknown
+	error: FormulaError | null
+	/** Whether the formula is the formula of the column. */
+	ofColumn: boolean
+}
+
+/**
+ * What a person typed into a cell that can hold a formula: a formula in the
+ * stored form, a text to read as a value (`'=text` gives `=text`), or the
+ * issues of a formula that cannot be read.
+ */
+export type FormulaEntry = { formula: string } | { text: string } | { issues: FormulaIssue[] }
+
+/**
+ * The cells of one report: the new formulas, and each formula cell that
+ * follows, with its new value. A cell that got a formula is in `results`
+ * with `formula`, also when its value stays.
+ */
+export type FormulaJoin = {
+	formulas: CellFormulas
+	results: (FormulaResult & { formula?: string })[]
+}
+
 /**
  * The formula engine, as the table knows it. The value of
  * `createFormulaEngine()` of the entry `ui-sdk-table-core/formulas`, so a
@@ -178,6 +216,31 @@ export type FormulaEngine = {
 	revertFormulas(now: CellFormulas, from: CellFormulas, to: CellFormulas): CellFormulas
 	/** The words for an issue, in English. */
 	describe(issue: FormulaIssue): string
+	/** The words for an error value, in English: why a formula gives it. */
+	errorText(code: FormulaError): string
+	/**
+	 * Reads what a person typed into a cell that can hold a formula: a text
+	 * that starts with `=` and holds more is a formula. `undefined` for a
+	 * text that is a plain value.
+	 */
+	entry(text: string, at: FormulaPlace, sheet: FormulaSheet): FormulaEntry | undefined
+	/**
+	 * The text that the field of a cell starts with: the formula as a person
+	 * reads it, else the plain text, with `'` before a text that starts with
+	 * `=`, so Enter on it changes nothing.
+	 */
+	field(formula: string | undefined, plain: string, at: FormulaPlace, sheet: FormulaSheet): string
+	/**
+	 * One report of cells: new values (`value`) and new formulas (`formula`, a
+	 * text or `null`). A value over a formula cell takes its formula away.
+	 * Gives the formulas after the report and every cell that follows, or the
+	 * issue that refuses the whole report (a circle, too many reads).
+	 */
+	join(
+		changes: readonly FormulaChange[],
+		before: CellFormulas,
+		sheet: FormulaSheet,
+	): FormulaJoin | { issues: FormulaIssue[] }
 	/** The number of a row in the document, from 1, or `undefined` for a row it does not hold. */
 	rowNumber(rowId: string, sheet: FormulaSheet): number | undefined
 	/** The address of a cell, such as `D7`, or `undefined` for a column without a letter or a row that is gone. */

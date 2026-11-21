@@ -1,6 +1,8 @@
 import type {
+	CellFormulaPatch,
 	FormulaColumn,
 	FormulaEngine,
+	FormulaJoin,
 	FormulaIssue,
 	FormulaPlace,
 	FormulaSheet,
@@ -23,7 +25,7 @@ import { namedColumns, parseTree, type FormulaNode } from './parser'
 import { addressRef, bracketRef, headerNames, printTree } from './print'
 import { revertFormulas, setFormulas } from './state'
 import { formulaSigns, STORED_SIGNS } from './tokens'
-import { describeFormulaIssue } from './words'
+import { describeFormulaError, describeFormulaIssue } from './words'
 
 export type FormulaEngineOptions = FormulaOptions & {
 	/**
@@ -173,6 +175,59 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 		setFormulas,
 		revertFormulas,
 		describe: describeFormulaIssue,
+		errorText: describeFormulaError,
+		entry(text, at, sheet) {
+			if (text.startsWith("'=")) return { text: text.slice(1) }
+			if (text.length < 2 || text[0] !== '=') return undefined
+			return engine.parse(text, at, sheet)
+		},
+		field(formula, plain, at, sheet) {
+			if (formula !== undefined) return engine.print(formula, at, sheet)
+			return plain.startsWith('=') ? `'${plain}` : plain
+		},
+		join(changes, before, sheet) {
+			const cells: CellFormulaPatch[] = []
+			for (const change of changes) {
+				if (change.formula !== undefined) {
+					cells.push({ rowId: change.rowId, columnId: change.columnId, formula: change.formula })
+				} else if (before.cells?.[change.rowId]?.[change.columnId] !== undefined) {
+					// A value over a formula cell: the value stays, and the formula goes.
+					cells.push({ rowId: change.rowId, columnId: change.columnId, formula: null })
+				}
+			}
+			const formulas = cells.length ? setFormulas(before, { cells }) : before
+			if (!formulas.cells) return { formulas, results: [] }
+			const followed = engine.follow(changes, formulas, sheet)
+			if ('issues' in followed) return followed
+			const results: FormulaJoin['results'] = followed.results
+			// A cell that got a formula is in the report, also when its value stays.
+			const entered = new CellMap<string>()
+			for (const change of changes) {
+				if (typeof change.formula === 'string')
+					entered.set(change.rowId, change.columnId, change.formula)
+			}
+			const found = new CellMap<boolean>()
+			for (const result of results) {
+				const formula = entered.get(result.rowId, result.columnId)
+				if (formula === undefined) continue
+				result.formula = formula
+				found.set(result.rowId, result.columnId, true)
+			}
+			const same: FormulaJoin['results'] = []
+			for (const change of changes) {
+				if (typeof change.formula !== 'string' || found.has(change.rowId, change.columnId)) continue
+				const value = sheet.value(change.rowId, change.columnId)
+				same.push({
+					rowId: change.rowId,
+					columnId: change.columnId,
+					formula: change.formula,
+					value,
+					previous: value,
+				})
+			}
+			if (same.length) results.unshift(...same)
+			return { formulas, results }
+		},
 		rowNumber: (rowId, sheet) => addressesOf(sheet).numbers.get(rowId),
 		address(place, sheet) {
 			const maps = addressesOf(sheet)

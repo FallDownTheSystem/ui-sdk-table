@@ -89,3 +89,63 @@ test('`v-model:cell-formulas`: a change and its undo in one turn, then a redo', 
 	expect(formulas.value).toEqual({ columns: { total: '=[price]+[qty]' } })
 	expect(totals()).toEqual(['5', '5.5'])
 })
+
+test('a formula of a cell with an owner that holds the rows and `v-model:cell-formulas`: the result and its dependents render, and a cell slot reads the formula', async () => {
+	const rows = shallowRef<Line[]>([
+		{ id: 'a', price: 2, qty: 3 },
+		{ id: 'b', price: 1.5, qty: 4 },
+	])
+	const formulas = shallowRef<CellFormulas>({})
+	const controller = createTableController()
+	const wrapper = mount(
+		() =>
+			h(
+				Table<Line>,
+				{
+					rows: rows.value,
+					columns,
+					controller,
+					formulas: engine,
+					editable: true,
+					history: true,
+					'aria-label': 'Lines',
+					cellFormulas: formulas.value,
+					'onUpdate:cellFormulas': (value: CellFormulas) => (formulas.value = value),
+					onCellEdit: (edits: readonly { rowId: string; columnId: string; value: unknown }[]) => {
+						rows.value = rows.value.map((row) => {
+							const mine = edits.filter((edit) => edit.rowId === row.id)
+							return mine.length
+								? { ...row, ...Object.fromEntries(mine.map((edit) => [edit.columnId, edit.value])) }
+								: row
+						})
+					},
+				},
+				{
+					'col-total': (props: { text: string; formula?: { text: string } }) =>
+						`${props.text} ${props.formula?.text ?? '-'}`,
+				},
+			),
+		{ attachTo: document.body },
+	)
+	wrappers.push(wrapper)
+	const totals = () => wrapper.findAll('tbody tr').map((row) => row.findAll('td')[2]?.text() ?? '')
+
+	void controller.editCell('a', 'total', '=A1*B1')
+	void controller.editCell('b', 'total', '=C1+1')
+	await nextTick()
+	expect(formulas.value).toEqual({
+		cells: { a: { total: '=[price]*[qty]' }, b: { total: '=[total@a]+1' } },
+	})
+	expect(totals()).toEqual(['6 =A1*B1', '7 =C1+1'])
+
+	void controller.editCell('a', 'qty', 10)
+	await nextTick()
+	expect(totals()).toEqual(['20 =A1*B1', '21 =C1+1'])
+	const cell = wrapper.find('td[data-formula]')
+	expect(cell.exists()).toBe(true)
+
+	// One undo takes back the value and both results that followed from it.
+	controller.undo()
+	await nextTick()
+	expect(totals()).toEqual(['6 =A1*B1', '7 =C1+1'])
+})

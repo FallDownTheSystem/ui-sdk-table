@@ -3,6 +3,7 @@ import {
 	createTableController,
 	rowNumberColumn,
 	Table,
+	type CellEdit,
 	type CellFormulas,
 	type ColumnDef,
 } from 'ui-sdk-table-vue'
@@ -168,6 +169,39 @@ function save() {
 	draft.value = printFormula(parsed.formula, { columns: base, locale })
 }
 
+// A small sheet whose cells can hold formulas of their own: `=B1*C1` in the
+// total of the first line. The owner holds the lines and the formulas.
+type Line = { id: string; item: string; price: number; qty: number; total?: unknown }
+const lines = shallowRef<Line[]>([
+	{ id: 'l1', item: 'Bolt', price: 2.5, qty: 40 },
+	{ id: 'l2', item: 'Nut', price: 0.5, qty: 90 },
+	{ id: 'l3', item: 'Washer', price: 0.2, qty: 15 },
+	{ id: 'l4', item: 'Screw', price: 1.5, qty: 60 },
+])
+const lineFormulas = shallowRef<CellFormulas>({})
+const lineColumns: ColumnDef<Line>[] = [
+	rowNumberColumn<Line>(),
+	{ id: 'item', header: 'Item', width: 120 },
+	{ id: 'price', header: 'Price', format: 'decimal', sortable: true, width: 110 },
+	{ id: 'qty', header: 'Quantity', format: 'integer', width: 110 },
+	{
+		id: 'total',
+		header: 'Total',
+		format: 'decimal',
+		formatOptions: { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+		width: 120,
+	},
+]
+function editLines(edits: readonly CellEdit<Line>[]) {
+	lines.value = lines.value.map((line) => {
+		const mine = edits.filter((edit) => edit.rowId === line.id)
+		if (!mine.length) return line
+		const next: Line = { ...line }
+		for (const edit of mine) Object.assign(next, { [edit.columnId]: edit.value })
+		return next
+	})
+}
+
 const grouping = shallowRef<'none' | 'band' | 'period' | 'custom'>('none')
 const groupBy = computed(() => (grouping.value === 'none' ? [] : [grouping.value]))
 const filter = shallowRef<{ columns?: Record<string, unknown> }>({})
@@ -288,5 +322,21 @@ function filterPeriod() {
 				</button>
 			</template>
 		</Table>
+	</div>
+	<h2>Formulas of cells</h2>
+	<p>Type <code>=B1*C1</code> into a total. A cell that a formula reads changes its total.</p>
+	<output data-testid="line-formulas">{{ JSON.stringify(lineFormulas) }}</output>
+	<div class="scroller">
+		<Table
+			v-model:cell-formulas="lineFormulas"
+			:formulas="engine"
+			sheet
+			column-letters
+			:rows="lines"
+			:columns="lineColumns"
+			:locale="locale"
+			aria-label="Lines"
+			@cell-edit="editLines"
+		/>
 	</div>
 </template>

@@ -24,11 +24,14 @@ export type {
 	FormulaColumns,
 	FormulaColumn,
 	FormulaEngine,
+	FormulaEntry,
 	FormulaIssue,
 	FormulaIssueCode,
+	FormulaJoin,
 	FormulaPlace,
 	FormulaResult,
 	FormulaSheet,
+	FormulaView,
 } from './formula/types'
 export type { ExportCell, ExportColumn, ExportData, ExportOptions, ExportRow } from './export/data'
 export type { RowAlign } from './behaviors/window'

@@ -42,12 +42,12 @@ function setup(options: Partial<TableOptions<Line>> = {}) {
 
 const ids = (view: ReturnType<typeof setup>) => view.api.rows().map((flat) => flat.id)
 
-test('P6: a number format shows an error text as an empty cell, so the text of a cell needs a rule of its own', () => {
+test('P6: an error text shows its code in a column of numbers, where the format alone would show an empty cell', () => {
 	const view = setup()
 	const price = view.api.columns()[1] as ColumnDef
 	expect(view.api.text(rows[0], price, 'a')).toBe('€2.50')
-	// `invalidValue` of the format: an empty text. A formula cell must show its code instead.
-	expect(view.api.text(rows[1], price, 'b')).toBe('')
+	// The format alone gives `invalidValue`, an empty text. The text of a cell tests for an error first.
+	expect(view.api.text(rows[1], price, 'b')).toBe('#DIV/0!')
 	view.unmount()
 })
 
@@ -85,11 +85,11 @@ test('P6: a range filter leaves the error out, a search finds it, and a select f
 	view.unmount()
 })
 
-test('P6: an export holds an empty cell for the error in a number column, and the code in a plain column', () => {
+test('P6: an export holds the code of the error, in a number column and in a plain column', () => {
 	const view = setup()
 	const csv = toCsv(view.api.exportData())
 	const line = csv.split('\r\n').find((text) => text.startsWith('Nut'))
 	// The export writes the text of the screen, so the same rule of `text()` fixes both.
-	expect(line).toBe('Nut,,#DIV/0!')
+	expect(line).toBe('Nut,#DIV/0!,#DIV/0!')
 	view.unmount()
 })

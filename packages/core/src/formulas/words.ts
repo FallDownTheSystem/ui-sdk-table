@@ -1,3 +1,4 @@
+import type { FormulaError } from '../formula/errors'
 import type { FormulaIssue } from '../formula/types'
 
 const list = (names: readonly string[]) => names.join(', ') || 'none'
@@ -50,5 +51,22 @@ export function describeFormulaIssue(issue: FormulaIssue): string {
 			return `The formula would read its own cell: ${issue.cells.join(' reads ')}.`
 		case 'tooLarge':
 			return `The change would read ${issue.reads} cells, more than ${issue.limit}. Read fewer rows, or a cell above that holds the sum so far.`
+		case 'notHere':
+			return `A cell of column \`${issue.column}\` cannot hold a formula.`
+		case 'noDocument':
+			return 'This table gets its rows page by page, so a formula cannot name a cell.'
 	}
 }
+
+const ERROR_WORDS: Record<FormulaError, string> = {
+	'#DIV/0!': 'The formula divides by zero.',
+	'#VALUE!': 'The formula got a value of the wrong kind, such as a text where it needs a number.',
+	'#REF!': 'The formula reads a cell that is gone.',
+	'#NAME?': 'The formula names something that does not exist.',
+	'#NUM!': 'The formula got a number that is out of range.',
+	'#N/A': 'The formula found no value.',
+	'#CYCLE!': 'The formula reads its own cell through other formulas.',
+}
+
+/** Why a formula gives an error value, in English. */
+export const describeFormulaError = (code: FormulaError): string => ERROR_WORDS[code]

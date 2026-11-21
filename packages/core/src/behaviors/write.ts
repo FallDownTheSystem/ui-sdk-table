@@ -42,7 +42,7 @@ export function createCellWrites<Reason extends string>(
 		) => Checked | Promise<Checked>
 		/** The value that a cell holds now. */
 		valueOf: (node: DataRow<unknown>, column: ColumnDef) => unknown
-		/** Tells the owner. Returns whether a listener refused. */
+		/** Tells the owner. Returns whether a listener refused. A check can give `{ value, formula }` for a formula. */
 		report: (edits: CellEdit[], details: WriteDetails<Reason>) => boolean
 		/** The words of each refusal. */
 		refusal: {
@@ -102,7 +102,9 @@ export function createCellWrites<Reason extends string>(
 						)
 					}
 					const previous = options.valueOf(node, target.column)
-					if (sameValue(previous, result.value)) return
+					// A formula is a change also when the value it gives stays.
+					const formula = 'formula' in result ? (result.formula as string) : undefined
+					if (formula === undefined && sameValue(previous, result.value)) return
 					edits.push({
 						rowId: node.id,
 						columnId: target.column.id,
@@ -110,6 +112,7 @@ export function createCellWrites<Reason extends string>(
 						column: target.column,
 						value: result.value,
 						previous,
+						...(formula === undefined ? undefined : { formula }),
 					})
 				})
 				if (edits.length && options.report(edits, details)) throw new Error(refusal.refused())

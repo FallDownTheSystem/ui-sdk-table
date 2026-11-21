@@ -72,6 +72,8 @@ export function sheetTable(
 		numbers?: boolean
 		/** The rows whose stock cannot be edited. */
 		locked?: readonly string[]
+		/** More columns after the others, each with this id, that read the store as the others do. */
+		more?: readonly string[]
 	} = {},
 ) {
 	const values = items()
@@ -90,6 +92,11 @@ export function sheetTable(
 			value: read('stock'),
 			editable: given.locked ? (row) => !given.locked?.includes(row.id) : undefined,
 		},
+		...(given.more ?? []).map((id): ColumnDef<ItemRow> => ({
+			id,
+			header: id.charAt(0).toUpperCase() + id.slice(1),
+			value: (row) => (values[row.id] as Record<string, unknown> | undefined)?.[id],
+		})),
 	]
 	const view = mount(
 		table,

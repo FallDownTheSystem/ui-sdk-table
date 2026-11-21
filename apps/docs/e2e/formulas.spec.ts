@@ -359,3 +359,131 @@ test('the gutter shows the numbers of the document after a sort, and the letters
 	await page.getByTestId('move-total').click()
 	expect(await letters()).toEqual(['A', 'E', 'B', 'C', 'D', 'F', 'G', 'H'])
 })
+
+async function openLines(page: Page, query = '') {
+	await page.goto(`/?page=formulas${query}`)
+	const table = page.getByRole('grid', { name: 'Lines' })
+	await expect(table).toBeVisible()
+	return table
+}
+const lineCell = (table: Locator, row: number, id: string) =>
+	dataRows(table).nth(row).locator(`td[data-column="${id}"]`)
+const lineEditor = (table: Locator) => table.locator('[data-slot="table-editor"]')
+
+test('a formula typed into a cell shows its value, F2 shows the formula, and a cell it reads changes it', async ({
+	page,
+}) => {
+	const table = await openLines(page)
+	const total = lineCell(table, 0, 'total')
+	await total.click()
+	await page.keyboard.type('=B1*C1')
+	await expect(lineEditor(table)).toHaveValue('=B1*C1')
+	await page.keyboard.press('Enter')
+	await expect(total).toHaveText('100.00')
+	await expect(total).toHaveAttribute('data-formula', '')
+	// As in a sheet, Enter moves down.
+	await expect(lineCell(table, 1, 'total')).toBeFocused()
+	await expect(page.getByTestId('line-formulas')).toHaveText(
+		'{"cells":{"l1":{"total":"=[price]*[qty]"}}}',
+	)
+
+	await total.click()
+	await page.keyboard.press('F2')
+	await expect(lineEditor(table)).toHaveValue('=B1*C1')
+	// Control+Z inside the editor is the field's: the text changes, and the table keeps its formula.
+	await page.keyboard.type('+1')
+	await page.keyboard.press('ControlOrMeta+z')
+	await expect(lineEditor(table)).not.toHaveValue('=B1*C1+1')
+	await page.keyboard.press('Escape')
+	await expect(total).toHaveText('100.00')
+
+	const price = lineCell(table, 0, 'price')
+	await price.click()
+	await page.keyboard.type('3')
+	await page.keyboard.press('Enter')
+	await expect(total).toHaveText('120.00')
+
+	// One Control+Z takes back the price and the total, the next one the formula.
+	await price.click()
+	await page.keyboard.press('ControlOrMeta+z')
+	await expect(price).toHaveText('2.50')
+	await expect(total).toHaveText('100.00')
+	await page.keyboard.press('ControlOrMeta+z')
+	await expect(total).toHaveText('')
+	await expect(total).not.toHaveAttribute('data-formula')
+	await page.keyboard.press('ControlOrMeta+Shift+z')
+	await page.keyboard.press('ControlOrMeta+Shift+z')
+	await expect(total).toHaveText('120.00')
+	await expect(total).toHaveAttribute('data-formula', '')
+})
+
+test('an error shows its code and a description, and a wrong function keeps the editor open with words', async ({
+	page,
+}) => {
+	const table = await openLines(page)
+	const total = lineCell(table, 1, 'total')
+	await total.click()
+	await page.keyboard.type('=1/0')
+	await page.keyboard.press('Enter')
+	await expect(total).toHaveText('#DIV/0!')
+	await expect(total).toHaveAttribute('data-formula-error', 'div0')
+	await expect(total).toHaveAccessibleDescription('The formula divides by zero.')
+
+	await total.click()
+	await page.keyboard.type('=SUMM(B2)')
+	await page.keyboard.press('Enter')
+	await expect(lineEditor(table)).toBeVisible()
+	await expect(lineEditor(table)).toHaveAttribute('aria-invalid', 'true')
+	await expect(table.locator('[data-slot="table-edit-error"]')).toContainText('No function `SUMM`')
+	await expect(page.getByRole('status').or(page.getByRole('alert'))).toContainText([
+		'No function `SUMM`',
+	])
+	await page.keyboard.press('Escape')
+	await expect(total).toHaveText('#DIV/0!')
+})
+
+test('after a sort, a formula reads the same cells and its text names the same addresses', async ({
+	page,
+}) => {
+	const table = await openLines(page)
+	await lineCell(table, 0, 'total').click()
+	await page.keyboard.type('=B1*C1+B4')
+	await page.keyboard.press('Enter')
+	await expect(lineCell(table, 0, 'total')).toHaveText('101.50')
+	await table
+		.locator('thead th:not([data-kind="letter"])[data-column="price"]')
+		.getByRole('button')
+		.click()
+	// Going up by price, the first line is the last row of the screen and keeps its number.
+	const bolt = dataRows(table).filter({ hasText: 'Bolt' })
+	await expect(bolt.locator('th[data-row-header]')).toHaveText('1')
+	await expect(bolt.locator('td[data-column="total"]')).toHaveText('101.50')
+	await bolt.locator('td[data-column="total"]').click()
+	await page.keyboard.press('F2')
+	await expect(lineEditor(table)).toHaveValue('=B1*C1+B4')
+})
+
+test('in fi-FI, a formula of a cell takes a decimal comma and `;`, and is stored with `.` and `,`', async ({
+	page,
+}) => {
+	const table = await openLines(page, '&locale=fi-FI')
+	const total = lineCell(table, 0, 'total')
+	await total.click()
+	await page.keyboard.type('=ROUND(B1*1,5; 1)')
+	await page.keyboard.press('Enter')
+	await expect(total).toHaveText('3,80')
+	await expect(page.getByTestId('line-formulas')).toHaveText(
+		'{"cells":{"l1":{"total":"=ROUND([price]*1.5, 1)"}}}',
+	)
+	await total.click()
+	await page.keyboard.press('F2')
+	await expect(lineEditor(table)).toHaveValue('=ROUND(B1*1,5; 1)')
+	await page.keyboard.press('Escape')
+
+	// A decimal point is refused with the sign of the locale.
+	await lineCell(table, 1, 'total').click()
+	await page.keyboard.type('=B2*1.5')
+	await page.keyboard.press('Enter')
+	await expect(table.locator('[data-slot="table-edit-error"]')).toContainText(',')
+	await expect(lineEditor(table)).toBeVisible()
+})

@@ -10,6 +10,7 @@ import {
 	type AggregateName,
 	type CellEdit,
 	type CellFormat,
+	type FormulaError,
 	type CellFormats,
 	type CellFormulas,
 	type CellRange,
@@ -433,6 +434,8 @@ export type HeaderSlotProps<Row> = {
 	 * throws for a header group and without the `cellSelection` option.
 	 */
 	selectColumn: (event?: Event) => void
+	/** The formula of a computed column, as a person reads it. `undefined` for a column without one. */
+	formula: string | undefined
 }
 
 export type CellSlotProps<Row> = {
@@ -458,6 +461,12 @@ export type CellSlotProps<Row> = {
 	pinned: RowPin | undefined
 	toggleSelected: (event?: Event) => void
 	toggleExpanded: (event?: Event) => void
+	/**
+	 * With formulas: the formula of the cell as a person reads it, and the
+	 * code and the words of an error value. `undefined` for a cell with
+	 * neither. The error is also on the cell as `data-formula-error`.
+	 */
+	formula: { text: string; error?: { code: FormulaError; message: string } } | undefined
 }
 
 export type EditorSlotProps<Row> = {
@@ -486,6 +495,8 @@ export type EditorSlotProps<Row> = {
 	save: (value: unknown, event?: Event) => void
 	/** Closes the editor without a save. Focus goes back to the cell. */
 	cancel: () => void
+	/** With formulas: the formula of the cell as a person reads it, such as `=C2*D2`. A save of a text that starts with `=` sets a formula. */
+	formula: string | undefined
 }
 
 export type RowHeaderSlotProps<Row> = {
@@ -777,6 +788,7 @@ const TableImpl = defineComponent(
 													}
 													api.selectColumnCells(column.id, event)
 												},
+												formula: cell.leaf ? api.headerFormula(column.id) : undefined,
 											})
 										: cell.leaf && column.sortable
 											? h('button', { type: 'button', onClick: toggleSort }, label)
@@ -941,6 +953,7 @@ const TableImpl = defineComponent(
 						pinned: flat.pinned,
 						toggleSelected,
 						toggleExpanded,
+						formula: api.cellFormula(flat.id, column.id),
 					})
 				}
 				// Without a slot, the first cell of a tree row still needs a way to open it.
@@ -1054,6 +1067,7 @@ const TableImpl = defineComponent(
 					typed: api.edit.typed(),
 					save: (value: unknown, event?: Event) => api.saveEdit(value, event),
 					cancel: () => api.cancelEdit(),
+					formula: api.editorFormula(node.id, column.id),
 				})
 			}
 			return [

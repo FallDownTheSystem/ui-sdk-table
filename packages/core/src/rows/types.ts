@@ -61,6 +61,12 @@ export type ColumnDef<Row = unknown> = {
 	 */
 	editable?: boolean | ((row: Row) => boolean)
 	/**
+	 * With formulas: whether a cell of the column takes a text that starts
+	 * with `=` as a formula. True by default for a cell that can be edited;
+	 * a column that must keep such a text as its value sets false.
+	 */
+	allowFormula?: boolean
+	/**
 	 * Checks a new value before the table reports the edit. Any Standard Schema
 	 * works: Zod, Valibot, ArkType. A value that the schema refuses keeps the
 	 * editor open, with the message of the schema.

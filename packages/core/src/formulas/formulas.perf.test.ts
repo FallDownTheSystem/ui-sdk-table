@@ -290,3 +290,76 @@ describe.runIf(requested)('the engine of cell formulas with 50,000 rows', () => 
 		console.table(results)
 	}, 120_000)
 })
+
+describe.runIf(requested)('formulas of cells in a table with 50,000 rows', () => {
+	test('median time of an edit, a paste and a chain with their dependents', () => {
+		const columns: ColumnDef<Line>[] = [...base, { id: 'sum', header: 'Sum' }]
+		// The size of each report.
+		const cells: number[] = []
+		const mountWith = (cellFormulas?: Record<string, Record<string, string>>) =>
+			mount(
+				table,
+				{
+					rows: lines(),
+					columns,
+					sheet: true,
+					history: false,
+					onCellEdit: (edits: readonly unknown[]) => {
+						cells.push(edits.length)
+					},
+					...(cellFormulas
+						? { formulas: createFormulaEngine(), cellFormulas: { cells: cellFormulas } }
+						: {}),
+				} as TableOptions,
+				'<root aria-label="Lines"></root>',
+			)
+		const results: Record<string, number> = {}
+		let price = 1
+		const edit = (view: ReturnType<typeof mountWith>) => () =>
+			void view.api.editCell('r7', 'price', ++price)
+
+		const plain = mountWith()
+		results['one edit, a table without formulas'] = median(edit(plain), 21)
+		plain.unmount()
+
+		// Every row has a total of its own row, and ten cells read the price of row r7.
+		const shared: Record<string, Record<string, string>> = {}
+		for (let index = 0; index < ROWS; index++) shared[`r${index}`] = { total: '=[price]*[qty]' }
+		for (let index = 100; index < 110; index++) {
+			shared[`r${index}`] = { total: '=[price]*[qty]', sum: '=[price@r7]+1' }
+		}
+		const many = mountWith(shared)
+		let start = performance.now()
+		void many.api.editCell('r7', 'price', ++price)
+		results['the first edit with 50,010 formula cells: the index and 11 results'] =
+			Math.round((performance.now() - start) * 100) / 100
+		results['one edit that 11 formulas read, 50,010 formula cells'] = median(edit(many), 21)
+		// Each round pastes other prices, so every cell changes and every formula follows.
+		const pastes = [1, 2, 3, 4, 5].map((round) =>
+			Array.from({ length: ROWS }, (_, index) => String(1000 * round + (index % 97))).join('\n'),
+		)
+		many.api.selectCells({ rowId: 'r0', columnId: 'price' })
+		let round = 0
+		results['a paste of 50,000 prices that 50,010 formulas read (one report of 100,010 cells)'] =
+			median(() => void many.api.pasteCells(pastes[round++ % 5] ?? ''), 5)
+		// A total of a row with no quantity stays 0, so it is no part of the report: 3,847 rows.
+		expect(cells.at(-1)).toBe(100_010 - Math.ceil(ROWS / 13))
+		many.unmount()
+
+		const chain: Record<string, Record<string, string>> = {}
+		for (let index = 1; index < ROWS; index++)
+			chain[`r${index}`] = { total: `=[total@r${index - 1}]+1` }
+		const chained = mountWith(chain)
+		let top = 0
+		start = performance.now()
+		void chained.api.editCell('r0', 'total', ++top)
+		results['a chain of 50,000 cells, the first edit at the top'] =
+			Math.round((performance.now() - start) * 100) / 100
+		results['a chain of 50,000 cells, one edit at the top'] = median(
+			() => void chained.api.editCell('r0', 'total', ++top),
+			5,
+		)
+		chained.unmount()
+		console.table(results)
+	}, 300_000)
+})

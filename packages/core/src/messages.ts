@@ -1,4 +1,5 @@
 import type { ColumnReorderMessage } from './behaviors/reorder'
+import type { FormulaError } from './formula/errors'
 import type { FormulaIssue } from './formula/types'
 
 /**
@@ -12,6 +13,8 @@ export type TableMessages = {
 	 * engine: a table without formulas carries none.
 	 */
 	formulaIssue?: (issue: FormulaIssue) => string
+	/** Why a formula gives an error value, for the description of its cell. Without it, the words of the engine. */
+	formulaError?: (code: FormulaError) => string
 	/** What the body says when no row passes the filters. */
 	noRows: () => string
 	/** What the body says while the first rows are on their way. */

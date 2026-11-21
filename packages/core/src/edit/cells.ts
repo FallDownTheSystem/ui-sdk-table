@@ -10,6 +10,12 @@ export type CellEdit<Row = unknown> = {
 	column: ColumnDef<Row>
 	value: unknown
 	previous: unknown
+	/**
+	 * With formulas: the formula that the cell holds now (a text in the
+	 * stored form), or `null` when its formula went. Not set for a value and
+	 * for a result that followed from other cells.
+	 */
+	formula?: string | null
 }
 
 /** One text for the row and the column of a cell. The state holds the cell that is edited by this id. */
