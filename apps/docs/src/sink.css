@@ -222,6 +222,8 @@ input {
 	--tile-chip: color-mix(in oklab, var(--tile-ink) 7%, var(--tile-bg));
 	/* A control on a card is a veil of the surface, so it takes the colour of its card. A popup stays opaque. */
 	--tile-control: color-mix(in oklab, var(--tile-surface) 45%, transparent);
+	/* The choice in a segmented control. On a bold card a veil is too faint, so the choice is a deeper shade of the card. */
+	--tile-pick: var(--tile-control);
 	/* How much of a colour a row or a cell mixes into the card under it. */
 	--mix-band: 4%;
 	--mix-hover: 6%;
@@ -396,6 +398,16 @@ input {
 	background-size: 24px 24px;
 	content: '';
 	pointer-events: none;
+}
+
+.tile:is(
+		[data-tone='clay'],
+		[data-tone='ink'],
+		[data-tone='navy'],
+		[data-tone='pine'],
+		[data-tone='wine']
+	) {
+	--tile-pick: color-mix(in oklab, var(--tile-bg) 58%, black);
 }
 
 /* The tile */
@@ -1062,7 +1074,7 @@ input {
 	inline-size: var(--segmented-control-indicator-width);
 	block-size: var(--segmented-control-indicator-height);
 	border-radius: 8px;
-	background: var(--tile-control);
+	background: var(--tile-pick);
 	box-shadow: var(--tile-shadow);
 }
 
@@ -1092,7 +1104,7 @@ input {
 /* Until the indicator is measured, the checked item draws its own ground. */
 [data-slot='segmented-control']:not(:has(> [data-slot='segmented-control-indicator'][style]))
 	[data-slot='segmented-control-item'][data-checked] {
-	background: var(--tile-control);
+	background: var(--tile-pick);
 }
 
 .tile [data-slot='slider'] {
@@ -1735,7 +1747,8 @@ input {
 	gap: 6px;
 }
 
-.cell-name .sink-icon {
+/* An icon beside a name is quiet; one inside a button takes the colour of its button. */
+.cell-name > .sink-icon {
 	color: var(--tile-ink-2);
 }
 

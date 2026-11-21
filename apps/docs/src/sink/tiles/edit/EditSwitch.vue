@@ -18,7 +18,7 @@ const rows = shallowRef<Rule[]>([
 	{ id: 'r4', rule: 'Stock below ten', on: false },
 ])
 const columns: ColumnDef<Rule>[] = [
-	{ id: 'rule', header: 'Rule' },
+	{ id: 'rule', header: 'Rule', editable: false },
 	{ id: 'on', header: 'On', format: 'boolean' },
 ]
 const controller = createTableController()
@@ -37,6 +37,7 @@ function onCellEdit(edits: readonly CellEdit<Rule>[]) {
 				:rows="rows"
 				:columns="columns"
 				:controller="controller"
+				editable
 				aria-label="Rules that switch on and off"
 				@cell-edit="onCellEdit"
 			>
