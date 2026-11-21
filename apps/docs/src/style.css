@@ -134,6 +134,11 @@ body {
 	block-size: 70vh;
 }
 
+/* A wrapper for a wide table. It scrolls sideways only, and the page scrolls the rows. */
+.sideways {
+	overflow-x: auto;
+}
+
 .lines-2,
 .lines-3 {
 	display: inline-block;

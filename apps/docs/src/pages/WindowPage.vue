@@ -28,7 +28,10 @@ const columns: ColumnDef<Person>[] = [
 
 const query = new URLSearchParams(location.search)
 // With `frame=page`, the page scrolls the rows, and not a frame around the table.
-const pageFrame = query.get('frame') === 'page'
+// With `frame=wide`, the page scrolls the rows too, inside a wrapper that
+// scrolls only sideways, as a wide table often has.
+const frame = query.get('frame')
+const pageFrame = frame === 'page' || frame === 'wide'
 
 const controller = createTableController()
 const size = shallowRef(SIZES[0] ?? 10000)
@@ -124,7 +127,10 @@ function togglePin(id: string, edge: 'top' | 'bottom') {
 		</button>
 		<output data-testid="pinning">{{ JSON.stringify(pinning) }}</output>
 	</div>
-	<div :class="{ scroller: !pageFrame, tall: !pageFrame }" data-testid="scroller">
+	<div
+		:class="{ scroller: !pageFrame, tall: !pageFrame, sideways: frame === 'wide' }"
+		data-testid="scroller"
+	>
 		<Table
 			v-model:filter="filter"
 			v-model:expanded="expanded"

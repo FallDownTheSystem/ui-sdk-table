@@ -77,5 +77,17 @@ export function flattenRows<Row>(
 	}
 
 	walk(rows, 0, null)
+	// A detail row has an id that is made from the id of its row. A data row
+	// with that same id would be two rows with one id, and no error anywhere.
+	const details = flat.filter((row) => row.detail)
+	if (details.length) {
+		const ids = new Set(flat.filter((row) => !row.detail).map((row) => row.id))
+		const twice = details.find((row) => ids.has(row.id))
+		if (twice) {
+			throw new Error(
+				`Row id "${twice.id}" is also the id of the detail row of row "${twice.node.id}". Give that row another id.`,
+			)
+		}
+	}
 	return flat
 }

@@ -89,16 +89,20 @@ export function createTableGrid<State extends object>(
 		pageSize?: () => number
 		/** The element that covers a cell. Without it, each cell is its own element. */
 		area?: (cell: GridCell) => GridArea
-		/** Shows a row that may not be rendered, before focus moves to it. */
-		reveal?: (cell: GridCell) => void
+		/**
+		 * Shows a row that may not be rendered, before focus moves to it.
+		 * `byKey` tells that a key of the grid moves focus there.
+		 */
+		reveal?: (cell: GridCell, byKey: boolean) => void
 	},
 ): TableGrid {
+	let byKey = false
 	const grid = createGridFocus(context, {
 		key: options.key,
 		rows: options.rows,
 		cols: options.cols,
 		pageSize: options.pageSize,
-		reveal: options.reveal,
+		reveal: (cell) => options.reveal?.(cell, byKey),
 	})
 
 	const area = (cell: GridCell): GridArea =>
@@ -163,7 +167,12 @@ export function createTableGrid<State extends object>(
 		if (active && cell.row === active.row && cell.col === active.col) return false
 		line = next
 		reached = { row: cell.row, col: cell.col }
-		return grid.focus(reached, { reason: 'list-navigation', event, shift: event.shiftKey })
+		byKey = true
+		try {
+			return grid.focus(reached, { reason: 'list-navigation', event, shift: event.shiftKey })
+		} finally {
+			byKey = false
+		}
 	}
 
 	function settle(): void {
@@ -207,6 +216,7 @@ export function createTableGrid<State extends object>(
 		},
 		bindRoot(root) {
 			let tabbing = false
+			let pressing = false
 			// A cell of this table, and not of a table or a calendar inside one of its cells.
 			const ownCell = (el: HTMLElement) => el.matches(CELL) && el.closest(ROOT) === root
 			const tabStop = () => {
@@ -242,7 +252,10 @@ export function createTableGrid<State extends object>(
 					// it there. A scroll into view counts the scroll margin of the cell,
 					// which holds the size of what covers the edge. Only for the
 					// keyboard: a cell under the pointer is where the person looks.
-					if (keyboardFocus(target)) target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+					// A browser can also call focus from a script "visible", so a press is ruled out by itself.
+					if (!pressing && keyboardFocus(target)) {
+						target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+					}
 					return
 				}
 				if (from instanceof Node && root.contains(from)) return
@@ -250,6 +263,11 @@ export function createTableGrid<State extends object>(
 				// script, or from a popup that closes is where the person or the app put it.
 				if (!tabbing) return
 				tabStop()?.focus()
+			}
+			const onPointerdown = () => {
+				pressing = true
+				// Focus moves inside this event, so the mark lasts one turn.
+				setTimeout(() => (pressing = false))
 			}
 			const onDocumentKeydown = (event: KeyboardEvent) => {
 				tabbing = event.key === 'Tab'
@@ -278,12 +296,14 @@ export function createTableGrid<State extends object>(
 
 			root.addEventListener('keydown', onKeydown)
 			root.addEventListener('focusin', onFocusin)
+			root.addEventListener('pointerdown', onPointerdown, true)
 			page.addEventListener('keydown', onDocumentKeydown, true)
 			return () => {
 				stopWatch()
 				if (check) view?.cancelAnimationFrame(check)
 				root.removeEventListener('keydown', onKeydown)
 				root.removeEventListener('focusin', onFocusin)
+				root.removeEventListener('pointerdown', onPointerdown, true)
 				page.removeEventListener('keydown', onDocumentKeydown, true)
 			}
 		},

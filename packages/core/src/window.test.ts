@@ -65,7 +65,7 @@ describe('row pinning', () => {
 			expect(view.part('row', 'r0')?.hasAttribute('data-pinned')).toBe(false)
 			expect(view.api.rowPin('r3')).toBe('top')
 			expect(view.api.rowPin('r0')).toBeUndefined()
-			// The totals count every row, pinned or not.
+			// The totals count every row that passes the filter, pinned or not.
 			expect(view.api.totals()).toEqual({ score: 15 })
 		} finally {
 			view.unmount()
@@ -117,6 +117,107 @@ describe('row pinning', () => {
 			// The owner of the state did not pass a new value back.
 			view.api.pinRow('r1', 'bottom')
 			expect(view.state.rowPinning).toEqual({ top: ['r5', 'gone'] })
+			// The pinned row is the last row of the data, and the first page shows it all the same.
+			view.api.clearFilters()
+			expect(ids(view.api.rows())).toEqual(['r5', 'r0', 'r1'])
+			view.api.nextPage()
+			expect(ids(view.api.rows())).toEqual(['r5', 'r2', 'r3'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('selection follows the rows as the screen orders them, pinned rows too', async () => {
+		const filtered = setup(
+			people(6),
+			{
+				selection: 'multiple',
+				defaultRowPinning: { top: ['r5'] },
+				defaultFilter: { search: 'Person 1' },
+			},
+			['r5', 'r1'],
+		)
+		try {
+			// The filter refuses the pinned row, and the row is in view.
+			filtered.api.selectAll()
+			expect(filtered.state.selected).toEqual(['r5', 'r1'])
+		} finally {
+			filtered.unmount()
+		}
+		const view = setup(people(6), { selection: 'multiple', defaultRowPinning: { top: ['r4'] } }, [
+			'r4',
+			'r0',
+			'r1',
+			'r2',
+			'r3',
+			'r5',
+		])
+		try {
+			;(view.part('cell', 'r4|name') as HTMLElement).focus()
+			await view.keys('Space')
+			;(view.part('cell', 'r1|name') as HTMLElement).focus()
+			await view.keys('Shift+Space')
+			// On the screen, the rows from the pinned row to the second row of the list.
+			expect([...view.state.selected].sort()).toEqual(['r0', 'r1', 'r4'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a row with child rows is never pinned, and a row in both edges can move', () => {
+		const tree: Person[] = [
+			{ id: 'a', name: 'Aino', score: 1, reports: [{ id: 'a1', name: 'Eero', score: 2 }] },
+			{ id: 'b', name: 'Helmi', score: 3 },
+		]
+		const view = setup(
+			tree,
+			{
+				getChildren: (row) => row.reports,
+				defaultExpanded: ['a'],
+				defaultRowPinning: { top: ['a', 'b'], bottom: ['b'] },
+			},
+			['b', 'a', 'a1'],
+		)
+		try {
+			// The option names a parent row. Its child rows would have no place, so it stays in the list.
+			expect(ids(view.api.rows())).toEqual(['b', 'a', 'a1'])
+			expect(view.api.rowPin('a')).toBeUndefined()
+			expect(view.api.rowPin('b')).toBe('top')
+			view.api.pinRow('b', 'bottom')
+			expect(view.state.rowPinning).toEqual({ top: ['a'], bottom: ['b'] })
+			expect(ids(view.api.rows())).toEqual(['a', 'a1', 'b'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a pin that empties the last page moves the page of the state back', () => {
+		const view = setup(people(5), { defaultPage: { page: 3, pageSize: 2 } }, ['r4'])
+		try {
+			expect(ids(view.api.rows())).toEqual(['r4'])
+			view.api.pinRow('r4', 'top')
+			expect(view.state.page).toEqual({ page: 2, pageSize: 2 })
+			expect(ids(view.api.rows())).toEqual(['r4', 'r2', 'r3'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('the active cell stays on its row when a row above it is pinned', () => {
+		const view = setup(people(6))
+		try {
+			view.api.grid.focus({ row: 4, col: 1 }, { reason: 'imperative' })
+			const cell = view.part('cell', 'r3|score')
+			expect(cell?.getAttribute('tabindex')).toBe('0')
+			view.api.pinRow('r5', 'top')
+			// The row moved one place down, and the cell that has focus is the same element.
+			expect(view.state.active).toEqual({ row: 5, col: 1 })
+			expect(view.api.rows()[4]?.id).toBe('r3')
+			view.api.pinRow('r5', null)
+			expect(view.state.active).toEqual({ row: 4, col: 1 })
+			// The row leaves the list: the active cell keeps its place, as far as the rows go.
+			view.api.setSearch('Person 0')
+			expect(view.state.active).toEqual({ row: 2, col: 1 })
 		} finally {
 			view.unmount()
 		}
@@ -167,6 +268,62 @@ describe('detail rows', () => {
 		} finally {
 			view.unmount()
 		}
+	})
+})
+
+describe('detail rows and other rows that open', () => {
+	test('`expandAll` leaves an open detail row open', () => {
+		const everyRow = () => true
+		const view = setup(people(3), { hasDetail: everyRow, defaultExpanded: ['r0'] }, ['r0'])
+		try {
+			view.api.expandAll()
+			expect(view.state.expanded).toEqual(['r0'])
+			expect(ids(view.api.rows())).toEqual(['r0', detailRowId('r0'), 'r1', 'r2'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a row that shows as one that can open, opens', () => {
+		const tree: Person[] = [
+			{ id: 'a', name: 'Aino', score: 1, reports: [{ id: 'a1', name: 'Eero', score: 2 }] },
+			{ id: 'b', name: 'Helmi', score: 3 },
+		]
+		const everyRow = () => true
+		const view = setup(
+			tree,
+			{
+				getChildren: (row) => row.reports,
+				hasDetail: everyRow,
+				defaultRowPinning: { top: ['a1'] },
+			},
+			['a1', 'a', 'b'],
+		)
+		try {
+			// The only child row is pinned, so in the list the row has a detail row and no child rows.
+			expect(view.part('row', 'a')?.getAttribute('aria-expanded')).toBe('false')
+			view.api.toggleExpanded('a')
+			expect(ids(view.api.rows())).toEqual(['a1', 'a', detailRowId('a'), 'b'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a data row cannot have the id of a detail row', () => {
+		const rows: Person[] = [
+			{ id: 'a', name: 'Aino', score: 1 },
+			{ id: detailRowId('a'), name: 'Odd', score: 2 },
+		]
+		expect(() => {
+			const view = setup(rows, { hasDetail: (row) => row.id === 'a', defaultExpanded: ['a'] }, [
+				'a',
+			])
+			try {
+				view.api.rows()
+			} finally {
+				view.unmount()
+			}
+		}).toThrow('Row id "detail/a" is also the id of the detail row of row "a".')
 	})
 })
 
@@ -282,6 +439,26 @@ describe('sticky rows', () => {
 describe('row window', () => {
 	const spacers = `<spacer value="gap-0" size="0"></spacer>`
 
+	test('two tables in one frame switch scroll anchoring off once and on once', async () => {
+		const page = document.documentElement
+		page.style.setProperty('overflow-anchor', 'auto')
+		const make = () => setup(people(50), { rowWindow: true, rowHeight: 20 }, ['r0'], spacers)
+		const first = make()
+		const second = make()
+		try {
+			await first.settle()
+			await second.settle()
+			expect(page.style.getPropertyValue('overflow-anchor')).toBe('none')
+			first.unmount()
+			// The second table still corrects the scroll position itself.
+			expect(page.style.getPropertyValue('overflow-anchor')).toBe('none')
+		} finally {
+			second.unmount()
+		}
+		expect(page.style.getPropertyValue('overflow-anchor')).toBe('auto')
+		page.style.removeProperty('overflow-anchor')
+	})
+
 	test('without the option, every row is rendered and no spacer is asked for', () => {
 		const view = setup(people(500))
 		try {
@@ -338,8 +515,10 @@ describe('row window', () => {
 		// The page is the frame here. The list starts 100 pixels under the top of the page.
 		let scrollY = 0
 		vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(400)
-		const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(((_x: number, y: number) => {
-			scrollY += y
+		const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(((move: ScrollToOptions) => {
+			// One step, also on a page that animates its scrolls.
+			expect(move.behavior).toBe('instant')
+			scrollY += move.top ?? 0
 		}) as typeof window.scrollBy)
 		const view = setup(
 			people(500),
@@ -365,14 +544,14 @@ describe('row window', () => {
 			view.api.scrollToRow('r250', 'center')
 			expect(scrollY).toBe(100 + 250 * 20 + 10 - 200)
 
-			// Focus on a cell brings the frame to its row.
-			view.api.grid.focus({ row: 6, col: 0 }, { reason: 'imperative' })
-			expect(scrollY).toBe(200)
-			expect(view.state.rowWindow).toMatchObject({ start: 3, end: 28, keep: [] })
+			// Focus on a cell of a row that is not in the page brings the frame to that row.
+			view.api.grid.focus({ row: 8, col: 0 }, { reason: 'imperative' })
+			expect(scrollY).toBe(240)
+			expect(view.state.rowWindow).toMatchObject({ start: 5, end: 30, keep: [] })
 			// A person scrolls away: the row of the active cell stays rendered, far from the frame.
 			scrollY = 6100
 			window.dispatchEvent(new Event('scroll'))
-			expect(view.state.rowWindow).toMatchObject({ start: 298, end: 323, keep: [5] })
+			expect(view.state.rowWindow).toMatchObject({ start: 298, end: 323, keep: [7] })
 			expect(view.api.windowParts()?.map((part) => part.kind)).toEqual([
 				'gap',
 				'rows',
@@ -384,6 +563,18 @@ describe('row window', () => {
 			scrollY = 100
 			window.dispatchEvent(new Event('scroll'))
 			expect(view.state.rowWindow).toMatchObject({ start: 0, end: 23, keep: [] })
+
+			// The top of the frame cuts the third row. A press on it leaves the rows
+			// where they are: the row is under the pointer.
+			scrollY = 150
+			window.dispatchEvent(new Event('scroll'))
+			view.api.grid.focus({ row: 3, col: 0 }, { reason: 'item-press' })
+			expect(scrollY).toBe(150)
+			// A key that moves to a row brings all of it into the frame.
+			const cell = view.part('cell', 'r2|name') as HTMLElement
+			cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))
+			expect(view.state.active).toEqual({ row: 2, col: 0 })
+			expect(scrollY).toBe(120)
 
 			expect(() => view.api.scrollToRow('nope')).toThrow('No row "nope" to scroll to')
 			expect(() => view.api.scrollToRow('r1', 'top' as never)).toThrow(

@@ -199,7 +199,11 @@ export type TableOptions<Row = unknown> = {
 	 * The frame is the nearest parent that scrolls, or the page. Defaults to false.
 	 */
 	rowWindow?: boolean
-	/** One height for every row, in pixels. Without it, the row window measures each row. */
+	/**
+	 * One height for every row, in pixels. Without it, the row window measures
+	 * each row. With `hasDetail` it measures too, because a detail row has a
+	 * height of its own, and this height is what a row counts with before.
+	 */
 	rowHeight?: number
 	/** The height of a row that the row window did not measure yet, in pixels. Defaults to 36. */
 	estimatedRowHeight?: number
@@ -216,7 +220,12 @@ export type TableOptions<Row = unknown> = {
 	 */
 	hasDetail?: (row: Row) => boolean
 
-	/** The rows that stay at the top or the bottom edge. A filter or a page does not hide them. */
+	/**
+	 * The rows that stay at the top or the bottom edge. A filter or a page does
+	 * not hide them. The totals are of the rows that pass the filter, so a
+	 * pinned row that the filter refuses is in view and not in the totals. A
+	 * row with child rows cannot be pinned.
+	 */
 	rowPinning?: RowPinning
 	defaultRowPinning?: RowPinning
 	onRowPinningChange?: (value: RowPinning, details: TableChangeDetails) => void
@@ -542,8 +551,17 @@ export const table = definePrimitive({
 
 		const stableRowPinning = stabilize<RowPinning>()
 		const rowPinning = () => stableRowPinning(state().rowPinning)
+		// A row with child rows cannot be pinned: its children would leave the
+		// list with it, and no place shows them. `pinRow` refuses such a row, and
+		// an id of one in the option pins nothing.
 		const pinnedIds = memo(
-			(pinning: RowPinning) => new Set([...(pinning.top ?? []), ...(pinning.bottom ?? [])]),
+			(pinning: RowPinning, source: { byId: ReadonlyMap<string, DataRow<unknown>> }) =>
+				new Set(
+					[...(pinning.top ?? []), ...(pinning.bottom ?? [])].filter((id) => {
+						const node = source.byId.get(id)
+						return !!node && !node.children?.length
+					}),
+				),
 		)
 
 		const model = createRowModel<unknown>({
@@ -570,7 +588,7 @@ export const table = definePrimitive({
 			expansion: () => state().expanded,
 			hasDetail: () => options().hasDetail,
 			// A pinned row has a place of its own, so it leaves the list.
-			omit: () => pinnedIds(rowPinning()),
+			omit: (): ReadonlySet<string> => pinnedIds(rowPinning(), model.source()),
 		})
 
 		// The pinned rows that exist, for each edge. A row that is named for both edges is at the top.
@@ -579,7 +597,7 @@ export const table = definePrimitive({
 			const at = (edge: RowPin): FlatRow<unknown>[] => {
 				const nodes = (pinning[edge] ?? []).flatMap((id) => {
 					const node = source.byId.get(id)
-					if (!node || seen.has(id)) return []
+					if (!node || node.children?.length || seen.has(id)) return []
 					seen.add(id)
 					return [node]
 				})
@@ -632,12 +650,21 @@ export const table = definePrimitive({
 			return ids
 		})
 
-		// Every data row that passes the filter, in order, for range selection and "select all".
-		const selectableOrder = memo((rows: readonly DataRow<unknown>[]) => {
-			const ids: string[] = []
-			walkRows(rows, (node) => ids.push(node.id))
-			return ids
-		})
+		// Every data row that a person can reach, in the order of the screen, for
+		// range selection and "select all": the rows pinned to the top, the rows
+		// that pass the filter, the rows pinned to the bottom.
+		const selectableIds = memo(
+			(
+				rows: readonly DataRow<unknown>[],
+				pins: { top: readonly FlatRow<unknown>[]; bottom: readonly FlatRow<unknown>[] },
+			) => {
+				const ids = pins.top.map((row) => row.id)
+				walkRows(rows, (node) => ids.push(node.id))
+				for (const row of pins.bottom) ids.push(row.id)
+				return ids
+			},
+		)
+		const selectableOrder = () => selectableIds(model.listed(), pinned())
 
 		function canSelect(id: string): boolean {
 			const node = model.rowById(id)
@@ -647,7 +674,7 @@ export const table = definePrimitive({
 		const selection = createSelection(context, {
 			key: 'selected',
 			set: (value, details) => change('selected', value, details),
-			order: () => selectableOrder(model.filtered()),
+			order: selectableOrder,
 			multiple: () => options().selection === 'multiple',
 			selectable: canSelect,
 		})
@@ -694,9 +721,12 @@ export const table = definePrimitive({
 			pageSize: () => state().page?.pageSize ?? 10,
 			area,
 			// A key can move focus to a row that the row window does not render.
-			reveal: (cell) => {
+			// A row under the pointer is where the person looks, so a press on a
+			// row that an edge of the frame cuts must not move the rows.
+			reveal: (cell, byKey) => {
 				const row = bodyRows()[cell.row - headerRowCount()]
-				if (row && !row.pinned && (options().rowWindow ?? false)) rowWindow.scrollTo(row.id)
+				if (!row || row.pinned || !(options().rowWindow ?? false)) return
+				if (byKey || !rowWindow.rendered(row.id)) rowWindow.scrollTo(row.id)
 			},
 		})
 
@@ -717,11 +747,13 @@ export const table = definePrimitive({
 			key: 'rowWindow',
 			enabled: () => options().rowWindow ?? false,
 			rows: () => model.flat(),
-			rowHeight: () => options().rowHeight,
-			estimate: () => options().estimatedRowHeight ?? DEFAULT_ROW_HEIGHT,
+			// A detail row has a height of its own. So with detail rows, the rows
+			// are measured, and the one row height is what a row counts with before.
+			rowHeight: () => (options().hasDetail ? undefined : options().rowHeight),
+			estimate: () => options().rowHeight ?? options().estimatedRowHeight ?? DEFAULT_ROW_HEIGHT,
 			overscan: () => options().overscan ?? DEFAULT_OVERSCAN,
 			keep: activeRow,
-			cover: (frame) => sticky.cover(frame),
+			cover: () => sticky.cover(),
 		})
 
 		const reorderable = (columnId: string) =>
@@ -833,10 +865,12 @@ export const table = definePrimitive({
 		function requireExpandable(id: string): void {
 			const ids = expandable(model.grouped())
 			if (ids.has(id)) return
+			// A row that shows as one that can open, can open: a row whose child rows all left the list has a detail row.
+			if (bodyRows()[flatIndex(bodyRows()).get(id) ?? -1]?.expandable) return
 			// A row with a detail row opens too. A pinned row is outside the list and has none.
 			const node = model.rowById(id)
 			const detail = node && !node.children?.length && options().hasDetail?.(node.row)
-			if (detail && !pinnedIds(rowPinning()).has(id)) return
+			if (detail && !pinnedIds(rowPinning(), model.source()).has(id)) return
 			throw new Error(`No row or group "${id}" that can expand. They are: ${listed(ids)}.`)
 		}
 
@@ -858,8 +892,11 @@ export const table = definePrimitive({
 				// After `seen`: this can move the active cell, which runs this function
 				// again inside itself, and that run must not see a new list a second time.
 				followColumns()
+				followRows()
 				const page = state().page
-				if (!page || (!newList && !changed.includes('revision'))) return
+				// Fewer rows can mean fewer pages: new data, or a row that is pinned and leaves the list.
+				const fewer = changed.includes('revision') || changed.includes('rowPinning')
+				if (!page || (!newList && !fewer)) return
 				// A page that arrives together with the list is the page the caller wants,
 				// for example a filter and a page that both come from a URL.
 				const first = newList && !changed.includes('page')
@@ -894,9 +931,29 @@ export const table = definePrimitive({
 			const now = state().active
 			activeColumn = now ? columns.leaves[now.col]?.id : undefined
 		}
+		// The row that the active cell is on, for the same reason. A row that is
+		// pinned, or a row that opens above the active cell, moves the rows under
+		// it by one place, and the cell that has focus is still the same element.
+		let seenBody: readonly FlatRow<unknown>[] = bodyRows()
+		let activeRowId: string | undefined
+
+		function followRows(): void {
+			const rows = bodyRows()
+			const head = headerRowCount()
+			const active = state().active
+			if (active && rows !== seenBody && activeRowId !== undefined) {
+				const index = flatIndex(rows).get(activeRowId)
+				const row = index === undefined ? active.row : head + index
+				if (row !== active.row) context.store.set({ active: { row, col: active.col } })
+			}
+			seenBody = rows
+			const now = state().active
+			activeRowId = now ? rows[now.row - head]?.id : undefined
+		}
 		context.onOptions(() => {
 			// The options are not in place yet when this runs, so the check waits one turn.
 			queueMicrotask(followColumns)
+			queueMicrotask(followRows)
 			// Whether the header and the footer stick is an option, and so is the row window.
 			sticky.refresh()
 			queueMicrotask(() => rowWindow.refresh())
@@ -1051,7 +1108,9 @@ export const table = definePrimitive({
 				setExpanded(rowId, !state().expanded.includes(rowId), event ? 'press' : 'imperative', event)
 			},
 			expandAll() {
-				change('expanded', [...expandable(model.grouped())], { reason: 'imperative' })
+				// What is open stays open: a detail row is not a tree row or a group, and it is not closed here.
+				const all = [...new Set([...state().expanded, ...expandable(model.grouped())])]
+				if (!sameContent(all, state().expanded)) change('expanded', all, { reason: 'imperative' })
 			},
 			collapseAll() {
 				change('expanded', NO_IDS, { reason: 'imperative' })
@@ -1069,7 +1128,7 @@ export const table = definePrimitive({
 				if (options().selection !== 'multiple') {
 					throw new Error("`selectAll` needs the `selection` option to be 'multiple'.")
 				}
-				const all = selectableOrder(model.filtered()).filter(canSelect)
+				const all = selectableOrder().filter(canSelect)
 				// Rows that the filter hides keep their selection: the person did not see them go.
 				const shown = new Set(all)
 				const hidden = state().selected.filter((id) => !shown.has(id))
@@ -1206,7 +1265,9 @@ export const table = definePrimitive({
 					)
 				}
 				const current = state().rowPinning
-				if (edge && current[edge]?.includes(rowId)) return
+				const other = edge === 'top' ? current.bottom : current.top
+				// A row that is at that edge already keeps its place among the pinned rows.
+				if (edge && current[edge]?.includes(rowId) && !other?.includes(rowId)) return
 				const without = (ids: readonly string[] = []) => ids.filter((id) => id !== rowId)
 				const next = {
 					top: edge === 'top' ? [...without(current.top), rowId] : without(current.top),
@@ -1420,6 +1481,8 @@ export const table = definePrimitive({
 		'header-row': slot<{ index: number }>({
 			props: { index: 'number' },
 			role: 'row',
+			// The row reads options and its own props, and no state.
+			selects: selects(SILENT),
 			attrs: (_state, { props, api }) => ({
 				'aria-rowindex': String(props.index + 1),
 				'data-sticky': api.stickyHeader() ? 'top' : undefined,
@@ -1449,6 +1512,7 @@ export const table = definePrimitive({
 		'plain-row': slot<{ index: number; footer?: boolean }>({
 			props: { index: 'number', footer: 'boolean' },
 			role: 'row',
+			selects: selects(SILENT),
 			attrs: (_state, { props, api }) => ({
 				'aria-rowindex': String(props.index + 1),
 				'data-kind': props.footer ? 'footer' : undefined,
@@ -1646,6 +1710,10 @@ export const table = definePrimitive({
 					const control =
 						target && target !== el && target.closest('a[href], button, input, select, textarea')
 					if (!control || !el?.contains(control)) {
+						// The cell is under the pointer, so focus must not scroll it: a row
+						// that the header cuts would move away from the pointer. Focus
+						// that is here already is not moved again by the grid.
+						el?.focus({ preventScroll: true })
 						api.grid.focus(props, { reason: 'item-press', event })
 					}
 					// The whole header cell is the grip of its column. A drag starts only

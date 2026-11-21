@@ -32,6 +32,8 @@ Follow the `ui-sdk` skill. Read `node_modules/@ui-sdk/vue/docs/llms.txt`; search
 - Agent-first: every primitive ends with `agent: { actions: [...] }`; action methods check their arguments and throw a message that lists the valid values; the root has an accessible name.
 - Each experimental UI SDK behavior (grid focus, cell range, resize, inline edit, popup) sits behind one table behavior of ours, so an upstream API change touches one file.
 - Slot names are kebab-case (`header-row`, `plain-row`), as in UI SDK. `mount` of `@ui-sdk/core/testing` reads its markup as HTML, which has no capital letters in tag names, so a slot with a capital letter cannot be a part in a test.
+- The table scrolls with `behavior: 'instant'` only. A page with `scroll-behavior: smooth` otherwise animates a jump, and the next read sees the old place.
+- The scroll frame of the row window is the nearest parent whose content is higher than itself, not the nearest with `overflow-y: auto`: a wrapper with `overflow-x: auto` has that computed value too.
 - A renderer can call the `bind` of a slot before the element is in the page. A behavior that needs the parents or the size of an element waits for that (see `bindOrigin` in `behaviors/window.ts`).
 - The props that `bind` gets are the props at that moment. A rule that must follow a prop goes in `attrs`, not in a closure of `bind`.
 - UI SDK has no helper for derived data. The row pipeline keeps its own per-stage cache inside `api`.

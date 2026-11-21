@@ -37,7 +37,6 @@ describe('row metrics', () => {
 		expect(metrics.indexAt(2019)).toBe(99)
 		expect(metrics.measure('nope', 10)).toBe(0)
 		expect(metrics.measure('r5', 0)).toBe(0)
-		expect(metrics.mean()).toBe(30)
 	})
 
 	test('measured heights stay with their rows when the order changes', () => {

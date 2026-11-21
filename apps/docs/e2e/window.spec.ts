@@ -111,9 +111,11 @@ test('with rows of their own heights, a jump to any row takes one step', async (
 	await page.waitForTimeout(400)
 	expect((await place(page, last)).bottom).toBe(0)
 	const positions = await seen()
-	// The frame never went back to the top, and it moved in one direction.
+	// The frame never went back to the top, and it moved in one direction. Rows
+	// have heights with parts of a pixel, so one pixel back is rounding.
 	expect(Math.min(...positions)).toBeGreaterThan(300000)
-	expect(positions).toEqual([...positions].sort((a, b) => a - b))
+	const back = positions.filter((at, index) => index > 0 && at < (positions[index - 1] ?? 0) - 1)
+	expect(back).toEqual([])
 
 	await page.getByRole('button', { name: 'Go to that row' }).click()
 	const middle = rowOf(table, 'p5000')
@@ -306,6 +308,112 @@ test('without a frame around the table, the page scrolls the rows', async ({ pag
 	expect(Math.round((foot?.y ?? 0) + (foot?.height ?? 0))).toBeLessThanOrEqual(view?.height ?? 0)
 })
 
+test('a wrapper that scrolls only sideways leaves the page as the frame', async ({ page }) => {
+	const table = await open(page, '&frame=wide')
+	await expect(page.getByTestId('scroller')).toHaveCSS('overflow-y', 'auto')
+	expect(await dataRows(table).count()).toBeLessThan(80)
+	await page.evaluate(() => window.scrollTo(0, 180000))
+	await expect(rowOf(table, 'p5000')).toBeVisible()
+	expect(await dataRows(table).count()).toBeLessThan(80)
+})
+
+test('a jump is one step on a page that animates its scrolls, and lands at the right place', async ({
+	page,
+}) => {
+	const table = await open(page, '&frame=page')
+	await page.addStyleTag({ content: 'html { scroll-behavior: smooth }' })
+	await page.getByRole('checkbox', { name: 'Rows with their own heights' }).check()
+	await page.getByRole('button', { name: 'Go to the last row' }).dispatchEvent('click')
+	const last = rowOf(table, 'p9999')
+	await expect(last).toBeInViewport()
+	expect((await place(page, last)).bottom).toBe(0)
+
+	// From the top of the page, where the header is not at the edge of the view
+	// yet: the row is in the middle of what the header and the footer leave free.
+	await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+	await expect(rowOf(table, 'p0')).toBeVisible()
+	await page.getByRole('button', { name: 'Go to that row' }).dispatchEvent('click')
+	const middle = rowOf(table, 'p5000')
+	await expect(middle).toBeInViewport()
+	await expect
+		.poll(async () => {
+			const at = await place(page, middle)
+			return Math.abs(at.top - at.bottom)
+		})
+		.toBeLessThanOrEqual(1)
+})
+
+test('a frame that animates its scrolls still jumps in one step', async ({ page }) => {
+	const table = await open(page)
+	await page.addStyleTag({ content: '.scroller { scroll-behavior: smooth }' })
+	await page.getByRole('checkbox', { name: 'Rows with their own heights' }).check()
+	await page.getByRole('button', { name: 'Go to the last row' }).click()
+	const last = rowOf(table, 'p9999')
+	await expect(last).toBeVisible()
+	expect((await place(page, last)).bottom).toBe(0)
+})
+
+test('with one row height, an open detail row keeps the rows after it in place', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await page.getByRole('checkbox', { name: 'Detail rows' }).check()
+	await rowOf(table, 'p1')
+		.getByRole('button', { name: /^Open the details/ })
+		.click()
+	const detail = table.locator('tbody tr[data-kind="detail"]')
+	await expect(detail).toHaveCount(1)
+	const scroller = page.getByTestId('scroller')
+	const height = () => scroller.evaluate((el) => el.scrollHeight)
+	const open1 = await height()
+	// The detail row is higher than a row, and the list counts its real height.
+	expect(open1).toBeGreaterThan(10000 * 36 + 60)
+
+	// Far from the detail row, a spacer stands in for it, with the same height.
+	await page.getByRole('button', { name: 'Go to that row' }).click()
+	await expect(rowOf(table, 'p5000')).toBeVisible()
+	await expect(detail).toHaveCount(0)
+	expect(Math.abs((await height()) - open1)).toBeLessThanOrEqual(1)
+
+	// On the way back, a row in view moves as far as the scroll, also when the detail row is rendered again.
+	await scroller.evaluate((el) => (el.scrollTop = 600))
+	const row = rowOf(table, 'p18')
+	await expect(row).toBeVisible()
+	await expect(detail).toHaveCount(0)
+	for (let step = 0; step < 4; step++) {
+		const before = (await row.locator('td').first().boundingBox())?.y ?? 0
+		await scroller.evaluate((el) => (el.scrollTop -= 72))
+		await page.evaluate(() => new Promise(requestAnimationFrame))
+		await page.evaluate(() => new Promise(requestAnimationFrame))
+		const after = (await row.locator('td').first().boundingBox())?.y ?? 0
+		expect(Math.abs(after - before - 72)).toBeLessThanOrEqual(1)
+	}
+	await expect(detail).toHaveCount(1)
+})
+
+test('a press on a row that the header cuts leaves the rows where they are', async ({ page }) => {
+	const table = await open(page)
+	const scroller = page.getByTestId('scroller')
+	await scroller.evaluate((el) => (el.scrollTop = 3618))
+	// The header covers the upper part of this row.
+	const target = rowOf(table, 'p100').locator('td').nth(2)
+	await expect(target).toBeVisible()
+	const head = await table.locator('thead th').first().boundingBox()
+	const box = await target.boundingBox()
+	if (!head || !box) throw new Error('The row is not in the page.')
+	const visible = box.y + box.height - (head.y + head.height)
+	expect(visible).toBeGreaterThan(4)
+	expect(visible).toBeLessThan(box.height)
+	await page.mouse.click(box.x + 20, box.y + box.height - 3)
+	await expect(target).toBeFocused()
+	expect(await scrollTop(page)).toBe(3618)
+	// A key that comes back to the row shows all of it.
+	await page.keyboard.press('ArrowDown')
+	await page.keyboard.press('ArrowUp')
+	await expect(target).toBeFocused()
+	expect((await place(page, rowOf(table, 'p100'))).top).toBeGreaterThanOrEqual(0)
+})
+
 test('the row window switches off and on, and a row is still found', async ({ page }) => {
 	const table = await open(page)
 	const name = (await rowOf(table, 'p0').locator('td').first().innerText()).replace('p0 ', '')
@@ -318,6 +426,10 @@ test('the row window switches off and on, and a row is still found', async ({ pa
 	await expect(dataRows(table)).toHaveCount(count)
 	await expect(table.locator('tbody tr[data-slot="table-spacer"]')).toHaveCount(0)
 	await expect(table).not.toHaveAttribute('data-row-window')
+	// Without the row window, a row that is asked for stops beside the sticky header, not under it.
+	await page.getByTestId('scroller').evaluate((el) => (el.scrollTop = el.scrollHeight))
+	await page.getByRole('button', { name: 'Go to the first row' }).click()
+	expect((await place(page, rowOf(table, 'p0'))).top).toBe(0)
 
 	await page.getByRole('checkbox', { name: 'Row window' }).check()
 	expect(await dataRows(table).count()).toBeLessThan(60)

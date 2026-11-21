@@ -37,6 +37,30 @@ export type RowWindow = {
 	scrollTo(id: string, align?: RowAlign): boolean
 	/** Reads the options again. Call it when an option of the window changed. */
 	refresh(): void
+	/** Whether a row has an element in the page now. */
+	rendered(id: string): boolean
+}
+
+// Scroll anchoring is switched off on the frame while a row window uses it.
+// Two tables can share one frame, so the frame keeps count: the first table
+// stores the value it found, and the last table to leave puts it back.
+const anchors = new WeakMap<HTMLElement, { count: number; before: string }>()
+
+function holdAnchor(el: HTMLElement): () => void {
+	const held = anchors.get(el) ?? {
+		count: 0,
+		before: el.style.getPropertyValue('overflow-anchor'),
+	}
+	held.count++
+	anchors.set(el, held)
+	el.style.setProperty('overflow-anchor', 'none')
+	return () => {
+		held.count--
+		if (held.count > 0) return
+		anchors.delete(el)
+		if (held.before) el.style.setProperty('overflow-anchor', held.before)
+		else el.style.removeProperty('overflow-anchor')
+	}
 }
 
 /** The window before the page tells where the frame is: the first rows, as many as fill a frame of a usual size. */
@@ -92,7 +116,7 @@ export function createRowWindow<State extends object>(
 		/** The ids of rows that stay rendered wherever the frame is. */
 		keep?: () => readonly string[]
 		/** How much of the frame other things cover at its edges, such as a sticky header. */
-		cover?: (frame: { top: number; bottom: number }) => { top: number; bottom: number }
+		cover?: () => { top: number; bottom: number }
 	},
 ): RowWindow {
 	const known = new Map<string, number>()
@@ -102,6 +126,26 @@ export function createRowWindow<State extends object>(
 	let origin: HTMLElement | undefined
 	/** The element that scrolls the rows. `undefined` is the page itself. */
 	let scroller: HTMLElement | undefined
+	/** The parents of the list that can scroll by their style, the nearest first. */
+	let candidates: HTMLElement[] = []
+	let releaseAnchor: (() => void) | undefined
+
+	/**
+	 * Picks the frame: the nearest parent that scrolls the rows, or the page.
+	 * The style of a parent does not tell that. A wrapper with `overflow-x:
+	 * auto`, for a wide table, has the same computed `overflow-y` as a frame
+	 * with a height, and it never scrolls the rows. So a parent is the frame
+	 * only while its content is higher than itself, and the choice is made
+	 * again at each read: rows that load later can make a frame scroll.
+	 */
+	function choose(): void {
+		if (!origin) return
+		const next = candidates.find((el) => el.scrollHeight > el.clientHeight)
+		if (next === scroller && releaseAnchor) return
+		scroller = next
+		releaseAnchor?.()
+		releaseAnchor = holdAnchor(next ?? origin.ownerDocument.documentElement)
+	}
 	let frame: Frame = { from: 0, to: FIRST_FRAME, top: 0, bottom: FIRST_FRAME }
 	let focused: string | undefined
 	let sizes = 0
@@ -144,6 +188,7 @@ export function createRowWindow<State extends object>(
 		if (!origin?.isConnected) return false
 		const view = origin.ownerDocument.defaultView
 		if (!view) return false
+		choose()
 		const start = origin.getBoundingClientRect().top
 		let top = 0
 		let bottom = view.innerHeight
@@ -204,10 +249,16 @@ export function createRowWindow<State extends object>(
 		})
 	}
 
+	// The move is in one step, also on a page with `scroll-behavior: smooth`.
+	// An animated scroll would leave the frame at its old place for the read
+	// that comes next, and a jump to a far row would never arrive.
 	function scrollBy(pixels: number): void {
 		if (!pixels) return
-		if (scroller) scroller.scrollTop += pixels
-		else origin?.ownerDocument.defaultView?.scrollBy(0, pixels)
+		if (!scroller) {
+			origin?.ownerDocument.defaultView?.scrollBy({ top: pixels, behavior: 'instant' })
+		} else if (typeof scroller.scrollTo === 'function') {
+			scroller.scrollTo({ top: scroller.scrollTop + pixels, behavior: 'instant' })
+		} else scroller.scrollTop += pixels
 	}
 
 	/** Scrolls so that the target row is where the caller asked for it. `measuring` is true inside the measurement step of the browser. */
@@ -219,7 +270,7 @@ export function createRowWindow<State extends object>(
 			target = undefined
 			return
 		}
-		const covered = options.cover?.({ top: frame.top, bottom: frame.bottom })
+		const covered = options.cover?.()
 		const from = frame.from + (covered?.top ?? 0)
 		const to = frame.to - (covered?.bottom ?? 0)
 		const start = measured.offset(index)
@@ -299,14 +350,15 @@ export function createRowWindow<State extends object>(
 	}
 	const INPUTS = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const
 
-	function scrollParent(el: HTMLElement): HTMLElement | undefined {
+	function scrollParents(el: HTMLElement): HTMLElement[] {
 		const view = el.ownerDocument.defaultView
+		const found: HTMLElement[] = []
 		for (let parent = el.parentElement; parent && view; parent = parent.parentElement) {
 			if (parent === el.ownerDocument.documentElement || parent === el.ownerDocument.body) break
 			const overflow = view.getComputedStyle(parent).overflowY
-			if (overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') return parent
+			if (overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') found.push(parent)
 		}
-		return undefined
+		return found
 	}
 
 	// The rows, the options or the rows to keep can change with the state.
@@ -333,27 +385,27 @@ export function createRowWindow<State extends object>(
 			const join = () => {
 				if (left || leave || !el.isConnected) return
 				const view = el.ownerDocument.defaultView
-				const frameEl = scrollParent(el)
-				scroller = frameEl
-				const source: HTMLElement | Window | null = frameEl ?? view
-				const anchored = frameEl ?? el.ownerDocument.documentElement
-				const anchoring = anchored.style.getPropertyValue('overflow-anchor')
-				anchored.style.setProperty('overflow-anchor', 'none')
-				source?.addEventListener('scroll', onScroll, { passive: true })
+				const parents = scrollParents(el)
+				candidates = parents
+				// Each of them can be the frame at some time, and so can the page.
+				const sources: (HTMLElement | Window)[] = view ? [...parents, view] : parents
+				for (const source of sources) {
+					source.addEventListener('scroll', onScroll, { passive: true })
+				}
 				view?.addEventListener('resize', onScroll, { passive: true })
 				for (const name of INPUTS) {
-					source?.addEventListener(name, onInput, { passive: true, capture: true })
+					view?.addEventListener(name, onInput, { passive: true, capture: true })
 				}
-				if (frameEl) frameObserver?.observe(frameEl)
+				for (const parent of parents) frameObserver?.observe(parent)
 				leave = () => {
-					source?.removeEventListener('scroll', onScroll)
+					for (const source of sources) source.removeEventListener('scroll', onScroll)
 					view?.removeEventListener('resize', onScroll)
 					for (const name of INPUTS) {
-						source?.removeEventListener(name, onInput, { capture: true })
+						view?.removeEventListener(name, onInput, { capture: true })
 					}
-					if (frameEl) frameObserver?.unobserve(frameEl)
-					if (anchoring) anchored.style.setProperty('overflow-anchor', anchoring)
-					else anchored.style.removeProperty('overflow-anchor')
+					for (const parent of parents) frameObserver?.unobserve(parent)
+					releaseAnchor?.()
+					releaseAnchor = undefined
 					view?.cancelAnimationFrame(settle)
 					view?.cancelAnimationFrame(later)
 					later = 0
@@ -371,6 +423,7 @@ export function createRowWindow<State extends object>(
 				if (origin === el) {
 					origin = undefined
 					scroller = undefined
+					candidates = []
 				}
 			}
 		},
@@ -428,14 +481,18 @@ export function createRowWindow<State extends object>(
 			)
 		},
 		refresh() {
-			if (read()) update()
-			else update()
+			read()
+			update()
 		},
+		rendered: (id) => elements.has(id),
 		scrollTo(id, align = 'nearest') {
 			if (!options.enabled()) {
 				const el = elements.get(id)
 				if (!el) return false
-				if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: align })
+				// The cells hold the scroll margin that keeps them clear of the
+				// sticky rows, so a cell is what scrolls into view.
+				const cell = el.firstElementChild ?? el
+				if (typeof cell.scrollIntoView === 'function') cell.scrollIntoView({ block: align })
 				return true
 			}
 			if (metrics().indexOf(id) < 0) return false

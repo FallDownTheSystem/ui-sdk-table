@@ -18,10 +18,12 @@ export type StickyRows = {
 	/** Joins an element that holds cells, which gets the sizes of the sticky parts. Return the result from `bind`. */
 	bindGroup(group: HTMLElement): () => void
 	/**
-	 * How much of a frame the sticky rows cover now, at each edge. `top` and
-	 * `bottom` are the edges of the frame in viewport coordinates.
+	 * How much of the scroll frame the sticky rows cover at each edge, when
+	 * they are at their edge. A header that is still below the top of the page
+	 * counts the same: after a scroll to a far row it is at the edge, and the
+	 * place of that row must be right in one step.
 	 */
-	cover(frame: { top: number; bottom: number }): { top: number; bottom: number }
+	cover(): { top: number; bottom: number }
 	/** Works the offsets out again. Call it when an option changed whether a row sticks. */
 	refresh(): void
 }
@@ -182,18 +184,14 @@ export function createStickyRows<State extends object>(
 				group.style.removeProperty('--table-sticky-bottom-size')
 			}
 		},
-		cover(frame) {
+		cover() {
 			let top = 0
 			let bottom = 0
-			for (const [el, row] of active) {
-				// The cells are what sticks in most style sheets, and then the row
-				// element itself stays at its place in the table.
-				const rect = (el.firstElementChild ?? el).getBoundingClientRect()
-				// A row that is not at its edge yet covers nothing of the frame, or only a part.
-				if (row.edge === 'top') top = Math.max(top, Math.min(rect.bottom, frame.bottom) - frame.top)
-				else bottom = Math.max(bottom, frame.bottom - Math.max(rect.top, frame.top))
+			for (const row of active.values()) {
+				if (row.edge === 'top') top += row.size
+				else bottom += row.size
 			}
-			return { top: Math.max(0, top), bottom: Math.max(0, bottom) }
+			return { top, bottom }
 		},
 	}
 }

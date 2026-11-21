@@ -17,8 +17,6 @@ export type RowMetrics = {
 	measure(id: string, size: number): number
 	/** The position of a row, or -1. */
 	indexOf(id: string): number
-	/** The mean height of a row, from the rows measured so far. */
-	mean(): number
 }
 
 /** Every row has the same height, so no row is measured and each answer is one multiplication. */
@@ -37,7 +35,6 @@ export function fixedMetrics(rows: readonly { id: string }[], rowHeight: number)
 			index ??= new Map(rows.map((row, position) => [row.id, position]))
 			return index.get(id) ?? -1
 		},
-		mean: () => size,
 	}
 }
 
@@ -55,17 +52,10 @@ export function measuredMetrics(
 	const fallback = Math.max(1, estimate)
 	const index = new Map<string, number>()
 	const sizes = new Float64Array(count)
-	let measured = 0
-	let measuredTotal = 0
 	for (let position = 0; position < count; position++) {
 		const id = (rows[position] as { id: string }).id
 		index.set(id, position)
-		const size = known.get(id)
-		if (size !== undefined) {
-			measured++
-			measuredTotal += size
-		}
-		sizes[position] = size ?? fallback
+		sizes[position] = known.get(id) ?? fallback
 	}
 
 	// `starts[n]` is the top of row `n`, and it is correct for every `n` up to `valid`.
@@ -107,9 +97,6 @@ export function measuredMetrics(
 			const position = index.get(id)
 			if (position === undefined || !(size > 0)) return 0
 			const before = sizes[position] as number
-			if (!known.has(id)) measured++
-			else measuredTotal -= known.get(id) ?? 0
-			measuredTotal += size
 			known.set(id, size)
 			// Less than a part of a pixel is noise from zoom and from borders that rows share.
 			if (Math.abs(before - size) < 0.01) return 0
@@ -118,7 +105,6 @@ export function measuredMetrics(
 			return size - before
 		},
 		indexOf: (id) => index.get(id) ?? -1,
-		mean: () => (measured ? measuredTotal / measured : fallback),
 	}
 }
 
