@@ -685,3 +685,40 @@ test('the Excel file of the sheet holds the formula of a cell, with its result b
 	// A cell without a formula holds its value only.
 	expect(sheet).not.toMatch(/<c r="D2"/)
 })
+
+test('a cell of a computed column opens with the formula of the column, and Enter changes the column as one step', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const quantities = await column(table, 'qty')
+	const cell = cellOf(dataRows(table).nth(2), 'custom')
+	await cell.click()
+	await page.keyboard.press('F2')
+	const editor = table.locator('[data-slot="table-editor"]')
+	await expect(editor).toBeFocused()
+	await expect(editor).toHaveValue('=[Quantity]*2')
+	await page.keyboard.press('Control+a')
+	await page.keyboard.type('=[Quantity]*3')
+	await page.keyboard.press('Enter')
+	await expect(page.getByTestId('custom-stored')).toHaveText('=[qty]*3')
+	await expect(cell).toBeFocused()
+	expect(await column(table, 'custom')).toEqual(quantities.map((qty) => qty * 3))
+
+	// A value is no formula of the column: the editor stays open with the words.
+	await page.keyboard.type('7')
+	await expect(editor).toHaveValue('7')
+	await page.keyboard.press('Enter')
+	await expect(editor).toBeFocused()
+	await expect(editor).toHaveAttribute('aria-invalid', 'true')
+	await expect(table.locator('[data-slot="table-edit-error"]')).toContainText(
+		'Column `custom` is computed',
+	)
+	await page.keyboard.press('Escape')
+	await expect(cell).toBeFocused()
+	await expect(page.getByTestId('custom-stored')).toHaveText('=[qty]*3')
+
+	// The change of the column is one step.
+	await page.keyboard.press('Control+z')
+	await expect(page.getByTestId('custom-stored')).toHaveText('=[qty]*2')
+	expect(await column(table, 'custom')).toEqual(quantities.map((qty) => qty * 2))
+})

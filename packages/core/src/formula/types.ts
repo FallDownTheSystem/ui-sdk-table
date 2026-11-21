@@ -44,6 +44,8 @@ export type FormulaIssue =
 	| { code: 'tooLarge'; reads: number; limit: number }
 	/** The cell cannot hold a formula: its column has `allowFormula: false` or is computed, or it cannot be edited. */
 	| { code: 'notHere'; column: string }
+	/** A cell of a computed column takes a formula for the whole column, and no value. */
+	| { code: 'columnCell'; column: string }
 	/** The table has its rows from a server page by page (`manualPage`), so no address names a row. */
 	| { code: 'noDocument' }
 

@@ -194,6 +194,7 @@ The formula engine is the entry `ui-sdk-table-core/formulas` (`vp pack src/index
 | Slice 2 with the fix of P2, built with the entry | 131.60 kB, the row helpers 2.17 kB | 44.82 kB, and 1.01 kB | 25.38 kB | 9.05 kB |
 | Slice 3, the glue of column formulas, built with the entry | 134.44 kB, and a chunk of 2.32 kB with the error codes and the row helpers | 45.65 kB, and 1.10 kB | 30.61 kB | 10.74 kB |
 | Slice 9, every slice of the formulas up to the reads of an agent, built with the entry | 139.69 kB, and a chunk of 5.08 kB with the error codes, the row helpers and the shared write helpers | 47.23 kB, and 2.25 kB | 44.92 kB | 15.18 kB |
+| Slice 12, every slice of the formulas, built with the entry | 140.47 kB, and chunks of 4.91 kB (the row helpers and the shared write helpers) and 0.17 kB (the error codes) | 47.49 kB, and 2.17 kB and 0.19 kB | 47.11 kB | 16.01 kB |
 
 The glue of the formulas in the main entry has a limit of 12 kB minified, which `src/formulas-size.test.ts` checks with a build: the main entry and every chunk that it loads, against 147,528 bytes before the fix of P2 (131.60 kB, the row helpers 2.17 kB, the formats 13.76 kB). The rule that keeps it: the main entry holds only what must touch the inside of the table (the state key, its change path, the shells of the actions, the hooks, the attributes and the view). Everything that runs only with an engine is in the formulas entry and comes in through the engine object: the words of the issues, `setFormulas` and `revertFormulas`, the build of the columns with their formulas and the check for a circle of columns.
 
@@ -209,6 +210,7 @@ The glue of the formulas in the main entry has a limit of 12 kB minified, which 
 | 9, `getFormulaSummary`, `evaluateFormula`, `getFormulaFunctions` and the formula in the state of a cell part (`useFormulaBar` is in the Vue entry of the formulas) | 10.99 kB |
 | 10, the docs and the numbers | 10.99 kB |
 | 11, `formulaOf` and the ids of the rows for an export (`excelFormulas` is in the formulas entry, the writer of `<f>` in the export entry) | 11.32 kB |
+| 12, the field of a cell of a computed column shows the formula of the column, and a save changes the column | 11.85 kB |
 
 The main entry holds no text of the engine. The format `period` is in the main entry, as the plan says: the chunk of the formats, which the main entry and the export entry share, grows from 12.59 kB to 13.76 kB (4.66 kB to 5.09 kB compressed). The plan estimated about 20 kB for the entry with about 45 functions; slice 2 has 51 of them in 25.38 kB.
 

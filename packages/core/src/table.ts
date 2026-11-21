@@ -2642,6 +2642,10 @@ export const table = definePrimitive({
 			text: (id) => {
 				const cell = cellOf(id)
 				if (!cell) return ''
+				const ofColumn = columnFormulaAt(cell.node, cell.column)
+				if (ofColumn !== undefined) {
+					return requireFormulas().print(ofColumn, { columnId: cell.column.id }, formulaSheet)
+				}
 				const plain = fieldText(cell.node.row, cell.column, shownFormat(cell.column, cell.node.id))
 				// A formula cell starts with its formula, and a text with `=` with `'`.
 				return holdsFormula(cell.node, cell.column)
@@ -2653,14 +2657,18 @@ export const table = definePrimitive({
 						)
 					: plain
 			},
-			canEdit: (id) => {
-				const cell = cellOf(id)
-				return !!cell && canEdit(cell.node, cell.column)
-			},
+			canEdit: (id) => editableCell(id),
 			save: (id, text, details) => {
 				const cell = cellOf(id)
 				// The row or the column went away while the editor was open, so there is nothing to save.
 				if (!cell) return true
+				if (columnFormulaAt(cell.node, cell.column) !== undefined) {
+					// The cell shows the formula of its column, so a save is a new formula of the column.
+					const refused = text.startsWith('=')
+						? writeColumnFormula(cell.column.id, text, editReason(details.reason), details.event)
+						: issueText(requireFormulas(), { code: 'columnCell', column: cell.column.id })
+					return refused ?? true
+				}
 				return saveCell(
 					cell.node,
 					cell.column,
@@ -3655,6 +3663,30 @@ export const table = definePrimitive({
 			mode: 'copy' | 'cut' = 'copy',
 		) => requireFormulas().move(from.formula, from, { rowId, columnId }, formulaSheet, mode)
 
+		const ownLeaves = memo(
+			(columns: readonly ColumnDef[]) =>
+				new Map(leafColumns(columns).map((leaf) => [leaf.id, leaf])),
+		)
+		/**
+		 * The formula of a computed column, when a cell of it opens: the column
+		 * of the owner can be edited, so its field shows the formula of the
+		 * column, and a save changes the column.
+		 */
+		function columnFormulaAt(node: DataRow<unknown>, column: ColumnDef): string | undefined {
+			const formula = engine() ? formulasNow.read().columns?.[column.id] : undefined
+			const own = formula === undefined ? undefined : ownLeaves(ownColumns()).get(column.id)
+			return own && canEdit(node, own) ? formula : undefined
+		}
+
+		/** Whether a cell opens an editor, by its id: a cell that can be edited, or a cell of a computed column of the owner. */
+		function editableCell(id: string): boolean {
+			const cell = cellOf(id)
+			return (
+				!!cell &&
+				(canEdit(cell.node, cell.column) || columnFormulaAt(cell.node, cell.column) !== undefined)
+			)
+		}
+
 		/** Whether a cell takes a text with `=` as a formula: a cell that can be edited, in a column that allows it and is not computed. */
 		function holdsFormula(node: DataRow<unknown>, column: ColumnDef): boolean {
 			return (
@@ -3765,7 +3797,16 @@ export const table = definePrimitive({
 			}
 		}
 
-		function writeColumnFormula(columnId: string, text: string | null): void {
+		/**
+		 * Sets the formula of a column, or takes it away with `null`: one change
+		 * and one step. Returns the words of a refusal, and nothing when it is set.
+		 */
+		function writeColumnFormula(
+			columnId: string,
+			text: string | null,
+			reason: TableEditReason | TableReason = 'imperative',
+			event?: Event,
+		): string | undefined {
 			const found = requireFormulas()
 			const target = formulaTarget(columnId, 'give a formula')
 			if (text !== null && typeof text !== 'string') {
@@ -3783,22 +3824,18 @@ export const table = definePrimitive({
 								ownColumns(),
 								formulasNow.read().columns,
 							)
-				if (issue) {
-					throw new Error(
-						`The formula "${text}" of column "${target.id}" cannot be set: ${issueText(found, issue)}`,
-					)
-				}
+				if (issue) return issueText(found, issue)
 				if ('formula' in parsed) formula = parsed.formula
 			}
 			const before = formulasNow.read()
 			const next = found.setFormulas(before, { columns: [{ columnId: target.id, formula }] })
 			if (next === before) return
-			if (!formulasNow.change(next, { reason: 'imperative' })) return
+			if (!formulasNow.change(next, { reason, event })) return message('editRefused')()
 			if (historyOn()) {
 				history.record({
 					id: ++stepIds,
 					reason: 'formula',
-					source: 'programmatic',
+					source: event instanceof KeyboardEvent ? 'keyboard' : 'programmatic',
 					cells: [],
 					formulas: { before, after: next, cells: 0 },
 				})
@@ -4106,7 +4143,14 @@ export const table = definePrimitive({
 				return formulaView(node.id, target.id, true)
 			},
 			setCellFormula: (rowId, columnId, formula) => writeCellFormula(rowId, columnId, formula),
-			setColumnFormula: (columnId, formula) => writeColumnFormula(columnId, formula),
+			setColumnFormula(columnId, formula) {
+				const refused = writeColumnFormula(columnId, formula)
+				if (refused) {
+					throw new Error(
+						`The formula "${String(formula)}" of column "${String(columnId)}" cannot be set: ${refused}`,
+					)
+				}
+			},
 			getAddress(rowId, columnId) {
 				const found = requireFormulas()
 				const target = formulaTarget(columnId, 'read the address of')
@@ -4663,7 +4707,8 @@ export const table = definePrimitive({
 				})
 			},
 			startEdit(rowId, columnId) {
-				requireEditable(rowId, columnId)
+				// A cell of a computed column opens with the formula of its column.
+				if (!editableCell(cellKey(rowId, columnId))) requireEditable(rowId, columnId)
 				const at = requireCell({ rowId, columnId }, 'edit')
 				const id = cellKey(rowId, columnId)
 				// Before focus moves: an editor that stays open keeps focus.
@@ -5360,10 +5405,7 @@ export const table = definePrimitive({
 					: column.format,
 			inBody,
 			/** Whether a cell can be edited, by its id. */
-			canEditCell: (id: string) => {
-				const cell = cellOf(id)
-				return !!cell && canEdit(cell.node, cell.column)
-			},
+			canEditCell: (id: string) => editableCell(id),
 			hasEditing: editing,
 			cellSelection,
 			/**

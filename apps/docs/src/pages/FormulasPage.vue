@@ -133,9 +133,11 @@ const controller = createTableController()
 const cellFormulas = shallowRef<CellFormulas>({ columns: { custom: '=[qty]*2' } })
 const customDraft = shallowRef('=[qty]*2')
 const customIssue = shallowRef('')
+// A cell of the column opens with the formula of the column, and a save changes the column.
 const custom: ColumnDef<Order> = {
 	id: 'custom',
 	header: 'Custom',
+	editable: true,
 	sortable: true,
 	groupable: true,
 	width: 140,

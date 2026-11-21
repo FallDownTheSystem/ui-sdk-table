@@ -53,6 +53,8 @@ export function describeFormulaIssue(issue: FormulaIssue): string {
 			return `The change would read ${issue.reads} cells, more than ${issue.limit}. Read fewer rows, or a cell above that holds the sum so far.`
 		case 'notHere':
 			return `A cell of column \`${issue.column}\` cannot hold a formula.`
+		case 'columnCell':
+			return `Column \`${issue.column}\` is computed: type a formula that starts with \`=\` for the whole column.`
 		case 'noDocument':
 			return 'This table gets its rows page by page, so a formula cannot name a cell.'
 	}

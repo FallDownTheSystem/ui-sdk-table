@@ -271,3 +271,65 @@ describe('the addresses of a table with formulas', () => {
 		}
 	})
 })
+
+describe('a cell of a computed column', () => {
+	test('opens with the formula of the column, and a save changes the column as one step', () => {
+		const { view, values, told, field, press } = setup()
+		try {
+			view.api.setColumnFormula('total', '=[price]*[stock]')
+			view.api.startEdit('b', 'total')
+			const input = field()
+			expect(input.value).toBe('=[Price]*[Stock]')
+			input.value = '=[Price]+1'
+			press(input, 'Enter')
+			expect(view.state.editing).toBeNull()
+			expect(told.at(-1)).toEqual({ columns: { total: '=[price]+1' } })
+			expect(values('total')).toEqual([3.5, 1.5, 1.2, 2.5])
+			expect(view.api.getHistory().entries.at(-1)).toMatchObject({ formulas: true, cells: 0 })
+			view.api.undo()
+			expect(view.api.getColumnFormula('total')?.formula).toBe('=[price]*[stock]')
+			expect(values('total')).toEqual([100, 45, 3, 90])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('takes no value: a value is refused with words, and the editor stays open', () => {
+		const { view, told, field, press } = setup()
+		try {
+			view.api.setColumnFormula('total', '=[price]*[stock]')
+			view.api.startEdit('a', 'total')
+			const input = field()
+			input.value = '12'
+			press(input, 'Enter')
+			expect(view.state.editing).not.toBeNull()
+			expect(Object.values(view.state.editErrors)[0]).toBe(
+				'Column `total` is computed: type a formula that starts with `=` for the whole column.',
+			)
+			input.value = '=[Pric]'
+			press(input, 'Enter')
+			expect(Object.values(view.state.editErrors)[0]).toMatch(/No column `Pric`/)
+			press(input, 'Escape')
+			expect(told).toEqual([{ columns: { total: '=[price]*[stock]' } }])
+			// A value through the controller is no formula: the cell stays closed for it.
+			expect(() => view.api.editCell('a', 'total', 5)).toThrow('cannot be edited')
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('stays closed when the owner does not let a person edit the column', () => {
+		const { view, cell } = setup({
+			columns: columnsOf().map((column) =>
+				column.id === 'total' ? { ...column, editable: false } : column,
+			),
+		})
+		try {
+			view.api.setColumnFormula('total', '=[price]*[stock]')
+			expect(() => view.api.startEdit('a', 'total')).toThrow('cannot be edited')
+			expect(cell('a', 'total').hasAttribute('data-editable')).toBe(false)
+		} finally {
+			view.unmount()
+		}
+	})
+})
