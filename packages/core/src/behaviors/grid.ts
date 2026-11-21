@@ -274,19 +274,29 @@ export function createTableGrid<State extends object>(
 				// Focus moves inside this event, so the mark lasts one turn.
 				setTimeout(() => (pressing = false))
 			}
+			const page = root.ownerDocument
+			const view = page.defaultView
+			// The look at the focus that waits for the next frame, after a change of the table.
+			let check = 0
+			// A Tab key or a press after the change moves focus on purpose, also to
+			// the page itself: from the last stop of the page, or onto a text. The
+			// look that still waits would bring focus back into the table.
+			const leave = () => {
+				if (!check) return
+				view?.cancelAnimationFrame(check)
+				check = 0
+			}
 			const onDocumentKeydown = (event: KeyboardEvent) => {
 				tabbing = event.key === 'Tab'
 				// The browser moves focus right after this event, so the mark lasts one turn.
 				if (tabbing) setTimeout(() => (tabbing = false))
+				if (tabbing) leave()
 			}
 
 			// A change of the rows or the columns can remove the element that has
 			// focus. The browser then gives focus to the page, and the keyboard
 			// loses its place. So when focus was in the table before a change and is
 			// nowhere after it, focus goes to the active cell.
-			const page = root.ownerDocument
-			const view = page.defaultView
-			let check = 0
 			const stopWatch = context.store.subscribe((liveOnly) => {
 				if (liveOnly || check || !view) return
 				const held = page.activeElement
@@ -303,6 +313,7 @@ export function createTableGrid<State extends object>(
 			root.addEventListener('focusin', onFocusin)
 			root.addEventListener('pointerdown', onPointerdown, true)
 			page.addEventListener('keydown', onDocumentKeydown, true)
+			page.addEventListener('pointerdown', leave, true)
 			return () => {
 				if (bound === root) bound = undefined
 				stopWatch()
@@ -311,6 +322,7 @@ export function createTableGrid<State extends object>(
 				root.removeEventListener('focusin', onFocusin)
 				root.removeEventListener('pointerdown', onPointerdown, true)
 				page.removeEventListener('keydown', onDocumentKeydown, true)
+				page.removeEventListener('pointerdown', leave, true)
 			}
 		},
 	}

@@ -3019,6 +3019,11 @@ export const table = definePrimitive({
 				const rule = state().sort.find((item) => item.id === columnId)
 				return rule ? (rule.desc ? 'desc' : 'asc') : undefined
 			},
+			/** The place of a column in the sort, from 1: the first column sorts first. */
+			sortIndexOf: (columnId: string): number | undefined => {
+				const index = state().sort.findIndex((item) => item.id === columnId)
+				return index === -1 ? undefined : index + 1
+			},
 			isTree: () => !!options().getChildren || state().groupBy.length > 0,
 			/** Column totals of a group, or of all filtered rows, with the totals of the owner over them. */
 			totals: totalsOf,
@@ -3350,8 +3355,16 @@ export const table = definePrimitive({
 								: 'none'
 						: undefined,
 					'data-column': column?.id,
+					// The format of the column, so a style can put every number at the end of
+					// its column: in a header, a row, a group row and the footer. A cell
+					// over several columns shows no value of one column.
+					'data-format': wide ? undefined : column?.format,
+					// A column that leads the table holds a control, not a value, and a style gives it another width.
+					'data-lead': !wide && column?.lead ? '' : undefined,
 					'data-active': api.grid.isActive(state, props) ? '' : undefined,
 					'data-sorted': sort,
+					// With several columns in the sort, a header can show which one sorts first.
+					'data-sort-index': sort && column ? String(api.sortIndexOf(column.id)) : undefined,
 					'data-pinned': pin,
 					'data-pinned-edge': pin && far && api.isPinEdge(far.id) ? '' : undefined,
 					'data-moving': leaf && column && api.reorder.moving(state, column.id) ? '' : undefined,

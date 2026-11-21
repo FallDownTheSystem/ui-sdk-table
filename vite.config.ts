@@ -24,6 +24,6 @@ export default defineConfig({
 		},
 	},
 	test: {
-		projects: ['packages/core', 'packages/vue'],
+		projects: ['packages/core', 'packages/vue', 'apps/docs'],
 	},
 })

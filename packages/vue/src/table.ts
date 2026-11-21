@@ -289,9 +289,11 @@ const OWN_ATTRS: ReadonlySet<string> = new Set([
 	'data-editing',
 	'data-empty',
 	'data-expanded',
+	'data-format',
 	'data-grabbed',
 	'data-invalid',
 	'data-kind',
+	'data-lead',
 	'data-loading',
 	'data-moving',
 	'data-pinned',
@@ -301,6 +303,7 @@ const OWN_ATTRS: ReadonlySet<string> = new Set([
 	'data-selected',
 	'data-sized',
 	'data-slot',
+	'data-sort-index',
 	'data-sorted',
 	'data-sticky',
 ])
@@ -365,6 +368,8 @@ export type HeaderSlotProps<Row> = {
 	/** False for a header group, which holds columns and no cells. */
 	leaf: boolean
 	sort: SortDirection | undefined
+	/** The place of the column in the sort, from 1. With several columns in the sort, the first one sorts first. */
+	sortIndex: number | undefined
 	toggleSort: (event?: Event) => void
 	pin: 'start' | 'end' | undefined
 }
@@ -596,6 +601,7 @@ const TableImpl = defineComponent(
 												label,
 												leaf: cell.leaf,
 												sort: cell.leaf ? api.sortOf(column.id) : undefined,
+												sortIndex: cell.leaf ? api.sortIndexOf(column.id) : undefined,
 												toggleSort,
 												pin: cell.pin,
 											})

@@ -11,13 +11,13 @@ The folder borders are the design. Do not import against the arrows.
 ```
 packages/core    framework-free: table primitive, behaviors, pure row helpers   → @ui-sdk/core only
 packages/vue     Vue parts, slots, v-model, controllers                         → core, @ui-sdk/vue, vue
-apps/docs        demo pages with plain CSS, benchmark page, browser tests       → everything
+apps/docs        sink page, demo pages with plain CSS, benchmark page, tests    → everything
 docs/proof       frozen feasibility proof; reference only, not built or linted
 ```
 
 - `packages/core` has no Vue import and no Vue dependency. Its `tsconfig.json` sets `types: []` for that reason.
 - The library has no styled table and no control of a toolbar. What a styled table needs is logic here: state, data for controls (`getView`, `getFacets`, `getTotals`, `subscribe`), attributes and CSS variables. A feature that only gives looks belongs to the consumer.
-- The docs pages use plain CSS (`apps/docs/src/style.css`) and native controls. No CSS framework, no component library for looks.
+- The docs pages use plain CSS and no CSS framework. The demo pages (`style.css`) use native controls; the sink page (`sink.css`) uses UI SDK components for the controls beside a table. A page loads one stylesheet (`styles` in `src/page.ts`), so the looks of one page never reach another.
 - Vue is a first-class citizen: slot-based cells, `v-model` for each controlled state, Vue-idiomatic types. If the framework-free core blocks one of these, stop and say so.
 
 ## Design rules (from UI SDK)
@@ -35,6 +35,7 @@ Follow the `ui-sdk` skill. Read `node_modules/@ui-sdk/vue/docs/llms.txt`; search
 - The table scrolls with `behavior: 'instant'` only. A page with `scroll-behavior: smooth` otherwise animates a jump, and the next read sees the old place.
 - The scroll frame of the row window is the nearest parent whose content is higher than itself, not the nearest with `overflow-y: auto`: a wrapper with `overflow-x: auto` has that computed value too.
 - A renderer can call the `bind` of a slot before the element is in the page. A behavior that needs the parents or the size of an element waits for that (see `bindOrigin` in `behaviors/window.ts`).
+- The grid gives focus back to a cell only when a change of the table took it away. It looks one frame after the change, and a Tab key or a press in between cancels the look: the person put focus where it is, also when that is the page itself (`behaviors/grid.ts`).
 - The props that `bind` gets are the props at that moment. A rule that must follow a prop goes in `attrs`, not in a closure of `bind`.
 - UI SDK has no helper for derived data. The row pipeline keeps its own per-stage cache inside `api`.
 - Never copy or mutate a caller's row objects. Rows need a stable id.
@@ -98,6 +99,20 @@ Follow the `ui-sdk` skill. Read `node_modules/@ui-sdk/vue/docs/llms.txt`; search
 - The rule for a press on a header is in `toggleSort`: `multiSort` and the modifier keys of the event decide `append` when the caller gives none. Renderers pass the event and never read the keys themselves.
 - An action that asks for what the mode forbids throws with the mode and the valid values. The `sort` state of the owner is never cut to the mode.
 
+## Sink page (`apps/docs/src/sink`, `pages/SinkPage.vue`, `sink.css`, `plugins/sink-uses.ts`)
+
+The first page of the docs app: small live tables in a grid of tiles, each with the names of the library that its code uses. It is also the first consumer of the headless API: when a tile needs a workaround, that is a finding about the library.
+
+- A tile is one file `tiles/<group>/<Name>.vue` and one entry in `tiles/<group>.ts`. The id is the file name in kebab-case and starts with its group (`edit-price` is `edit/EditPrice.vue`). The title has one to four words and ends with a period, and says what a person does; the blurb is one sentence.
+- A tile shows one thing in a concrete scene, with one `Table` that has an `aria-label`. Tables only: no tile for a control.
+- The names under a tile are not written by hand. `plugins/sink-uses.ts` reads them from the file of the tile (imports from the library, options, models, events and slots of the `Table` element, calls on a controller made by `createTableController`, keys of a list typed `ColumnDef<…>[]`) and gives them as `virtual:sink-uses`. Write a tile so that the reader finds them: the controller in a `const`, the columns typed. Restart the dev server after a change to the plugin.
+- `sink.test.ts` fails for a missing or double id, a wrong title, a tile without a file, a name that the library does not have, and an option, controller method, slot or column key that no tile shows and `NOT_SHOWN` does not list with a reason. A new option of the table gets a tile or a line there.
+- Controls beside a table are UI SDK components from `@ui-sdk/vue/<entry>` (wrapped in `parts/Sink*.vue` where a tile repeats them), styled by their `data-slot`. No hand-written `role` on an element for something UI SDK ships.
+- Looks: the table and the controls read the `--tile-*` variables of the tone of their tile, so one style works on every tone. The table is styled through `data-slot`, `data-*` and `aria-*` only; a class comes in through `rowAttrs` or `cellAttrs`. A new tone or a new pair of colours gets its line in the contrast test of `e2e/sink.spec.ts` (`?tone=<name>` shows every tile on one tone).
+- The places of the tiles come from `pack.ts`, not from `grid-auto-flow: dense`: the order of the document is the order on the screen, so the Tab key reads the page as the eye does. `pack` lets a neighbour grow over a free cell; a hole in the grid fails a test.
+- A tile mounts its demo when it comes within one screen of the view (`SinkTile.vue`), and the demos are separate chunks. `?eager` mounts all, for a measurement or a test of every tile. An error in one demo shows in its tile.
+- A table whose columns can be resized must not stretch to its frame: a column that is shown wider than its width does not follow the pointer in a drag (`sink.css`, the rule with `:has([data-slot='table-resizer'])`).
+
 ## Commands
 
 ```bash
@@ -105,7 +120,7 @@ vp install        # install
 vp run dev        # demo app, http://localhost:5180
 vp check [--fix]  # format, lint, type-aware lint
 vp run type-check # vue-tsc --build (authoritative for .vue files)
-vp test           # unit tests (packages/core, packages/vue)
+vp test           # unit tests (packages/core, packages/vue, apps/docs)
 vp run test:e2e   # Playwright against apps/docs
 vp run build      # build the packages
 ```
@@ -129,4 +144,4 @@ Run `vp check`, `vp run type-check` and `vp test` before you call work done; add
 - A keyboard or focus rule is not done until a Playwright test covers it. jsdom passed the tab order, the page reset through `v-model` and Enter on a group row while all three were wrong in a browser.
 - Tests: `mount` from `@ui-sdk/core/testing` for a primitive; `@vue/test-utils` for Vue parts; Playwright for real keyboard, pointer and layout. A new behavior gets its own tests.
 - The `testing` entry of `@ui-sdk/core` has no way to give a mounted primitive new options. A test that needs them after the mount (a controlled state) is a Vue test.
-- A browser test of a headless rule lives on a headless docs page. `?page=groups` has group rows, totals, facets, the search field, the sort mode switch, a `lead` column and caller attributes; `?page=window&frame=page&bars` has a fixed header and footer of the page for `--table-sticky-top` and `--table-sticky-bottom`.
+- The sink page has its own browser tests (`e2e/sink.spec.ts`); the rules of the table itself are tested on the demo pages. A browser test of a headless rule lives on a headless docs page. `?page=groups` has group rows, totals, facets, the search field, the sort mode switch, a `lead` column and caller attributes; `?page=window&frame=page&bars` has a fixed header and footer of the page for `--table-sticky-top` and `--table-sticky-bottom`.

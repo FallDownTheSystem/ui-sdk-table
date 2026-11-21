@@ -5,11 +5,13 @@ import {
 	createTableController,
 	Table,
 	useTableSearch,
+	useTableView,
 	type CellAttrsContext,
 	type ColumnDef,
 	type FilterState,
 	type GroupSlotProps,
 	type GroupTotalSlotProps,
+	type HeaderSlotProps,
 	type MultiSortMode,
 	type RowAttrsContext,
 	type SortRule,
@@ -237,6 +239,109 @@ describe('sort modes', () => {
 		await press(0)
 		expect(sort.value).toEqual([{ id: 'name', desc: false }])
 		wrapper.unmount()
+	})
+})
+
+describe('what a style reads from a cell', () => {
+	test('a header says its place in the sort, as an attribute and to its slot', async () => {
+		const places: Record<string, number | undefined> = {}
+		const wrapper = mount(() =>
+			h(
+				Table<Person>,
+				{ rows: people, columns, defaultSort: [{ id: 'team' }, { id: 'name', desc: true }] },
+				{
+					header: (props: HeaderSlotProps<Person>) => {
+						places[props.column.id] = props.sortIndex
+						return props.label
+					},
+				},
+			),
+		)
+		expect(places).toMatchObject({ team: 1, name: 2, country: undefined })
+		const place = (id: string) =>
+			wrapper.get(`thead th[data-column="${id}"]`).attributes('data-sort-index')
+		expect([place('team'), place('name'), place('country')]).toEqual(['1', '2', undefined])
+		wrapper.unmount()
+	})
+
+	test('a cell of a column with a format says the format: in the header, a row, a group row and the footer', () => {
+		const wrapper = mount(() => h(Table<Person>, { rows: people, columns, groupBy: ['team'] }))
+		const formats = (selector: string) =>
+			wrapper.findAll(selector).map((cell) => cell.attributes('data-format'))
+		expect(formats('thead th')).toEqual([undefined, undefined, undefined, 'decimal', undefined])
+		expect(formats('tfoot td')).toEqual([undefined, undefined, undefined, 'decimal', undefined])
+		// The label of a group covers the first three columns and shows no value of one of them.
+		expect(formats('tbody tr[data-kind="group"]:first-child td')).toEqual([
+			undefined,
+			'decimal',
+			undefined,
+		])
+		wrapper.unmount()
+
+		// A caller cannot give the attribute of the table another value.
+		const faked = mount(() =>
+			h(Table<Person>, {
+				rows: people,
+				columns,
+				cellAttrs: () => ({ 'data-format': 'date', 'data-sort-index': '9' }),
+			}),
+		)
+		expect(faked.get('tbody td[data-column="score"]').attributes('data-format')).toBe('decimal')
+		expect(faked.get('tbody td[data-column="name"]').attributes('data-format')).toBeUndefined()
+		expect(faked.get('thead th').attributes('data-sort-index')).toBeUndefined()
+		faked.unmount()
+	})
+
+	test('a cell of a column that leads the table says so, and a caller cannot say it for another', () => {
+		const leading: ColumnDef<Person>[] = [{ id: 'pick', header: 'Pick', lead: true }, ...columns]
+		const wrapper = mount(() =>
+			h(Table<Person>, {
+				rows: people,
+				columns: leading,
+				cellAttrs: () => ({ 'data-lead': 'mine' }),
+			}),
+		)
+		const leads = (selector: string) =>
+			wrapper.findAll(selector).map((cell) => cell.attributes('data-lead'))
+		expect(leads('thead th')).toEqual(['', undefined, undefined, undefined, undefined, undefined])
+		expect(leads('tbody tr:first-child td')).toEqual([
+			'',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+		])
+		wrapper.unmount()
+	})
+})
+
+describe('useTableView', () => {
+	test('the view is there when the table is, follows each change, and stops with its scope', async () => {
+		const controller = createTableController()
+		let view: ReturnType<typeof useTableView> | undefined
+		const Page = defineComponent({
+			setup() {
+				// Asked for before the table exists, as a toolbar above a table does.
+				view = useTableView(controller)
+				return () => [
+					h('output', `${view?.value?.dataRowCount ?? 'no table'}`),
+					h(Table<Person>, { rows: people, columns, controller }),
+				]
+			},
+		})
+		const wrapper = mount(Page)
+		await nextTick()
+		expect(wrapper.get('output').text()).toBe('3')
+
+		controller.setSearch('aino')
+		await nextTick()
+		expect(wrapper.get('output').text()).toBe('1')
+		expect(view?.value?.filter.search).toBe('aino')
+
+		const last = view?.value
+		wrapper.unmount()
+		expect(view?.value).toBe(last)
 	})
 })
 

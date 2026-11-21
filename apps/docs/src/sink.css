@@ -1,0 +1,1596 @@
+@layer ui-sdk;
+
+/*
+ * The sink page: many small tables in a grid of tiles. A tile has a tone,
+ * and every table and control on it reads the `--tile-*` variables of that
+ * tone. So there is one table style, written against `data-slot`, `data-*`
+ * and `aria-*` attributes only, and it works on every ground.
+ */
+
+:root {
+	color-scheme: light;
+	--page: oklch(0.955 0.006 250);
+	--page-ink: oklch(0.25 0.02 255);
+	--page-ink-2: oklch(0.45 0.02 255);
+	--page-focus: oklch(0.5 0.15 255);
+
+	--sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+	--mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+	--gap: 14px;
+	--tile-radius: 20px;
+	--stage-pad: 12px;
+	--row: 31px;
+
+	background: var(--page);
+	color: var(--page-ink);
+	font: 14px/1.45 var(--sans);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+body {
+	margin: 0;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+button,
+input {
+	font: inherit;
+	color: inherit;
+}
+
+/* The pages of the docs app, above every page. */
+.pages {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 18px;
+	max-inline-size: 1480px;
+	margin-inline: auto;
+	padding: 14px 28px 0;
+	font-size: 13px;
+}
+
+.pages a {
+	color: var(--page-ink-2);
+	text-decoration: none;
+}
+
+.pages a:hover {
+	color: var(--page-ink);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+.pages a[aria-current='page'] {
+	color: var(--page-ink);
+	font-weight: 600;
+}
+
+.pages a:focus-visible {
+	outline: 2px solid var(--page-focus);
+	outline-offset: 3px;
+	border-radius: 2px;
+}
+
+.sink {
+	max-inline-size: 1480px;
+	margin-inline: auto;
+	padding: 20px 28px 120px;
+}
+
+.sink-head {
+	margin-block-end: 22px;
+}
+
+.sink-head h1 {
+	margin: 0;
+	font-size: 30px;
+	font-weight: 650;
+	line-height: 1.15;
+	letter-spacing: -0.02em;
+}
+
+.sink-head p {
+	max-inline-size: 62ch;
+	margin: 6px 0 0;
+	color: var(--page-ink-2);
+	font-size: 15px;
+	text-wrap: pretty;
+}
+
+/* The grid. A tile gets its place from `pack`, so the order in the document is the order on the screen. */
+
+.bento {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+	grid-auto-rows: 348px;
+	gap: var(--gap);
+}
+
+.bento-empty {
+	grid-column: 1 / -1;
+	margin: 0;
+	padding: 72px 0;
+	color: var(--page-ink-2);
+	font-size: 17px;
+	text-align: center;
+}
+
+/* The tones. Every pair that holds text is 4.5 to 1 or more, and `--tile-edge` and `--tile-accent` are 3 to 1 against the ground and the surface. */
+
+.tile,
+.filter {
+	--tile-bg: oklch(0.99 0.003 250);
+	--tile-surface: oklch(0.998 0.001 250);
+	--tile-ink: oklch(0.25 0.02 255);
+	--tile-ink-2: oklch(0.46 0.02 255);
+	--tile-edge: oklch(0.57 0.015 255);
+	--tile-accent: oklch(0.5 0.15 255);
+	--tile-accent-ink: oklch(0.99 0.01 255);
+	--tile-danger: oklch(0.5 0.19 27);
+
+	/* Lines between rows carry no meaning of their own, so they stay faint. */
+	--tile-rule: color-mix(in oklab, var(--tile-ink) 11%, var(--tile-surface));
+	--tile-chip: color-mix(in oklab, var(--tile-ink) 8%, var(--tile-bg));
+	/* The fills of a row are opaque, so a cell that sticks covers what scrolls under it. */
+	--tile-band: color-mix(in oklab, var(--tile-ink) 5%, var(--tile-surface));
+	--tile-hover: color-mix(in oklab, var(--tile-ink) 6%, var(--tile-surface));
+	--tile-selected: color-mix(in oklab, var(--tile-accent) 14%, var(--tile-surface));
+}
+
+.tile[data-tone='mist'] {
+	--tile-bg: oklch(0.93 0.018 235);
+	--tile-surface: oklch(0.99 0.005 235);
+	--tile-ink: oklch(0.26 0.04 245);
+	--tile-ink-2: oklch(0.44 0.045 245);
+	--tile-edge: oklch(0.56 0.04 245);
+	--tile-accent: oklch(0.48 0.16 262);
+	--tile-accent-ink: oklch(0.99 0.01 255);
+}
+
+.tile[data-tone='ink'],
+.filter {
+	--tile-bg: oklch(0.22 0.015 250);
+	--tile-surface: oklch(0.27 0.016 250);
+	--tile-ink: oklch(0.96 0.006 240);
+	--tile-ink-2: oklch(0.84 0.012 245);
+	--tile-edge: oklch(0.68 0.015 245);
+	--tile-accent: oklch(0.82 0.14 85);
+	--tile-accent-ink: oklch(0.22 0.03 85);
+	--tile-danger: oklch(0.8 0.12 25);
+	--tile-rule: color-mix(in oklab, var(--tile-ink) 16%, var(--tile-surface));
+	--tile-chip: color-mix(in oklab, var(--tile-ink) 12%, var(--tile-bg));
+	--tile-selected: color-mix(in oklab, var(--tile-accent) 16%, var(--tile-surface));
+}
+
+.tile[data-tone='moss'] {
+	--tile-bg: oklch(0.91 0.045 150);
+	--tile-surface: oklch(0.985 0.012 145);
+	--tile-ink: oklch(0.26 0.045 155);
+	--tile-ink-2: oklch(0.42 0.055 155);
+	--tile-edge: oklch(0.54 0.06 155);
+	--tile-accent: oklch(0.45 0.12 155);
+	--tile-accent-ink: oklch(0.985 0.012 145);
+}
+
+.tile[data-tone='clay'] {
+	--tile-bg: oklch(0.9 0.05 50);
+	--tile-surface: oklch(0.99 0.01 60);
+	--tile-ink: oklch(0.27 0.04 40);
+	--tile-ink-2: oklch(0.43 0.06 40);
+	--tile-edge: oklch(0.54 0.07 42);
+	--tile-accent: oklch(0.5 0.16 33);
+	--tile-accent-ink: oklch(0.99 0.01 60);
+	--tile-danger: oklch(0.48 0.19 25);
+}
+
+.tile[data-tone='plum'] {
+	--tile-bg: oklch(0.3 0.075 335);
+	--tile-surface: oklch(0.35 0.075 335);
+	--tile-ink: oklch(0.97 0.015 335);
+	--tile-ink-2: oklch(0.89 0.035 335);
+	--tile-edge: oklch(0.74 0.06 335);
+	--tile-accent: oklch(0.87 0.13 95);
+	--tile-accent-ink: oklch(0.25 0.05 95);
+	--tile-danger: oklch(0.84 0.1 25);
+	--tile-rule: color-mix(in oklab, var(--tile-ink) 16%, var(--tile-surface));
+	--tile-chip: color-mix(in oklab, var(--tile-ink) 12%, var(--tile-bg));
+	--tile-selected: color-mix(in oklab, var(--tile-accent) 14%, var(--tile-surface));
+}
+
+.tile[data-tone='sun'] {
+	--tile-bg: oklch(0.93 0.075 95);
+	--tile-surface: oklch(0.99 0.02 98);
+	--tile-ink: oklch(0.28 0.04 80);
+	--tile-ink-2: oklch(0.44 0.06 80);
+	--tile-edge: oklch(0.55 0.07 82);
+	--tile-accent: oklch(0.36 0.07 70);
+	--tile-accent-ink: oklch(0.98 0.03 95);
+}
+
+/* The tile */
+
+.tile {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	overflow: hidden;
+	border-radius: var(--tile-radius);
+	background: var(--tile-bg);
+	color: var(--tile-ink);
+	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile-ink) 8%, transparent);
+	scroll-margin-block: 16px 96px;
+}
+
+.tile[data-placed] {
+	grid-column: var(--tile-column) / span var(--tile-columns);
+	grid-row: var(--tile-row) / span var(--tile-rows);
+}
+
+/* Before the grid is measured, a tile takes its span only where two columns surely fit. */
+@media (min-width: 700px) {
+	.tile:not([data-placed]):is([data-size='wide'], [data-size='large']) {
+		grid-column: span 2;
+	}
+}
+
+.tile:not([data-placed]):is([data-size='tall'], [data-size='large']) {
+	grid-row: span 2;
+}
+
+.tile-stage {
+	display: flex;
+	flex: 1;
+	min-block-size: 0;
+	padding: var(--stage-pad) var(--stage-pad) 10px;
+}
+
+.tile-copy {
+	padding: 0 16px 14px;
+}
+
+.tile-title,
+.tile-blurb {
+	display: inline;
+	margin: 0;
+	font-size: 14.5px;
+	line-height: 1.35;
+}
+
+.tile-title {
+	font-weight: 650;
+}
+
+.tile-title::after {
+	content: ' ';
+}
+
+.tile-blurb {
+	color: var(--tile-ink-2);
+}
+
+/* One line, so the table of a tile keeps its room. It scrolls sideways, and the arrow keys reach every name. */
+.tile-uses {
+	display: flex;
+	gap: 4px;
+	margin: 8px -4px 0;
+	/* Room after the last name, so it can leave the fade at the end. */
+	padding-block: 3px;
+	padding-inline: 4px 28px;
+	overflow-x: auto;
+	scrollbar-width: none;
+	mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+}
+
+[dir='rtl'] .tile-uses {
+	mask-image: linear-gradient(to left, black calc(100% - 24px), transparent);
+}
+
+.tile-use {
+	flex: none;
+	block-size: 24px;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 6px;
+	background: var(--tile-chip);
+	color: var(--tile-ink-2);
+	font: 500 11.5px/1 var(--mono);
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.tile-use:hover {
+	color: var(--tile-ink);
+}
+
+.tile-use[data-pressed] {
+	background: var(--tile-ink);
+	color: var(--tile-bg);
+}
+
+.tile-error {
+	margin: auto;
+	padding: 12px;
+	color: var(--tile-danger);
+	font: 12.5px/1.4 var(--mono);
+	overflow-wrap: anywhere;
+}
+
+/* The filter of the page: the chosen names, how many tiles they leave, and the way back. */
+
+.filter {
+	position: fixed;
+	z-index: 20;
+	inset-block-end: 20px;
+	inset-inline: 0;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	inline-size: fit-content;
+	max-inline-size: calc(100% - 24px);
+	margin-inline: auto;
+	padding: 6px 6px 6px 14px;
+	border-radius: 14px;
+	background: var(--tile-bg);
+	color: var(--tile-ink);
+	box-shadow:
+		0 0 0 1px color-mix(in oklab, var(--tile-ink) 14%, transparent),
+		0 12px 32px -12px oklch(0.2 0.02 255 / 0.5);
+	translate: 0 calc(100% + 28px);
+	opacity: 0;
+}
+
+.filter[data-open] {
+	translate: 0 0;
+	opacity: 1;
+}
+
+.filter-count {
+	flex: none;
+	margin: 0;
+	color: var(--tile-ink-2);
+	font: 500 12px/1 var(--mono);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.filter-names {
+	display: flex;
+	gap: 4px;
+	min-inline-size: 0;
+	margin: 0;
+	padding: 3px;
+	overflow-x: auto;
+	scrollbar-width: none;
+	list-style: none;
+}
+
+.filter [data-slot='button'].filter-name {
+	gap: 6px;
+	padding: 0 8px;
+	font: 500 12px/1 var(--mono);
+}
+
+.filter [data-slot='button'].filter-clear {
+	flex: none;
+	border-color: var(--tile-ink);
+	background: var(--tile-ink);
+	color: var(--tile-bg);
+}
+
+/* What a demo is made of: a bar of controls, a frame that scrolls, a line of status. */
+
+.demo {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 8px;
+	min-inline-size: 0;
+	min-block-size: 0;
+	font-size: 12.5px;
+}
+
+.demo-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 8px;
+	min-block-size: 28px;
+}
+
+.demo-bar > [data-slot='input'] {
+	flex: 1;
+}
+
+.demo-bar > .end {
+	margin-inline-start: auto;
+}
+
+.demo-note {
+	margin: 0;
+	color: var(--tile-ink-2);
+	font-variant-numeric: tabular-nums;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.demo-note strong {
+	color: var(--tile-ink);
+	font-weight: 600;
+}
+
+.demo-log {
+	margin: 0;
+	padding: 0;
+	color: var(--tile-ink-2);
+	font: 11.5px/1.5 var(--mono);
+	list-style: none;
+}
+
+.demo-log li {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* A table that is wider or higher than its tile scrolls in here, and the page never does for it. */
+.sink-frame {
+	position: relative;
+	flex: 1;
+	min-block-size: 0;
+	overflow: auto;
+	border-radius: calc(var(--tile-radius) - var(--stage-pad));
+	background: var(--tile-surface);
+	box-shadow: 0 0 0 1px var(--tile-rule);
+	scrollbar-width: thin;
+	scrollbar-color: var(--tile-edge) transparent;
+}
+
+.sink-frame:focus-visible {
+	outline: 2px solid var(--tile-accent);
+	outline-offset: 1px;
+}
+
+/* The controls. Each is a part of UI SDK, found by its `data-slot`. */
+
+.sink-icon {
+	flex: none;
+	inline-size: 14px;
+	block-size: 14px;
+}
+
+.tile [data-slot='button'],
+.filter [data-slot='button'] {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
+	block-size: 28px;
+	padding: 0 10px;
+	border: 1px solid var(--tile-edge);
+	border-radius: 8px;
+	background: var(--tile-surface);
+	color: var(--tile-ink);
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.tile [data-slot='button']:hover,
+.filter [data-slot='button']:hover {
+	background: var(--tile-hover);
+}
+
+.tile [data-slot='button']:active,
+.filter [data-slot='button']:active {
+	scale: 0.97;
+}
+
+.tile [data-slot='button'].primary {
+	border-color: var(--tile-accent);
+	background: var(--tile-accent);
+	color: var(--tile-accent-ink);
+}
+
+.tile [data-slot='button'][aria-pressed='true'] {
+	border-color: var(--tile-ink);
+	background: var(--tile-ink);
+	color: var(--tile-surface);
+}
+
+.tile [data-slot='button']:is([data-disabled], [aria-disabled='true'], :disabled) {
+	border-style: dashed;
+	background: transparent;
+	color: var(--tile-ink-2);
+	cursor: default;
+	scale: 1;
+}
+
+/* A button that is an icon only, such as the arrow that opens a row. Its hit area is larger than its picture. */
+.tile [data-slot='button'].twist {
+	position: relative;
+	inline-size: 20px;
+	block-size: 20px;
+	padding: 0;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--tile-ink-2);
+	vertical-align: middle;
+}
+
+.tile [data-slot='button'].twist::before {
+	position: absolute;
+	inset: -3px;
+	content: '';
+}
+
+.tile [data-slot='button'].twist:hover {
+	background: var(--tile-chip);
+	color: var(--tile-ink);
+}
+
+.tile [data-slot='button'].twist[aria-expanded='true'] .sink-icon {
+	rotate: 90deg;
+}
+
+[dir='rtl'] .tile [data-slot='button'].twist[aria-expanded='false'] .sink-icon {
+	rotate: 180deg;
+}
+
+.tile [data-slot='input-group'] {
+	position: relative;
+	display: flex;
+	flex: 1;
+	align-items: center;
+	min-inline-size: 110px;
+}
+
+.tile [data-slot='input'] {
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: 28px;
+	padding: 0 9px;
+	border: 1px solid var(--tile-edge);
+	border-radius: 8px;
+	background: var(--tile-surface);
+	color: var(--tile-ink);
+	outline: none;
+}
+
+.tile [data-slot='input']::placeholder {
+	color: var(--tile-ink-2);
+	opacity: 1;
+}
+
+.tile [data-slot='input-group'] > .sink-icon {
+	position: absolute;
+	inset-inline-start: 8px;
+	color: var(--tile-ink-2);
+	pointer-events: none;
+}
+
+.tile [data-slot='input-group'] > .sink-icon ~ [data-slot='input'] {
+	padding-inline-start: 28px;
+}
+
+.tile [data-slot='input-group'] [data-slot='input'] {
+	padding-inline-end: 28px;
+}
+
+/* The search field of a browser has a clear button of its own; the page draws one. */
+.tile [data-slot='input']::-webkit-search-cancel-button {
+	display: none;
+}
+
+.tile [data-slot='input-clear'] {
+	position: absolute;
+	inset-inline-end: 2px;
+	display: grid;
+	place-items: center;
+	inline-size: 24px;
+	block-size: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--tile-ink-2);
+	cursor: pointer;
+}
+
+.tile [data-slot='input-clear']:hover {
+	background: var(--tile-chip);
+	color: var(--tile-ink);
+}
+
+.sink-switch,
+.sink-pick {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	min-block-size: 24px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.tile [data-slot='switch'] {
+	display: inline-flex;
+	flex: none;
+	inline-size: 32px;
+	block-size: 18px;
+	padding: 2px;
+	border: 1px solid var(--tile-edge);
+	border-radius: 999px;
+	background: var(--tile-surface);
+	cursor: pointer;
+}
+
+.tile [data-slot='switch'][data-checked] {
+	border-color: var(--tile-accent);
+	background: var(--tile-accent);
+}
+
+.tile [data-slot='switch-thumb'] {
+	inline-size: 12px;
+	block-size: 12px;
+	border-radius: 50%;
+	background: var(--tile-edge);
+}
+
+.tile [data-slot='switch-thumb'][data-checked] {
+	background: var(--tile-accent-ink);
+	translate: 14px 0;
+}
+
+[dir='rtl'] .tile [data-slot='switch-thumb'][data-checked] {
+	translate: -14px 0;
+}
+
+.tile [data-slot='checkbox'] {
+	position: relative;
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	inline-size: 16px;
+	block-size: 16px;
+	padding: 0;
+	border: 1px solid var(--tile-edge);
+	border-radius: 4px;
+	background: var(--tile-surface);
+	color: var(--tile-accent-ink);
+	vertical-align: middle;
+	cursor: pointer;
+}
+
+/* The box is small; a press beside it still lands. */
+.tile [data-slot='checkbox']::before {
+	position: absolute;
+	inset: -5px;
+	content: '';
+}
+
+.tile [data-slot='checkbox']:is([data-checked], [data-indeterminate]) {
+	border-color: var(--tile-accent);
+	background: var(--tile-accent);
+}
+
+.tile [data-slot='checkbox'][data-disabled] {
+	border-style: dashed;
+	cursor: default;
+}
+
+.tile [data-slot='checkbox-indicator'] {
+	display: grid;
+}
+
+.tile [data-slot='checkbox-indicator'] .sink-icon {
+	inline-size: 12px;
+	block-size: 12px;
+	stroke-width: 2.25;
+}
+
+.tile [data-slot='segmented-control'],
+.filter [data-slot='segmented-control'] {
+	position: relative;
+	isolation: isolate;
+	display: inline-flex;
+	flex: none;
+	gap: 2px;
+	padding: 2px;
+	border: 1px solid var(--tile-edge);
+	border-radius: 9px;
+	background: var(--tile-surface);
+}
+
+.tile [data-slot='segmented-control-indicator'],
+.filter [data-slot='segmented-control-indicator'] {
+	position: absolute;
+	z-index: -1;
+	inset-block-start: var(--segmented-control-indicator-top);
+	left: var(--segmented-control-indicator-left);
+	inline-size: var(--segmented-control-indicator-width);
+	block-size: var(--segmented-control-indicator-height);
+	border-radius: 6px;
+	background: var(--tile-ink);
+}
+
+.tile [data-slot='segmented-control-item'],
+.filter [data-slot='segmented-control-item'] {
+	block-size: 22px;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--tile-ink-2);
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.tile [data-slot='segmented-control-item']:hover,
+.filter [data-slot='segmented-control-item']:hover {
+	color: var(--tile-ink);
+}
+
+/* The checked item reads against the indicator behind it, which is ink. */
+.tile [data-slot='segmented-control-item'][data-checked],
+.filter [data-slot='segmented-control-item'][data-checked] {
+	color: var(--tile-surface);
+}
+
+/* Until the indicator is measured, the checked item draws its own ground. */
+[data-slot='segmented-control']:not(:has(> [data-slot='segmented-control-indicator'][style]))
+	[data-slot='segmented-control-item'][data-checked] {
+	background: var(--tile-ink);
+}
+
+.tile [data-slot='slider'] {
+	display: flex;
+	flex: 1;
+	align-items: center;
+	gap: 10px;
+	min-inline-size: 0;
+}
+
+.tile [data-slot='slider-control'] {
+	display: flex;
+	flex: 1;
+	align-items: center;
+	block-size: 24px;
+	padding-inline: 8px;
+	cursor: pointer;
+	touch-action: none;
+}
+
+.tile [data-slot='slider-track'] {
+	position: relative;
+	inline-size: 100%;
+	block-size: 4px;
+	border-radius: 2px;
+	background: var(--tile-edge);
+}
+
+.tile [data-slot='slider-indicator'] {
+	block-size: 100%;
+	border-radius: 2px;
+	background: var(--tile-accent);
+}
+
+.tile [data-slot='slider-thumb'] {
+	inline-size: 16px;
+	block-size: 16px;
+	border: 2px solid var(--tile-accent);
+	border-radius: 50%;
+	background: var(--tile-surface);
+	translate: -50% -50%;
+	inset-block-start: 50%;
+}
+
+.tile [data-slot='slider-thumb']:has(:focus-visible) {
+	outline: 2px solid var(--tile-accent);
+	outline-offset: 2px;
+}
+
+.tile [data-slot='slider-value'] {
+	flex: none;
+	color: var(--tile-ink-2);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.tile [data-slot='pagination-list'] {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tile
+	:is(
+		[data-slot='pagination-link'],
+		[data-slot='pagination-previous'],
+		[data-slot='pagination-next']
+	) {
+	display: grid;
+	place-items: center;
+	min-inline-size: 26px;
+	block-size: 26px;
+	padding: 0 6px;
+	border: 1px solid transparent;
+	border-radius: 7px;
+	background: transparent;
+	color: var(--tile-ink);
+	font-variant-numeric: tabular-nums;
+	font-weight: 500;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.tile
+	:is(
+		[data-slot='pagination-link'],
+		[data-slot='pagination-previous'],
+		[data-slot='pagination-next']
+	):hover {
+	background: var(--tile-chip);
+}
+
+.tile [data-slot='pagination-link'][data-current] {
+	background: var(--tile-ink);
+	color: var(--tile-bg);
+}
+
+.tile :is([data-slot='pagination-previous'], [data-slot='pagination-next'])[data-disabled] {
+	background: transparent;
+	color: var(--tile-ink-2);
+	cursor: default;
+}
+
+.tile [data-slot='pagination-previous'] .sink-icon {
+	rotate: 180deg;
+}
+
+[dir='rtl'] .tile [data-slot='pagination-previous'] .sink-icon {
+	rotate: 0deg;
+}
+
+[dir='rtl'] .tile [data-slot='pagination-next'] .sink-icon {
+	rotate: 180deg;
+}
+
+.tile [data-slot='pagination-ellipsis'] {
+	display: grid;
+	place-items: center;
+	min-inline-size: 20px;
+	color: var(--tile-ink-2);
+}
+
+/* One focus ring for every control: the accent of the tone, which is 3 to 1 against the ground and the surface. */
+.tile
+	:is(
+		[data-slot='button'],
+		[data-slot='toggle'],
+		[data-slot='input'],
+		[data-slot='input-clear'],
+		[data-slot='switch'],
+		[data-slot='checkbox'],
+		[data-slot='segmented-control-item'],
+		[data-slot='pagination-link'],
+		[data-slot='pagination-previous'],
+		[data-slot='pagination-next']
+	):focus-visible,
+.filter :is([data-slot='button'], [data-slot='segmented-control-item']):focus-visible {
+	outline: 2px solid var(--tile-accent);
+	outline-offset: 2px;
+}
+
+/*
+ * The table. Lines sit on the cells and every cell has an opaque fill, so a
+ * cell that sticks to an edge keeps its line and covers what scrolls under it.
+ */
+
+.tile [data-slot='table'] {
+	inline-size: 100%;
+	border-collapse: separate;
+	border-spacing: 0;
+	color: var(--tile-ink);
+	font-size: 12.5px;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.3;
+}
+
+/* With a width for every column, the table is as wide as their sum, and a resize moves one column only. */
+.tile [data-slot='table'][data-sized] {
+	table-layout: fixed;
+	inline-size: var(--table-width);
+	min-inline-size: 100%;
+}
+
+/*
+ * A table whose columns can be resized is as wide as its columns and no
+ * wider. A table that stretches to its frame shows each column wider than
+ * its width, and a drag would then not follow the pointer.
+ */
+.tile [data-slot='table'][data-sized]:has([data-slot='table-resizer']) {
+	min-inline-size: 0;
+}
+
+/* Such a table can end before its frame does, so it draws its own end. */
+.tile [data-slot='table'][data-sized]:has([data-slot='table-resizer']) :is(th, td):last-child {
+	border-inline-end: 1px solid var(--tile-rule);
+}
+
+.tile [data-slot='table'][data-sized]:has([data-slot='table-resizer']) tbody tr:last-child > td {
+	border-block-end-color: var(--tile-rule);
+}
+
+.tile [data-slot='table-col'] {
+	inline-size: var(--table-column-width);
+}
+
+.tile [data-slot='table'] tr {
+	--row-fill: var(--tile-surface);
+}
+
+.tile [data-slot='table'] tr:not([data-slot='table-spacer']) {
+	block-size: var(--row);
+}
+
+.tile [data-slot='table'] :is(th, td) {
+	position: relative;
+	padding: 0 10px;
+	border-block-end: 1px solid var(--tile-rule);
+	background: var(--row-fill);
+	font-weight: 400;
+	text-align: start;
+	white-space: nowrap;
+}
+
+.tile [data-slot='table'][data-sized] :is(th, td) {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tile [data-slot='table'] tbody tr:last-child > td {
+	border-block-end-color: transparent;
+}
+
+/* A number stands at the end of its column: in the header, in a row, in a group row and in the footer. */
+.tile
+	[data-slot='table-cell']:is(
+		[data-format='integer'],
+		[data-format='decimal'],
+		[data-format='number'],
+		[data-format='currency'],
+		[data-format='percentage']
+	) {
+	text-align: end;
+}
+
+.tile [data-slot='table'] thead th {
+	color: var(--tile-ink-2);
+	font-weight: 500;
+}
+
+.tile [data-slot='table'] thead tr:last-child > th {
+	border-block-end-color: var(--tile-edge);
+}
+
+/* A header group stands over its columns. */
+.tile [data-slot='table'] thead th[colspan] {
+	color: var(--tile-ink);
+	font-weight: 600;
+	text-align: center;
+}
+
+/* The button of a header that sorts: the name, and an arrow for the order. */
+.tile [data-slot='table'] thead th button:not([data-slot]) {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	block-size: 24px;
+	margin-inline: -4px;
+	padding: 0 4px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.tile [data-slot='table'] thead th button:not([data-slot]):hover,
+.tile [data-slot='table'] thead th[data-sorted] {
+	color: var(--tile-ink);
+}
+
+.tile [data-slot='table'] thead th button:not([data-slot]):focus-visible {
+	outline: 2px solid var(--tile-accent);
+	outline-offset: 0;
+}
+
+.tile [data-slot='table'] thead th[aria-sort] button::after {
+	inline-size: 6px;
+	block-size: 6px;
+	border-block-start: 1.5px solid;
+	border-inline-end: 1.5px solid;
+	content: '';
+	opacity: 0;
+	rotate: -45deg;
+	translate: 0 2px;
+}
+
+.tile [data-slot='table'] thead th[data-sorted] button::after {
+	opacity: 1;
+}
+
+.tile [data-slot='table'] thead th[data-sorted='desc'] button::after {
+	rotate: 135deg;
+	translate: 0 -2px;
+}
+
+/* In a column of numbers the name stands at the end, and the arrow before it. */
+.tile
+	[data-slot='table']
+	thead
+	th:is(
+		[data-format='integer'],
+		[data-format='decimal'],
+		[data-format='number'],
+		[data-format='currency'],
+		[data-format='percentage']
+	)
+	button {
+	flex-direction: row-reverse;
+}
+
+/* With several columns in the sort, each header says its place. The table writes the place on the cell. */
+.tile [data-slot='table'] thead:has(th[data-sort-index='2']) th[data-sort-index]::after {
+	display: inline-grid;
+	place-items: center;
+	min-inline-size: 15px;
+	block-size: 15px;
+	margin-inline-start: 6px;
+	border-radius: 4px;
+	background: var(--tile-ink);
+	color: var(--tile-surface);
+	content: attr(data-sort-index);
+	font-size: 10.5px;
+	font-weight: 600;
+	line-height: 1;
+	vertical-align: 1px;
+}
+
+.tile [data-slot='table'] tbody tr[data-kind='row']:hover {
+	--row-fill: var(--tile-hover);
+}
+
+.tile [data-slot='table'] tbody tr[aria-selected='true'] {
+	--row-fill: var(--tile-selected);
+}
+
+.tile [data-slot='table'] tbody tr[data-kind='group'] {
+	--row-fill: var(--tile-band);
+}
+
+.tile [data-slot='table'] tbody tr[data-kind='group'] > td {
+	font-weight: 600;
+}
+
+.tile [data-slot='table'] tbody tr[data-kind='group']:hover {
+	--row-fill: color-mix(in oklab, var(--tile-ink) 9%, var(--tile-surface));
+}
+
+/* The button of a group row or of a tree row: the label, with the arrow before it. */
+.tile [data-slot='table'] tbody td > button:not([data-slot]) {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	block-size: 24px;
+	margin-inline: -4px;
+	padding: 0 4px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.tile [data-slot='table'] tbody td > button:not([data-slot]):focus-visible {
+	outline: 2px solid var(--tile-accent);
+}
+
+/* A row of a tree or of a group stands in from its parent, a step for each level. */
+.tile [data-slot='table'] tr[aria-level='2'] > td:first-child {
+	padding-inline-start: 26px;
+}
+
+.tile [data-slot='table'] tr[aria-level='3'] > td:first-child {
+	padding-inline-start: 42px;
+}
+
+.tile [data-slot='table'] tr[aria-level='4'] > td:first-child {
+	padding-inline-start: 58px;
+}
+
+.tile [data-slot='table'] tbody tr[data-kind='detail'] > td {
+	--row-fill: var(--tile-band);
+	padding: 10px 12px;
+	white-space: normal;
+}
+
+.tile [data-slot='table'] tfoot td {
+	border-block-start: 1px solid var(--tile-edge);
+	border-block-end: 0;
+	font-weight: 600;
+}
+
+/* A text of the table itself: no rows, or rows that load. */
+.tile [data-slot='table'] tbody tr:only-child > td[colspan]:not([data-kind]) {
+	padding: 22px 12px;
+	color: var(--tile-ink-2);
+	text-align: center;
+	white-space: normal;
+}
+
+.tile [data-slot='table'][aria-busy='true'] tbody tr[data-kind='row'] > td {
+	color: var(--tile-ink-2);
+}
+
+/* Rows that stay in view: the header rows, the pinned rows and the footer. The cells stick, because a row cannot. */
+.tile [data-slot='table'] tr[data-sticky] > * {
+	position: sticky;
+	z-index: 2;
+}
+
+.tile [data-slot='table'] tr[data-sticky='top'] > * {
+	inset-block-start: var(--table-sticky-offset, 0);
+}
+
+.tile [data-slot='table'] tr[data-sticky='bottom'] > * {
+	inset-block-end: var(--table-sticky-offset, 0);
+}
+
+.tile [data-slot='table'] tbody tr[data-pinned] {
+	--row-fill: var(--tile-band);
+}
+
+.tile [data-slot='table'] tbody tr[data-pinned='top'] > td {
+	border-block-end-color: var(--tile-edge);
+}
+
+/* A cell that gets focus scrolls into view, and it stops beside what sticks, not under it. */
+.tile [data-slot='table'] tr:not([data-sticky]) > [data-slot='table-cell'] {
+	scroll-margin-block: var(--table-sticky-top-size, 0) var(--table-sticky-bottom-size, 0);
+}
+
+.tile [data-slot='table-cell']:not([data-pinned]) {
+	scroll-margin-inline: var(--table-pin-start-size, 0) var(--table-pin-end-size, 0);
+}
+
+.tile [data-slot='table-cell'][data-pinned] {
+	position: sticky;
+	z-index: 1;
+}
+
+.tile [data-slot='table'] tr[data-sticky] > [data-pinned] {
+	z-index: 3;
+}
+
+.tile [data-slot='table-cell'][data-pinned='start'] {
+	inset-inline-start: var(--table-pin-offset);
+}
+
+.tile [data-slot='table-cell'][data-pinned='end'] {
+	inset-inline-end: var(--table-pin-offset);
+}
+
+.tile [data-slot='table-cell'][data-pinned-edge][data-pinned='start'] {
+	border-inline-end: 1px solid var(--tile-edge);
+}
+
+.tile [data-slot='table-cell'][data-pinned-edge][data-pinned='end'] {
+	border-inline-start: 1px solid var(--tile-edge);
+}
+
+.tile [data-slot='table-cell'][data-active]:focus-visible {
+	outline: 2px solid var(--tile-accent);
+	outline-offset: -2px;
+}
+
+/* The row window: a spacer stands in for the rows that are not rendered. */
+.tile [data-slot='table-spacer'],
+.tile [data-slot='table-spacer'] > td {
+	block-size: var(--table-spacer-size);
+	padding: 0;
+	border: 0;
+}
+
+.tile [data-slot='table'][data-row-window] tbody tr:not([data-slot='table-spacer']) {
+	block-size: var(--table-row-height);
+}
+
+/* A header that moves, and the bar that resizes a column. */
+.tile [data-slot='table'] thead th[data-moving] {
+	--row-fill: var(--tile-selected);
+	color: var(--tile-ink);
+}
+
+.tile [data-slot='table-cell'][data-grabbed] {
+	z-index: 4;
+	transform: translateX(var(--drag-x, 0));
+	cursor: grabbing;
+}
+
+.tile [data-slot='table-resizer'] {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-end: 0;
+	inline-size: 9px;
+	cursor: col-resize;
+	touch-action: none;
+}
+
+.tile [data-slot='table-resizer']::after {
+	position: absolute;
+	inset-block: 6px;
+	inset-inline-end: 0;
+	inline-size: 2px;
+	border-radius: 1px;
+	background: var(--tile-edge);
+	content: '';
+}
+
+.tile [data-slot='table-resizer']:is(:hover, :focus-visible, [data-dragging])::after {
+	inset-block: 0;
+	inline-size: 3px;
+	background: var(--tile-accent);
+}
+
+.tile [data-slot='table-resizer']:focus-visible {
+	outline: none;
+}
+
+/* A range of cells: a tint for each cell, and a line around the range. */
+.tile [data-slot='table'][data-cell-selection] tbody td {
+	user-select: none;
+}
+
+.tile [data-slot='table-cell'][data-selected] {
+	background: var(--tile-selected);
+	box-shadow:
+		var(--edge-top, 0 0 transparent), var(--edge-right, 0 0 transparent),
+		var(--edge-bottom, 0 0 transparent), var(--edge-left, 0 0 transparent);
+}
+
+.tile [data-slot='table-cell'][data-range-edge~='top'] {
+	--edge-top: inset 0 2px 0 var(--tile-accent);
+}
+
+.tile [data-slot='table-cell'][data-range-edge~='right'] {
+	--edge-right: inset -2px 0 0 var(--tile-accent);
+}
+
+.tile [data-slot='table-cell'][data-range-edge~='bottom'] {
+	--edge-bottom: inset 0 -2px 0 var(--tile-accent);
+}
+
+.tile [data-slot='table-cell'][data-range-edge~='left'] {
+	--edge-left: inset 2px 0 0 var(--tile-accent);
+}
+
+/* A cell that can be edited says so on hover; its editor takes the place of its text. */
+.tile [data-slot='table-cell'][data-editable]:hover {
+	box-shadow: inset 0 0 0 1px var(--tile-edge);
+	cursor: text;
+}
+
+.tile [data-slot='table'] td[data-editing] {
+	overflow: visible;
+	padding: 0;
+}
+
+.tile [data-slot='table-editor'] {
+	display: block;
+	inline-size: 100%;
+	block-size: calc(var(--row) - 1px);
+	padding: 0 9px;
+	border: 0;
+	background: var(--tile-surface);
+	color: var(--tile-ink);
+	font: inherit;
+	outline: 2px solid var(--tile-accent);
+	outline-offset: -2px;
+}
+
+.tile td[data-format]:not([data-format='text'], [data-format='date']) [data-slot='table-editor'] {
+	text-align: end;
+}
+
+.tile [data-slot='table-editor'][aria-invalid='true'] {
+	outline-color: var(--tile-danger);
+}
+
+.tile [data-slot='table'] td[data-checking] [data-slot='table-editor'] {
+	color: var(--tile-ink-2);
+}
+
+/* The reason of a refusal hangs under the cell, over the next rows. */
+.tile [data-slot='table-edit-error'] {
+	position: absolute;
+	z-index: 4;
+	inset-block-start: 100%;
+	inset-inline-start: 0;
+	max-inline-size: 230px;
+	padding: 5px 8px;
+	border-radius: 0 0 6px 6px;
+	background: var(--tile-danger);
+	color: var(--tile-surface);
+	font-weight: 500;
+	text-align: start;
+	white-space: normal;
+}
+
+/* Small things inside cells. */
+
+.cell-sub {
+	color: var(--tile-ink-2);
+}
+
+.cell-tag {
+	display: inline-block;
+	padding: 2px 7px;
+	border-radius: 999px;
+	background: var(--tile-chip);
+	color: var(--tile-ink);
+	font-size: 11.5px;
+	font-weight: 500;
+}
+
+.cell-tag[data-state='late'],
+.cell-flag {
+	background: var(--tile-danger);
+	color: var(--tile-surface);
+}
+
+.cell-tag[data-state='done'] {
+	background: var(--tile-accent);
+	color: var(--tile-accent-ink);
+}
+
+.cell-link {
+	color: var(--tile-accent);
+	text-decoration: underline;
+	text-decoration-thickness: 1px;
+	text-underline-offset: 2px;
+}
+
+.cell-link:focus-visible {
+	outline: 2px solid var(--tile-accent);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+.cell-name {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.cell-name .sink-icon {
+	color: var(--tile-ink-2);
+}
+
+.detail-list {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 3px 14px;
+	margin: 0;
+}
+
+.detail-list dt {
+	color: var(--tile-ink-2);
+}
+
+.detail-list dd {
+	margin: 0;
+}
+
+.skeleton {
+	display: block;
+	inline-size: var(--skeleton, 70%);
+	block-size: 9px;
+	border-radius: 5px;
+	background: color-mix(in oklab, var(--tile-ink) 16%, var(--tile-surface));
+}
+
+.empty-state {
+	display: grid;
+	justify-items: center;
+	gap: 8px;
+}
+
+.empty-state strong {
+	color: var(--tile-ink);
+	font-weight: 600;
+}
+
+.sr-only {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* Motion is feedback only: a control answers a press, the bar of the filter comes and goes. A table never moves its rows for looks. */
+@media (prefers-reduced-motion: no-preference) {
+	.filter {
+		transition:
+			translate 260ms var(--ease-out),
+			opacity 180ms var(--ease-out);
+	}
+
+	.tile [data-slot='button'],
+	.filter [data-slot='button'],
+	.tile-use {
+		transition:
+			background-color 120ms,
+			color 120ms,
+			scale 120ms var(--ease-out);
+	}
+
+	.tile [data-slot='button'].twist .sink-icon {
+		transition: rotate 150ms var(--ease-out);
+	}
+
+	.tile [data-slot='switch-thumb'] {
+		transition: translate 140ms var(--ease-out);
+	}
+
+	[data-slot='segmented-control-indicator']:not([data-activation-direction='none']) {
+		transition:
+			left 200ms var(--ease-out),
+			inline-size 200ms var(--ease-out);
+	}
+
+	.skeleton {
+		animation: skeleton 1.4s ease-in-out infinite alternate;
+	}
+}
+
+@keyframes skeleton {
+	to {
+		opacity: 0.45;
+	}
+}
+
+@media (max-width: 640px) {
+	.pages {
+		padding-inline: 12px;
+	}
+
+	.sink {
+		padding: 16px 12px 110px;
+	}
+
+	.sink-head h1 {
+		font-size: 25px;
+	}
+}
+
+/* A list of values of a facet: each a toggle, with how many rows hold it. */
+.facet {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.facet .tile-use {
+	font-family: var(--sans);
+	font-size: 12px;
+}
+
+.facet-count {
+	margin-inline-start: 4px;
+	font-variant-numeric: tabular-nums;
+	opacity: 0.8;
+}
+
+/* A column that holds only the box of its row is as narrow as the box. */
+.tile [data-slot='table-cell'][data-lead] {
+	inline-size: 1%;
+	padding-inline: 10px 0;
+}
+
+.tile [data-slot='table'] tr[data-kind='group'] > td > [data-slot='checkbox'] {
+	margin-inline-end: 8px;
+}
+
+.tile [data-slot='table'] tr[data-kind='group'] > td > .twist {
+	margin-inline: -3px 3px;
+}
+
+/* Where a row has no arrow, the room of the arrow stays, so the names stand in one line. */
+.twist-gap {
+	flex: none;
+	inline-size: 20px;
+}
+
+.tile [data-slot='button'].twist[aria-pressed='true'] {
+	background: var(--tile-ink);
+	color: var(--tile-surface);
+}
+
+/* A text of several lines in a cell. The row is as high as its text. */
+.tile [data-slot='table'] td .wrap {
+	display: block;
+	padding-block: 7px;
+	line-height: 1.4;
+	white-space: normal;
+}
+
+/* An editor of the page in a cell fills the cell, as the editor of the table does. */
+.tile [data-slot='table'] td[data-editing] .own-editor {
+	block-size: calc(var(--row) - 1px);
+	border-radius: 0;
+	border-color: transparent;
+	outline: 2px solid var(--tile-accent);
+	outline-offset: -2px;
+}
+
+/* Rows that wait: bars where the texts will be. */
+.skeleton-rows {
+	display: grid;
+	gap: 0;
+	margin: -22px -12px;
+}
+
+.skeleton-row {
+	display: grid;
+	grid-template-columns: 2fr 1.2fr 1fr;
+	align-items: center;
+	gap: 20px;
+	block-size: var(--row);
+	padding-inline: 10px;
+	border-block-end: 1px solid var(--tile-rule);
+}
+
+.skeleton.w72 {
+	--skeleton: 72%;
+}
+
+.skeleton.w48 {
+	--skeleton: 48%;
+}
+
+.skeleton.w36 {
+	--skeleton: 36%;
+}
+
+/* A row and a cell that the page marks through `rowAttrs` and `cellAttrs`. */
+.tile [data-slot='table'] tbody tr.is-late {
+	--row-fill: color-mix(in oklab, var(--tile-danger) 9%, var(--tile-surface));
+}
+
+.tile [data-slot='table'] td.is-credit {
+	color: var(--tile-danger);
+	font-weight: 600;
+}
+
+.cell-flag {
+	margin-inline-start: 4px;
+}

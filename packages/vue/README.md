@@ -28,10 +28,10 @@ const columns: ColumnDef<Person>[] = [
 
 | Need | What the table gives |
 | --- | --- |
-| Looks | `data-slot` on every part (`table`, `table-row`, `table-cell`, ...), state as `aria-*` and `data-*` attributes (`data-kind`, `data-pinned`, `data-sticky`, `data-selected`, `data-active`), and `rowAttrs`, `cellAttrs`, `sectionAttrs` for classes |
-| Widths and offsets | `--table-width`, `--table-column-width`, `--table-pin-offset`, `--table-sticky-offset`, `--table-row-height`, `--table-spacer-size`. A page with a fixed header or footer sets `--table-sticky-top` and `--table-sticky-bottom` on the table or a parent, and the sticky rows stop there |
-| A checkbox or an expand column | A column with `lead: true`: always first, never in the column order or the pins, and it sticks with the first column that is pinned to the start |
-| Controls beside the table | `createTableController()`, then `getView()` for the state and the pages, `subscribe()` for when to read again, and one method for each action |
+| Looks | `data-slot` on every part (`table`, `table-row`, `table-cell`, ...), state as `aria-*` and `data-*` attributes (`data-kind`, `data-pinned`, `data-sticky`, `data-selected`, `data-active`, `data-format` with the format of the column on each of its cells, `data-sort-index` with the place of a column in the sort on its header cell), and `rowAttrs`, `cellAttrs`, `sectionAttrs` for classes |
+| Widths and offsets | A table whose columns can be resized is as wide as its columns (`inline-size: var(--table-width)`) and must not stretch to its frame: a drag starts from the width that a column has on the screen. `--table-width`, `--table-column-width`, `--table-pin-offset`, `--table-sticky-offset`, `--table-row-height`, `--table-spacer-size`. A page with a fixed header or footer sets `--table-sticky-top` and `--table-sticky-bottom` on the table or a parent, and the sticky rows stop there |
+| A checkbox or an expand column | A column with `lead: true`: always first, never in the column order or the pins, and it sticks with the first column that is pinned to the start. Its cells carry `data-lead`, for a width of their own |
+| Controls beside the table | `createTableController()`, then `getView()` for the state and the pages, `subscribe()` for when to read again, and one method for each action. In Vue, `useTableView(controller)` is a ref of the view that follows the table, and is `undefined` until the table is there |
 | A search field | `useTableSearch(controller)`: see below |
 | Filter controls | `getFacets(columnId)`: see below |
 | Totals | The footer row, the cells of a group row, `getTotals()`, and the `totals` option for totals that only a server knows |
@@ -89,6 +89,7 @@ Without Vue, the same is `controller.inputSearch(text, event)`, `controller.flus
 
 - `multi-sort="modifier"` (the default): a press on a header replaces the sort, and a press with Shift, Control or Command adds the column. `"none"`: one column at a time, whatever key is held. `"always"`: each press adds the column. Enter on a header follows the same rule.
 - `always-sorted`: a press on the only column of the sort turns the order and never clears it. Off by default.
+- `sortIndex` of the `#header` slot and `data-sort-index` of the header cell hold the place of the column in the sort, from 1, and are absent for a column that is not sorted.
 - `toggleSort(event)` of the `#header` slot passes the event, and the table reads the keys. `controller.toggleSort(id, { append: true })` and `sortBy(id, direction, { append: true })` throw in the mode `none`.
 - A `sort` of the owner with more columns than the mode allows is left as it is. With `manualSort`, the rules are the same: the state is the request.
 

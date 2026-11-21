@@ -527,3 +527,22 @@ test('all columns hide at once and come back, and a nested group names the group
 	for (const row of await rows.all()) sum += await number(cellOf(row, 'score'))
 	expect(await number(cellOf(inner, 'score'))).toBeCloseTo(sum, 2)
 })
+
+test('focus that leaves the page right after a change stays where the person put it', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const held = await table.evaluate(async (root) => {
+		const cell = root.querySelector<HTMLElement>('thead th:nth-child(3)')
+		if (!cell) throw new Error('The table has no third header cell.')
+		// Focus arrives at a new cell: the table notes it, and looks at the focus again on the next frame.
+		cell.focus()
+		// Before that frame, the person leaves with Tab from the last stop of the page, and focus is on the page itself.
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+		cell.blur()
+		await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+		return document.activeElement === document.body ? 'the page' : 'the table'
+	})
+	// The table gives focus back to a cell only when its own change took the focus away.
+	expect(held).toBe('the page')
+})

@@ -4,6 +4,7 @@
 		"vite.config.ts",
 		"packages/*/vite.config.ts",
 		"apps/*/vite.config.ts",
+		"apps/*/plugins/*.ts",
 		"apps/*/playwright.config.ts"
 	],
 	"compilerOptions": {

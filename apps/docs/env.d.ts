@@ -8,3 +8,9 @@ declare module '*.vue' {
 	const component: DefineComponent
 	export default component
 }
+
+// The names of the library that each tile of the sink page uses, by tile id.
+// `plugins/sink-uses.ts` reads them from the tile files.
+declare module 'virtual:sink-uses' {
+	export const uses: Readonly<Record<string, readonly string[]>>
+}

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('the table sorts, searches and pages 50,000 rows', async ({ page }) => {
-	await page.goto('/')
+	await page.goto('/?page=benchmark')
 
 	const table = page.getByRole('grid', { name: 'People' })
 	await expect(table).toHaveAttribute('data-slot', 'table')
@@ -34,7 +34,7 @@ test('the table sorts, searches and pages 50,000 rows', async ({ page }) => {
 })
 
 test('the keyboard moves between cells and into a cell', async ({ page }) => {
-	await page.goto('/')
+	await page.goto('/?page=benchmark')
 	const table = page.getByRole('grid', { name: 'People' })
 	const cell = (row: number, col: number) =>
 		table.locator(`tr[aria-rowindex="${row}"] > [aria-colindex="${col}"]`)
@@ -77,7 +77,7 @@ test('the keyboard moves between cells and into a cell', async ({ page }) => {
 })
 
 test('groups open and close, and a group row has its label and its total', async ({ page }) => {
-	await page.goto('/')
+	await page.goto('/?page=benchmark')
 	const table = page.getByRole('treegrid', { name: 'People' })
 
 	await page.getByRole('checkbox', { name: 'Group by team' }).check()
@@ -106,7 +106,7 @@ test('groups open and close, and a group row has its label and its total', async
 })
 
 test('after a sort, the arrow keys move from the place the cell has now', async ({ page }) => {
-	await page.goto('/')
+	await page.goto('/?page=benchmark')
 	const table = page.getByRole('grid', { name: 'People' })
 	const cell = (row: number, col: number) =>
 		table.locator(`tr[aria-rowindex="${row}"] > [aria-colindex="${col}"]`)
@@ -127,7 +127,7 @@ test('after a sort, the arrow keys move from the place the cell has now', async 
 })
 
 test('the row that says "no rows" is a row of the keyboard grid', async ({ page }) => {
-	await page.goto('/')
+	await page.goto('/?page=benchmark')
 	const table = page.getByRole('grid', { name: 'People' })
 	await page.getByRole('searchbox', { name: 'Search' }).fill('no such person')
 	const empty = table.locator('tbody td')
