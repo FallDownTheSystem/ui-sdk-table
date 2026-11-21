@@ -99,6 +99,9 @@ importers:
       jsdom:
         specifier: 'catalog:'
         version: 31.0.1
+      ssf:
+        specifier: 0.11.2
+        version: 0.11.2
       vite-plus:
         specifier: 'catalog:'
         version: 1.7.0(@types/node@26.6.6)(@vitest/ui@5.1.0(vitest@5.1.0))(@volar/typescript@2.4.28)(@vue/language-core@3.3.11)(jsdom@31.0.1)(playwright@1.65.1)(typescript@6.0.3)(vue-tsc@3.3.11(typescript@6.0.3))
@@ -967,6 +970,10 @@ packages:
   flatted@3.4.4:
     resolution: {integrity: sha512-5+ybhBZANEJxaH3X5evAFatUxLfEHSr7n6kYJ+1Qd0mUqr4eu9gIf6GDbWHf8RJijHrjjO8G+la14SlL2SeS1Q==}
 
+  frac@1.1.2:
+    resolution: {integrity: sha512-w/XBfkibaTl3YDqASwfDUqkna4Z2p9cFSr1aHDt0WoMTECnRfBOv2WArlZILlqgWlmdIlALXGpM2AOhEk5W3IA==}
+    engines: {node: '>=0.8'}
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -1232,6 +1239,10 @@ packages:
   source-map-js@1.2.4:
     resolution: {integrity: sha512-J7ZjMvHd9O1fcT/5V09QWaaSl2BbWx3F6O08spde82Namf9UB0GxRVIPiNbVsdKkoizHiSpTodo3vp2bAy91MA==}
     engines: {node: '>=6.0.0'}
+
+  ssf@0.11.2:
+    resolution: {integrity: sha512-+idbmIXoYET47hH+d7dfm2epdOMUDjqcB4648sTZ+t2JwoyBFL/insLfB/racrDmsKB3diwsDA696pZMieAC5g==}
+    engines: {node: '>=0.8'}
 
   std-env@4.3.0:
     resolution: {integrity: sha512-OtU/EgQ1kIm5KwqQpBC6ZEMXrZRui11w8zgfTWp8cdO9B8OaPsbA8bTHO2P+HNo1VlUTGMVBwPhydu6poeXiag==}
@@ -1992,6 +2003,8 @@ snapshots:
 
   flatted@3.4.4: {}
 
+  frac@1.1.2: {}
+
   fsevents@2.3.3:
     optional: true
 
@@ -2242,6 +2255,10 @@ snapshots:
       totalist: 3.0.1
 
   source-map-js@1.2.4: {}
+
+  ssf@0.11.2:
+    dependencies:
+      frac: 1.1.2
 
   std-env@4.3.0: {}
 

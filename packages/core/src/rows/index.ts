@@ -5,7 +5,7 @@ export { createRowPredicate, filterRows, isEmptyFilter, type FilterOptions } fro
 export { detailRowId, flattenRows, type FlatRow } from './flatten'
 export { groupRows, type GroupOptions } from './group'
 export { memo, sameContent, stabilize } from './memo'
-export { createRowModel, type RowModel, type RowModelOptions } from './model'
+export { createRowModel, type ManualStages, type RowModel, type RowModelOptions } from './model'
 export { createRowNodes, omitRows, walkRows, type RowNodeOptions, type RowNodes } from './nodes'
 export { clampPage, pageCount, paginate } from './paginate'
 export { compareValues, sortRows, type SortOptions } from './sort'

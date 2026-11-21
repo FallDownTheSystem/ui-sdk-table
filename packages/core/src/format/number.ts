@@ -1,7 +1,8 @@
 import { getNumberFormat } from './intl'
-import { INVALID, type CellFormatter, type PrepareFormatter } from './shared'
+import { INVALID, type PrepareFormatter } from './shared'
 import type {
 	CurrencyFormatOptions,
+	FormatOptionsByName,
 	NumberFormatOptions,
 	PercentageFormatOptions,
 	RoundingMode,
@@ -60,46 +61,35 @@ function multiply(value: number, multiplier: number | undefined): number {
 }
 
 /**
- * Numbers and numeric strings go through `compute`; any other type is shown as its string
- * form, since a cell holding an unexpected type is more useful visible than blank.
+ * How a number format writes a number: the Intl format, and what happens to the value
+ * before it. The export reads the same plan, so a file and the screen agree.
  */
-function numericFormatter(compute: (value: number) => string): CellFormatter {
-	return (value) => {
-		if (typeof value !== 'number' && typeof value !== 'string') return String(value)
-		// Number() rather than parseFloat: '1,234.5' or '12abc' must not show as 1 or 12.
-		let parsed = value
-		if (typeof value === 'string') {
-			const text = value.trim()
-			if (text === '') return INVALID
-			parsed = Number(text)
-		}
-		if (typeof parsed !== 'number' || Number.isNaN(parsed)) return INVALID
-		return compute(parsed)
+export type NumberPlan = { intl: Intl.NumberFormat; scale: (value: number) => number }
+
+export type NumericFormatName = 'integer' | 'decimal' | 'number' | 'currency' | 'percentage'
+
+function integerPlan(options: NumberFormatOptions, locale: string): NumberPlan {
+	const intl = getNumberFormat(locale, intlNumberOptions(options, options.style ?? 'decimal', 0, 0))
+	const round = options.roundingMode ? roundingFunctions[options.roundingMode] : undefined
+	return {
+		intl,
+		scale: (value) => {
+			const scaled = multiply(value, options.multiplier)
+			// Plus zero: a small negative number rounds up to minus zero, which would show as "-0".
+			return round ? round(scaled) + 0 : scaled
+		},
 	}
 }
 
-export const integer: PrepareFormatter<NumberFormatOptions> = (options, locale) => {
-	const format = getNumberFormat(
-		locale,
-		intlNumberOptions(options, options.style ?? 'decimal', 0, 0),
-	)
-	const round = options.roundingMode ? roundingFunctions[options.roundingMode] : undefined
-	return numericFormatter((value) => {
-		const scaled = multiply(value, options.multiplier)
-		return format.format(round ? round(scaled) : scaled)
-	})
-}
-
-export const decimal: PrepareFormatter<NumberFormatOptions> = (options, locale) => {
+function decimalPlan(options: NumberFormatOptions, locale: string): NumberPlan {
 	const [min, max] = fractionDigits(2, options.minimumFractionDigits, options.maximumFractionDigits)
-	const format = getNumberFormat(
-		locale,
-		intlNumberOptions(options, options.style ?? 'decimal', min, max),
-	)
-	return numericFormatter((value) => format.format(multiply(value, options.multiplier)))
+	return {
+		intl: getNumberFormat(locale, intlNumberOptions(options, options.style ?? 'decimal', min, max)),
+		scale: (value) => multiply(value, options.multiplier),
+	}
 }
 
-export const currency: PrepareFormatter<CurrencyFormatOptions> = (options, locale) => {
+function currencyPlan(options: CurrencyFormatOptions, locale: string): NumberPlan {
 	const [min, max] = fractionDigits(2, options.minimumFractionDigits, options.maximumFractionDigits)
 	const intlOptions = options.showUnit
 		? {
@@ -109,24 +99,80 @@ export const currency: PrepareFormatter<CurrencyFormatOptions> = (options, local
 				currencySign: options.currencySign,
 			}
 		: intlNumberOptions(options, 'decimal', min, max)
-	const format = getNumberFormat(locale, intlOptions)
-	return numericFormatter((value) => format.format(multiply(value, options.multiplier)))
+	return {
+		intl: getNumberFormat(locale, intlOptions),
+		scale: (value) => multiply(value, options.multiplier),
+	}
 }
 
-export const percentage: PrepareFormatter<PercentageFormatOptions> = (options, locale) => {
+function percentagePlan(options: PercentageFormatOptions, locale: string): NumberPlan {
 	const fraction = options.scale !== 'percent'
 	const showUnit = options.showUnit ?? false
 	const [min, max] = fractionDigits(0, options.minimumFractionDigits, options.maximumFractionDigits)
-	const format = getNumberFormat(
-		locale,
-		intlNumberOptions(options, showUnit ? 'percent' : 'decimal', min, max),
-	)
 	// Intl's percent style multiplies by 100 itself, so only the other two pairings need a factor.
 	const factor = showUnit === fraction ? 1 : fraction ? 100 : 0.01
-	return numericFormatter((value) => {
-		const scaled = multiply(value, options.multiplier)
-		// 0.285 * 100 is 28.499999999999996, which would round to 28 while Intl's own percent
-		// scaling gives 29 %; dropping the last binary digits keeps both paths on the same digit.
-		return format.format(factor === 1 ? scaled : Number((scaled * factor).toPrecision(15)))
-	})
+	return {
+		intl: getNumberFormat(
+			locale,
+			intlNumberOptions(options, showUnit ? 'percent' : 'decimal', min, max),
+		),
+		scale: (value) => {
+			const scaled = multiply(value, options.multiplier)
+			// 0.285 * 100 is 28.499999999999996, which would round to 28 while Intl's own percent
+			// scaling gives 29 %; dropping the last binary digits keeps both paths on the same digit.
+			return factor === 1 ? scaled : Number((scaled * factor).toPrecision(15))
+		},
+	}
 }
+
+const plans: {
+	[N in NumericFormatName]: (options: FormatOptionsByName[N], locale: string) => NumberPlan
+} = {
+	integer: integerPlan,
+	decimal: decimalPlan,
+	number: decimalPlan,
+	currency: currencyPlan,
+	percentage: percentagePlan,
+}
+
+/** The plan of a number format. It throws when Intl refuses the options, as the format does. */
+export function numberPlan<N extends NumericFormatName>(
+	name: N,
+	options: FormatOptionsByName[N],
+	locale: string,
+): NumberPlan {
+	return plans[name](options, locale)
+}
+
+/** The number that a number format reads from a cell value, or `undefined` when it reads none. */
+export function readNumber(value: unknown): number | undefined {
+	if (typeof value === 'number') return Number.isNaN(value) ? undefined : value
+	if (typeof value !== 'string') return undefined
+	// Number() rather than parseFloat: '1,234.5' or '12abc' must not show as 1 or 12.
+	const text = value.trim()
+	if (text === '') return undefined
+	const parsed = Number(text)
+	return Number.isNaN(parsed) ? undefined : parsed
+}
+
+/**
+ * Numbers and numeric strings go through the plan; any other type is shown as its string
+ * form, since a cell holding an unexpected type is more useful visible than blank.
+ */
+function prepare<Options>(
+	plan: (options: Options, locale: string) => NumberPlan,
+): PrepareFormatter<Options> {
+	return (options, locale) => {
+		const { intl, scale } = plan(options, locale)
+		return (value) => {
+			if (typeof value !== 'number' && typeof value !== 'string') return String(value)
+			const parsed = readNumber(value)
+			return parsed === undefined ? INVALID : intl.format(scale(parsed))
+		}
+	}
+}
+
+export const integer = prepare(integerPlan)
+export const decimal = prepare(decimalPlan)
+export const currency = prepare(currencyPlan)
+export const percentage = prepare(percentagePlan)

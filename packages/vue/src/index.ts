@@ -35,6 +35,8 @@ export type {
 	StandardSchemaV1,
 	TableEditDetails,
 	ColumnDef,
+	ExportData,
+	ExportOptions,
 	ColumnPin,
 	ColumnPinning,
 	ColumnVisibility,

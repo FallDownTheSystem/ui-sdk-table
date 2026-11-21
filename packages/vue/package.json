@@ -9,10 +9,11 @@
 	"type": "module",
 	"sideEffects": false,
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./export": "./src/export.ts"
 	},
 	"scripts": {
-		"build": "vp pack src/index.ts --platform neutral"
+		"build": "vp pack src/index.ts src/export.ts --platform neutral"
 	},
 	"dependencies": {
 		"ui-sdk-table-core": "workspace:*"

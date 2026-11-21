@@ -38,6 +38,11 @@ body {
 	white-space: nowrap;
 }
 
+/* Rows that wait for newer ones stay in view, dimmed. */
+[data-slot='table'][data-loading] tbody {
+	opacity: 0.55;
+}
+
 .pages {
 	display: flex;
 	gap: 1rem;

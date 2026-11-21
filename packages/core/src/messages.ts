@@ -8,6 +8,18 @@ import type { ColumnReorderMessage } from './behaviors/reorder'
 export type TableMessages = {
 	/** What the body says when no row passes the filters. */
 	noRows: () => string
+	/** What the body says while the first rows are on their way. */
+	loading: () => string
+	/** The name of the button that opens a row with child rows or a detail row. */
+	expandRow: () => string
+	/** The name of the button that closes such a row. */
+	collapseRow: () => string
+	/** The sign on the button of a closed row. */
+	expandSign: () => string
+	/** The sign on the button of an open row. */
+	collapseSign: () => string
+	/** The text of a group row: the value of the group and how many rows it holds. */
+	groupRow: (details: { text: string; count: number }) => string
 	/** The name of the resize handle of a column. */
 	resizeColumn: (column: string) => string
 	/** What a screen reader says after a column gets a new width. */
@@ -36,6 +48,12 @@ export type TableMessages = {
 
 export const defaultMessages: TableMessages = {
 	noRows: () => 'No rows.',
+	loading: () => 'Loading rows.',
+	expandRow: () => 'Expand row',
+	collapseRow: () => 'Collapse row',
+	expandSign: () => '+',
+	collapseSign: () => '−',
+	groupRow: ({ text, count }) => `${text} (${count})`,
 	resizeColumn: (column) => `Resize ${column}`,
 	columnResized: ({ column, width }) => `${column}, ${width} pixels wide.`,
 	columnMoved: ({ type, label, position, total }) => {

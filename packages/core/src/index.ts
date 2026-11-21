@@ -13,6 +13,7 @@ export {
 	type HeaderCell,
 } from './columns/layout'
 export { defaultMessages, type TableMessages } from './messages'
+export type { ExportCell, ExportColumn, ExportData, ExportOptions, ExportRow } from './export/data'
 export type { RowAlign } from './behaviors/window'
 export type { CellBounds, CellRange } from './behaviors/range'
 export {

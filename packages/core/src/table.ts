@@ -51,6 +51,7 @@ import {
 	type CellEdit,
 	type Checked,
 } from './edit'
+import { collectExport, type ExportData, type ExportOptions } from './export/data'
 import { formatValue } from './format'
 import { defaultMessages, type TableMessages } from './messages'
 import {
@@ -163,6 +164,12 @@ export type TableController = {
 	 * then no cell changes.
 	 */
 	pasteCells(text: string): void | Promise<void>
+	/**
+	 * The cells of the table as plain data, for a file: every row that passes
+	 * the filters and the visible columns, or what the options ask for. The
+	 * writers are in the `export` entry of the package (`toCsv`, `toXlsx`).
+	 */
+	exportData(options?: ExportOptions): ExportData
 }
 
 type CellActions =
@@ -173,6 +180,7 @@ type CellActions =
 	| 'clearCellSelection'
 	| 'copyCells'
 	| 'pasteCells'
+	| 'exportData'
 
 export type TableOptions<Row = unknown> = {
 	rows?: readonly Row[]
@@ -311,6 +319,30 @@ export type TableOptions<Row = unknown> = {
 	onCellRangeChange?: (value: CellRange | null, details: TableChangeDetails) => void
 	/** Runs once when a drag that changed the range ends. */
 	onCellRangeCommit?: (value: CellRange | null, details: TableCommitDetails) => void
+
+	/**
+	 * The rows come from a server in sort order. The table does not sort them.
+	 * The `sort` state still changes, so the caller knows what to ask for.
+	 */
+	manualSort?: boolean
+	/**
+	 * The rows come from a server with the search and the column filters
+	 * applied. The table does not filter them. Facets and totals are of the
+	 * rows that the table has.
+	 */
+	manualFilter?: boolean
+	/**
+	 * The rows are one page from a server. The table shows them all, and the
+	 * pages come from `rowCount`.
+	 */
+	manualPage?: boolean
+	/**
+	 * How many rows the server has after its filter, for `manualPage`. Without
+	 * it, a full page has a next page and a page that is not full is the last.
+	 */
+	rowCount?: number
+	/** Whether new rows are on their way. The table says so to assistive technology and keeps its rows. */
+	loading?: boolean
 }
 
 type TableState = {
@@ -485,6 +517,11 @@ export const table = definePrimitive({
 		defaultCellRange: 'value',
 		onCellRangeChange: 'callback',
 		onCellRangeCommit: 'callback',
+		manualSort: 'boolean',
+		manualFilter: 'boolean',
+		manualPage: 'boolean',
+		rowCount: 'number',
+		loading: 'boolean',
 	},
 	controlled: [
 		'sort',
@@ -640,6 +677,21 @@ export const table = definePrimitive({
 				: toText(value)
 		}
 
+		function totalText(column: ColumnDef, value: unknown): string {
+			const counts = column.aggregate === 'count' || column.aggregate === 'uniqueCount'
+			if (!column.format || counts || typeof column.aggregate === 'function') return toText(value)
+			return formatValue(value, column.format, column.formatOptions, { locale: options().locale })
+		}
+
+		function groupText(group: GroupRow<unknown>): string {
+			const column = layout().byId.get(group.columnId)
+			const sample = group.leaves[0]
+			return message('groupRow')({
+				text: column && sample ? text(sample.row, column) : toText(group.value),
+				count: group.leaves.length,
+			})
+		}
+
 		const idSet = memo((ids: readonly string[]) => new Set(ids))
 
 		const stableSort = stabilize<readonly SortRule[]>()
@@ -692,6 +744,12 @@ export const table = definePrimitive({
 			hasDetail: () => options().hasDetail,
 			// A pinned row has a place of its own, so it leaves the list.
 			omit: (): ReadonlySet<string> => pinnedIds(rowPinning(), model.source()),
+			manual: () => ({
+				sort: options().manualSort,
+				filter: options().manualFilter,
+				page: options().manualPage,
+			}),
+			serverRowCount: () => options().rowCount,
 		})
 
 		// The pinned rows that exist, for each edge. A row that is named for both edges is at the top.
@@ -1458,7 +1516,8 @@ export const table = definePrimitive({
 				throw new Error(`A page must be a whole number from 1 to ${model.pageCount()}.`)
 			}
 			const clamped = Math.min(Math.max(1, page), model.pageCount())
-			change('page', { ...current, page: clamped }, { reason })
+			// A step past the last page changes nothing, and a listener that loads rows must not load them again.
+			if (clamped !== current.page) change('page', { ...current, page: clamped }, { reason })
 		}
 
 		const controller: Omit<TableController, 'pinRow' | 'scrollToRow' | CellActions> = {
@@ -1785,6 +1844,31 @@ export const table = definePrimitive({
 			clearCellSelection() {
 				range.select(null, { reason: 'imperative' })
 			},
+			exportData: (exportOptions) =>
+				collectExport<unknown>(
+					{
+						all: () => model.source().rows,
+						sorted: () => model.sorted(),
+						listed: () => model.grouped(),
+						page: () => model.paged(),
+						pinned: () => ({
+							top: pinned().top.flatMap((flat) => (flat.node.kind === 'row' ? [flat.node] : [])),
+							bottom: pinned().bottom.flatMap((flat) =>
+								flat.node.kind === 'row' ? [flat.node] : [],
+							),
+						}),
+						selected: () => idSet(state().selected),
+						visibleColumns: () => layout().leaves,
+						allColumns: () => layout().all,
+						label: (column) => column.header ?? column.id,
+						text,
+						groupText,
+						totals: (group) => model.aggregate(group),
+						totalText,
+						locale: () => options().locale,
+					},
+					exportOptions,
+				),
 			copyCells: () => copyText(),
 			pasteCells(text) {
 				if (typeof text !== 'string') throw new Error('`pasteCells` takes a text.')
@@ -1850,6 +1934,7 @@ export const table = definePrimitive({
 			stickyFooter: () => options().stickyFooter ?? false,
 			rowHeight: () => options().rowHeight,
 			windowed: () => options().rowWindow ?? false,
+			loading: () => options().loading ?? false,
 			model,
 			grid,
 			selection,
@@ -1907,11 +1992,9 @@ export const table = definePrimitive({
 			/** Column totals of a group, or of all filtered rows. */
 			totals: (group?: GroupRow<unknown>) => model.aggregate(group),
 			/** A total as text. A count is a plain number, whatever the format of its column. */
-			totalText: (column: ColumnDef, value: unknown): string => {
-				const counts = column.aggregate === 'count' || column.aggregate === 'uniqueCount'
-				if (!column.format || counts || typeof column.aggregate === 'function') return toText(value)
-				return formatValue(value, column.format, column.formatOptions, { locale: options().locale })
-			},
+			totalText,
+			/** The text of a group row: the value of the group as its column shows it, and its count. */
+			groupText,
 		}
 	},
 	slots: (slot) => ({
@@ -1955,6 +2038,8 @@ export const table = definePrimitive({
 					'data-cell-selection': api.cellSelection() ? '' : undefined,
 					'data-sized': sized ? '' : undefined,
 					'data-row-window': api.windowed() ? '' : undefined,
+					'aria-busy': api.loading() ? 'true' : undefined,
+					'data-loading': api.loading() ? '' : undefined,
 					style: variables.length ? variables.join(';') : undefined,
 				}
 			},

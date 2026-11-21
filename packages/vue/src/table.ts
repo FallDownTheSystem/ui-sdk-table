@@ -115,6 +115,11 @@ const OPTIONS = [
 	'hasDetail',
 	'editable',
 	'cellSelection',
+	'manualSort',
+	'manualFilter',
+	'manualPage',
+	'rowCount',
+	'loading',
 	...MODELS,
 	'defaultSort',
 	'defaultFilter',
@@ -141,6 +146,10 @@ const BOOLEANS: readonly string[] = [
 	'stickyFooter',
 	'editable',
 	'cellSelection',
+	'manualSort',
+	'manualFilter',
+	'manualPage',
+	'loading',
 ]
 
 export type TableProps<Row> = Omit<TableOptions<Row>, `on${string}`>
@@ -277,6 +286,8 @@ export type TableSlots<Row> = {
 	detail?: (props: DetailSlotProps<Row>) => VNodeChild
 	/** Shown in place of the rows when no row passes the filters. */
 	empty?: () => VNodeChild
+	/** Shown in place of the rows while `loading` is set and the table has no rows. */
+	loading?: () => VNodeChild
 }
 
 // `usePart` gives the render function of a component, so the root element needs a component of its own.
@@ -410,7 +421,7 @@ const TableImpl = defineComponent(
 					return h(
 						'button',
 						{ type: 'button', onClick: toggleExpanded },
-						`${text} (${group.leaves.length})`,
+						api.message('groupRow')({ text, count: group.leaves.length }),
 					)
 				}),
 			)
@@ -448,7 +459,15 @@ const TableImpl = defineComponent(
 				// Without a slot, the first cell of a tree row still needs a way to open it.
 				return col === 0 && flat.expandable
 					? [
-							h('button', { type: 'button', onClick: toggleExpanded }, state.expanded ? '−' : '+'),
+							h(
+								'button',
+								{
+									type: 'button',
+									'aria-label': api.message(state.expanded ? 'collapseRow' : 'expandRow')(),
+									onClick: toggleExpanded,
+								},
+								api.message(state.expanded ? 'collapseSign' : 'expandSign')(),
+							),
 							' ',
 							text,
 						]
@@ -580,7 +599,9 @@ const TableImpl = defineComponent(
 		function emptyRow(index: number, span: number) {
 			return h(TablePlainRow, { key: 'empty', index, 'data-kind': 'empty' }, () =>
 				h(TableCell, { value: 'empty', row: index, col: 0, colspan: span }, () =>
-					slots.empty ? slots.empty({}) : api.message('noRows')(),
+					api.loading()
+						? (slots.loading?.({}) ?? api.message('loading')())
+						: (slots.empty?.({}) ?? api.message('noRows')()),
 				),
 			)
 		}

@@ -9,15 +9,17 @@
 	"type": "module",
 	"sideEffects": false,
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./export": "./src/export/index.ts"
 	},
 	"scripts": {
-		"build": "vp pack src/index.ts --platform neutral"
+		"build": "vp pack src/index.ts src/export/index.ts --platform neutral"
 	},
 	"devDependencies": {
 		"@types/jsdom": "catalog:",
 		"@ui-sdk/core": "catalog:",
 		"jsdom": "catalog:",
+		"ssf": "0.11.2",
 		"vite-plus": "catalog:"
 	},
 	"peerDependencies": {

@@ -60,20 +60,58 @@ function halves(options: DateFormatOptions, needDate: boolean, needTime: boolean
 	]
 }
 
-function build(
+function formats(
 	locale: string,
 	[date, time]: Halves,
 	split: boolean,
 	timeZone: string | undefined,
-): (value: Date) => string {
-	if (!split) {
-		const format = getDateTimeFormat(locale, { ...date, ...time, timeZone })
-		return (value) => format.format(value)
-	}
+): Intl.DateTimeFormat[] {
+	if (!split) return [getDateTimeFormat(locale, { ...date, ...time, timeZone })]
 	// The time zone goes to both halves, or the date half would roll over at local midnight.
-	const datePart = getDateTimeFormat(locale, { ...date, timeZone })
-	const timePart = getDateTimeFormat(locale, { ...time, timeZone })
-	return (value) => `${datePart.format(value)} ${timePart.format(value)}`
+	return [
+		getDateTimeFormat(locale, { ...date, timeZone }),
+		getDateTimeFormat(locale, { ...time, timeZone }),
+	]
+}
+
+function build(
+	locale: string,
+	parts: Halves,
+	split: boolean,
+	timeZone: string | undefined,
+): (value: Date) => string {
+	const [first, second] = formats(locale, parts, split, timeZone)
+	if (!first) return () => ''
+	return second
+		? (value) => `${first.format(value)} ${second.format(value)}`
+		: (value) => first.format(value)
+}
+
+const shapes = {
+	date: [true, false],
+	time: [false, true],
+	datetime: [true, true],
+} as const
+
+/**
+ * The Intl formats that a date format writes a value with, in a given time zone and with
+ * no zone name: one format, or a date and a time that a space joins. The export reads them
+ * to give a file the pattern of the screen. It throws when Intl refuses the options.
+ */
+export function dateFormats(
+	name: keyof typeof shapes,
+	options: DateFormatOptions,
+	locale: string,
+	timeZone: string,
+): Intl.DateTimeFormat[] {
+	const [needDate, needTime] = shapes[name]
+	const [date, time] = halves(options, needDate, needTime)
+	return formats(
+		locale,
+		[date, { ...time, timeZoneName: undefined }],
+		name === 'datetime' && isFinnish(locale),
+		timeZone,
+	)
 }
 
 /**

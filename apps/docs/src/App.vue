@@ -3,6 +3,7 @@ import type { Component } from 'vue'
 import BenchmarkPage from './pages/BenchmarkPage.vue'
 import ColumnsPage from './pages/ColumnsPage.vue'
 import EditingPage from './pages/EditingPage.vue'
+import ServerPage from './pages/ServerPage.vue'
 import WindowPage from './pages/WindowPage.vue'
 
 // The demo app has no router: a page is one query parameter, so a browser
@@ -12,6 +13,7 @@ const pages: Record<string, { title: string; component: Component }> = {
 	columns: { title: 'Columns', component: ColumnsPage },
 	window: { title: 'Row window', component: WindowPage },
 	editing: { title: 'Editing', component: EditingPage },
+	server: { title: 'Server', component: ServerPage },
 }
 
 const requested = new URLSearchParams(location.search).get('page') ?? 'benchmark'

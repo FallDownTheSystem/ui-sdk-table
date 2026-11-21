@@ -52,7 +52,22 @@ export type RowModelOptions<Row> = RowNodeOptions<Row> & {
 	 * visible rows do not hold them. `filtered` and the totals still do.
 	 */
 	omit?: () => ReadonlySet<string> | undefined
+	/**
+	 * The stages that a server already did. `rows` then come in sort order,
+	 * filtered, or as one page, and the model does not do that stage again. The
+	 * sort, filter and page states stay: they say what the caller asks the
+	 * server for.
+	 */
+	manual?: () => ManualStages | undefined
+	/**
+	 * How many rows the server has after its filter. With a manual page stage,
+	 * the pages come from this number. Without it, the model knows only that
+	 * a full page can have a next page.
+	 */
+	serverRowCount?: () => number | undefined
 }
+
+export type ManualStages = { sort?: boolean; filter?: boolean; page?: boolean }
 
 export type RowModel<Row> = {
 	/** Every row of the data with its id, before any stage. */
@@ -68,7 +83,7 @@ export type RowModel<Row> = {
 	/** The visible rows in order, with expanded children in place. */
 	flat: () => FlatRow<Row>[]
 	rowById: (id: string) => DataRow<Row> | undefined
-	/** How many top-level rows or groups the pages divide. */
+	/** How many top-level rows or groups the pages divide. With a manual page stage, the count of the server. */
 	rowCount: () => number
 	pageCount: () => number
 	/** The page that `paged` shows: the page of the state, moved inside the pages that exist. */
@@ -163,8 +178,26 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 		{ columns: readonly ColumnDef<Row>[]; result: Record<string, unknown> }
 	>()
 
+	const manual = (stage: keyof ManualStages) => options.manual?.()?.[stage] === true
+
+	// The number of top-level rows that the pages divide, and the last page.
+	const total = (page: PageState | undefined): { rows: number; pages: number } => {
+		const here = grouped().length
+		if (!page) return { rows: here, pages: 1 }
+		if (!manual('page')) return { rows: here, pages: pageCount(here, page.pageSize) }
+		const known = options.serverRowCount?.()
+		if (known !== undefined) return { rows: known, pages: pageCount(known, page.pageSize) }
+		// Without a count, a full page says that a next page can exist.
+		const current = Math.max(1, Math.trunc(page.page))
+		const more = here >= page.pageSize
+		return {
+			rows: (current - 1) * page.pageSize + here + (more ? 1 : 0),
+			pages: current + (more ? 1 : 0),
+		}
+	}
+
 	const sorted = () =>
-		options.sort
+		options.sort && !manual('sort')
 			? sortStage(
 					source(options.rows()).rows,
 					options.sort(),
@@ -175,7 +208,7 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 			: source(options.rows()).rows
 
 	const filtered = () =>
-		options.filter
+		options.filter && !manual('filter')
 			? filterStage(
 					sorted(),
 					predicate(
@@ -195,7 +228,7 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 
 	const paged = () => {
 		const page = options.page?.()
-		return page ? pageStage(grouped(), page.page, page.pageSize) : grouped()
+		return page && !manual('page') ? pageStage(grouped(), page.page, page.pageSize) : grouped()
 	}
 
 	return {
@@ -207,14 +240,14 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 		paged,
 		flat: () => flatStage(paged(), options.expansion?.(), options.hasDetail?.()),
 		rowById: (id) => source(options.rows()).byId.get(id),
-		rowCount: () => grouped().length,
-		pageCount: () => {
-			const page = options.page?.()
-			return page ? pageCount(grouped().length, page.pageSize) : 1
-		},
+		rowCount: () => total(options.page?.()).rows,
+		pageCount: () => total(options.page?.()).pages,
 		page: () => {
 			const page = options.page?.()
-			return page ? clampPage(page, grouped().length) : 1
+			if (!page) return 1
+			return manual('page')
+				? Math.min(Math.max(1, Math.trunc(page.page)), total(page).pages)
+				: clampPage(page, grouped().length)
 		},
 		aggregate: (group) => {
 			const rows = group ? group.leaves : filtered()

@@ -52,6 +52,14 @@ export type ColumnDef<Row = unknown> = {
 	schema?: StandardSchemaV1
 	/** Makes the value of a cell from the text of the editor or of a paste. Without it, see `parseText`. */
 	parse?: (text: string, row: Row) => unknown
+	/** Whether an export holds the column. Defaults to true. */
+	exportable?: boolean
+	/**
+	 * The value of a cell in an export, in place of the cell value and its
+	 * format: for a column whose cell is a slot, or whose file value differs
+	 * from the screen.
+	 */
+	exportValue?: (row: Row) => unknown
 	meta?: unknown
 }
 
