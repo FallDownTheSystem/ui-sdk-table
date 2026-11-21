@@ -2,7 +2,7 @@
 
 **This report is the state at commit `5035ff8`. The work after it (headless only, sink page, data sheet) is in the last section, "After the report", which is the state of now where the two differ.**
 
-Date: 2026-11-21. All six subtasks are done. The library is on `master` of `ui-sdk-table`. The app change is a pull request that waits for the owner: https://github.com/FallDownTheSystem/dashboard-template/pull/50.
+Date: 2026-11-21. All six subtasks are done. The library is on `master` of `ui-sdk-table`. The app change is pull request https://github.com/FallDownTheSystem/dashboard-template/pull/50 (merged later; see the last section).
 
 ## Result in short
 
@@ -211,7 +211,7 @@ Date: 2026-11-21, later the same day. The owner set the layers: UI SDK gives the
 
 **What changed in the sections above.**
 - `packages/styled`, the registry and the install script are removed (subtask 8). The styled table is source of the app, in `src/components/DataTable/` of dashboard-template. The install route is in `packages/vue/README.md`, not in `packages/styled/README.md`.
-- The library is a public repository. Open item 2 (git access for each computer) is closed. The deploy workflow of the app is still not run with the new dependencies.
+- The library is a public repository. Open item 2 (git access for each computer) is closed.
 - The name `ui-sdk-table-styled` of open item 1 is no longer needed.
 
 **Library, `master` at the commit of this report.**
@@ -235,7 +235,7 @@ Last full run of the library (commit `05b2e0b`):
 | `pnpm test:e2e` | 131 Playwright tests pass (Chromium) |
 | `pnpm build` | pass |
 
-**App, branch `table-swap` at `6410cc1`, pull request 50, not merged.**
+**App, `master` at `f9042da`: pull request 50 is merged (branch `table-swap` at `6410cc1`), on the owner's word.** The deploy workflow of the app passed with the new dependencies, and the site answers at https://falldownthesystem.github.io/dashboard-template/.
 - `aafc677`: the table is source of the app; slider, date and value-list filters, "All" page size, a jump to a page, "Hide all" and "Reset", totals under columns, the search pause, a sort mode switch, a group-by control.
 - `6410cc1`: the data sheet. `DataTableSheetToolbar`, `DataTableSummary`, `DataTableAggregate`, row numbers, the fill handle, the looks of formats in light and dark, and the page `/data-sheet` with a budget sheet, checked values, saved formats and a sheet in a grid of 50,000 rows.
 - Checks at `6410cc1`: `vp check`, type-check and build pass; ESLint 0 errors; 90 unit tests; 77 Playwright tests (Chromium); audit `0 errors, 193 warnings, 166 in the baseline`; contrast 204 pairs (table) and 121 pairs (sheet) for each theme at WCAG AA.
@@ -263,6 +263,6 @@ Last full run of the library (commit `05b2e0b`):
 6. **`cellFormats` is not in the snapshot of the state** that the UI SDK agent bridge reads, because 50,000 formats made it 989 kB. A reader uses `getCellFormat`.
 7. **The sink page** is light only and has 55 tiles; the first wish was 30 to 40.
 8. **Local paths in `docs/handoff/task-002.md`** (five places) and the four commits of open item 4 above are now public.
-9. **The pull request** waits for the owner's merge. `.claude/skills/vue-virtual-scroller/` in the app is still there.
+9. `.claude/skills/vue-virtual-scroller/` in the app is still there and describes a package that the app no longer has.
 
 **Not verified, added.** Firefox and Safari; the Command keys of a Mac; what a browser with its own menus does with Ctrl+D and Ctrl+R; a touch drag of the fill handle; a screen reader on row numbers and footer lists; an xlsx file with cell formats opened in Excel; the published pages in a browser after the last deploy (the deploy passed and the site answers).
