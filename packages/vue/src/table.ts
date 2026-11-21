@@ -920,12 +920,14 @@ const TableImpl = defineComponent(
 				error?: string
 				fillHandle: boolean
 				format?: CellFormat
+				formula?: string
 			}
 
 			/** What a cell holds: its editor, or its content, with the fill handle in the cell at the corner of the selected cells. */
 			function inCell(column: ColumnDef, col: number, state: RowState, cell: CellState) {
 				if (cell.editing) return editor(node, column, cell.error, cell.checking)
-				const shown = content(column, col, state, cell.format)
+				// The render reads the formula of the state, so a new formula renders this cell.
+				const shown = content(column, col, state, cell.format, cell.formula)
 				return cell.fillHandle ? [shown, h(TableFillHandle, { key: 'fill-handle' })] : shown
 			}
 
@@ -934,6 +936,7 @@ const TableImpl = defineComponent(
 				col: number,
 				state: RowState,
 				format: CellFormat | undefined,
+				own?: string,
 			) {
 				// With the id of the row, the format of the cell decides the text.
 				const text = api.text(node.row, column, flat.id)
@@ -953,7 +956,10 @@ const TableImpl = defineComponent(
 						pinned: flat.pinned,
 						toggleSelected,
 						toggleExpanded,
-						formula: api.cellFormula(flat.id, column.id),
+						formula:
+							own === undefined && !api.hasFormulas()
+								? undefined
+								: api.cellFormula(flat.id, column.id),
 					})
 				}
 				// Without a slot, the first cell of a tree row still needs a way to open it.

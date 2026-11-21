@@ -58,6 +58,7 @@ import type {
 	FormulaIssue,
 	FormulaPlace,
 	FormulaResult,
+	FormulaSummaryLine,
 	FormulaView,
 } from './formula/types'
 import { createColumnResize, type ResizeDraft } from './behaviors/resize'
@@ -393,6 +394,12 @@ export type TableController = {
 	 * rows, for the cells that they change; this is for a check after a load.
 	 */
 	recalculate(): number
+	/** The formulas as a short list: each text of a column once, with how many cells hold it. `limit` is 1 to 500, 100 by default. */
+	getFormulaSummary(limit?: number): { lines: FormulaSummaryLine[]; more: number }
+	/** The value that a formula would give at a cell, the active cell by default. Nothing is written. */
+	evaluateFormula(formula: string, at?: CellRef): unknown
+	/** The functions of the formulas: name, arguments and one line of help. */
+	getFormulaFunctions(): readonly { name: string; args: string; help: string }[]
 	/**
 	 * Changes the format of cells: how their values become text (`format`,
 	 * `decimals`, `currency`, `dateStyle`) and how they look (`align`, `bold`,
@@ -3700,7 +3707,7 @@ export const table = definePrimitive({
 				formula: formula ?? null,
 				text:
 					stored === undefined
-						? text(node.row, column, rowId)
+						? fieldText(node.row, column, shownFormat(column, rowId))
 						: found.print(stored, formula === undefined ? { columnId } : at, formulaSheet),
 				value,
 				error,
@@ -4064,6 +4071,16 @@ export const table = definePrimitive({
 			resetColumnPinning: () => resetColumns('columnPinning'),
 			setColumnAggregate: (columnId, aggregate) => chooseAggregate(columnId, aggregate),
 			getColumnFormula: (columnId) => readColumnFormula(columnId),
+			getFormulaSummary: (limit) => requireFormulas().summary(formulasNow.read(), limit),
+			evaluateFormula(formula, at) {
+				const found = requireFormulas()
+				const ref = at ?? activeCellRef()
+				if (!ref) throw new Error('No cell is active: pass `{ rowId, columnId }`.')
+				const node = requireRow(String(ref.rowId), 'evaluate a formula at')
+				const target = formulaTarget(ref.columnId, 'evaluate a formula at')
+				return found.evaluateText(formula, { rowId: node.id, columnId: target.id }, formulaSheet)
+			},
+			getFormulaFunctions: () => requireFormulas().functions(),
 			recalculate() {
 				const found = requireFormulas()
 				if (historyBusy()) {
@@ -5539,6 +5556,10 @@ export const table = definePrimitive({
 						: undefined),
 				}
 			},
+			storedFormula: (current: TableState, id: string) => {
+				const ref = parseCellKey(id)
+				return ref && formulaIn(current.cellFormulas, ref.rowId, ref.columnId)
+			},
 			/** For the slot props of a header: the formula of a computed column as a person reads it. */
 			headerFormula: (columnId: string) => {
 				const formula = engine() ? state().cellFormulas.columns?.[columnId] : undefined
@@ -5879,6 +5900,8 @@ export const table = definePrimitive({
 					error: id === undefined ? undefined : state.editErrors[id],
 					/** Whether the fill handle sits in this cell. The renderer then shows the `fill-handle` part in it. */
 					fillHandle: id !== undefined && api.fillHandleAt(props),
+					/** The formula of the cell of its own, in the stored form, so a renderer renders the cell again when it changes. */
+					formula: id === undefined ? undefined : api.storedFormula(state, id),
 				}
 			},
 			// The cells that a drag of the fill handle would fill. It changes with
@@ -6366,6 +6389,9 @@ export const table = definePrimitive({
 			'getCellFormula',
 			'setCellFormula',
 			'recalculate',
+			'getFormulaSummary',
+			'evaluateFormula',
+			'getFormulaFunctions',
 			'pinRow',
 			'scrollToRow',
 			'editCell',

@@ -24,6 +24,7 @@ import {
 import { namedColumns, parseTree, type FormulaNode } from './parser'
 import { addressRef, bracketRef, headerNames, printTree } from './print'
 import { moveFormula } from './move'
+import { formulaSummary } from './summary'
 import { changedCells, everyFormula } from './recheck'
 import { revertFormulas, setFormulas } from './state'
 import { formulaSigns, STORED_SIGNS } from './tokens'
@@ -171,6 +172,17 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 			return places
 		},
 		functions: () => FORMULA_FUNCTIONS,
+		summary: (formulas, limit) => formulaSummary(formulas, limit),
+		evaluateText(text, at, sheet) {
+			if (typeof text !== 'string' || !text.startsWith('=')) {
+				throw new Error('A formula is a text that starts with `=`, such as `=B2*C2`.')
+			}
+			const parsed = engine.parse(text, at, sheet)
+			if ('issues' in parsed) {
+				throw new Error(parsed.issues.map((issue) => describeFormulaIssue(issue)).join(' '))
+			}
+			return engine.evaluate(parsed.formula, at, sheet)
+		},
 		withColumns: (columns, layer) => withColumnFormulas(columns, layer, compile),
 		columnCircle: (columnId, formula, columns, layer) =>
 			columnCircle(columnId, formula, columns, layer, compile),

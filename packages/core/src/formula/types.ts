@@ -127,6 +127,17 @@ export type FormulaRows = {
 	told: readonly (readonly { rowId: string; columnId: string; value: unknown }[])[]
 }
 
+/** One line of `getFormulaSummary`: a formula text of a column, how many cells hold it, and one of them. */
+export type FormulaSummaryLine = {
+	columnId: string
+	/** The stored form, or the formula of the column for `ofColumn`. */
+	formula: string
+	cells: number
+	/** A row whose cell holds it, for `getCellFormula`. `null` for a formula of a column. */
+	rowId: string | null
+	ofColumn: boolean
+}
+
 /** The formula of a cell, or of its column, as a formula bar and an agent read it. */
 export type FormulaView = {
 	rowId: string
@@ -135,7 +146,7 @@ export type FormulaView = {
 	address: string
 	/** The formula of the cell itself in the stored form, or `null` when it has none. */
 	formula: string | null
-	/** The formula as a person reads it, or the text of the value for a cell without one. */
+	/** The formula as a person reads it, or the text that the field of a cell without one starts with. */
 	text: string
 	value: unknown
 	error: FormulaError | null
@@ -205,6 +216,16 @@ export type FormulaEngine = {
 	reads(formula: string, at: FormulaPlace, sheet: FormulaSheet): readonly FormulaPlace[]
 	/** The functions, for a list of a person or an agent. */
 	functions(): readonly { name: string; args: string; help: string }[]
+	/**
+	 * The formulas as a short list: each text of a column once, with how many
+	 * cells hold it. It throws for a `limit` that is no whole number from 1 to 500.
+	 */
+	summary(formulas: CellFormulas, limit: unknown): { lines: FormulaSummaryLine[]; more: number }
+	/**
+	 * The value of a formula at a cell, as a person types it or in the
+	 * stored form. Nothing is written. It throws with the words of the issue.
+	 */
+	evaluateText(text: unknown, at: FormulaPlace, sheet: FormulaSheet): unknown
 	/**
 	 * The columns of the owner with the formulas of the `columns` layer in
 	 * place. The same columns come back when the layer has no formula for

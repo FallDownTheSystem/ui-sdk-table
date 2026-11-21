@@ -199,6 +199,7 @@ The glue of the formulas in the main entry has a limit of 12 kB minified, which 
 | 6, cell formulas in the table: the rule of `=`, the join in `report()`, the steps, `getCellFormula`, `setCellFormula`, the attributes, the slot props and the view | 8.32 kB |
 | 7, the check after new rows, its guard and `recalculate()` | 9.46 kB |
 | 8, the formulas of a copy, a paste, a fill, a cut and a clear | 10.47 kB |
+| 9, `getFormulaSummary`, `evaluateFormula`, `getFormulaFunctions` and the formula in the state of a cell part (`useFormulaBar` is in the Vue entry of the formulas) | 10.99 kB |
 
 The main entry holds no text of the engine. The format `period` is in the main entry, as the plan says: the chunk of the formats, which the main entry and the export entry share, grows from 12.59 kB to 13.76 kB (4.66 kB to 5.09 kB compressed). The plan estimated about 20 kB for the entry with about 45 functions; slice 2 has 51 of them in 25.38 kB.
 

@@ -1,7 +1,8 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, expect, test } from 'vite-plus/test'
-import { h, nextTick, shallowRef } from 'vue'
-import { createFormulaEngine } from './formulas'
+import { createAgent } from '@ui-sdk/vue/agent'
+import { effectScope, h, nextTick, shallowRef } from 'vue'
+import { createFormulaEngine, useFormulaBar } from './formulas'
 import {
 	createTableController,
 	Table,
@@ -179,6 +180,7 @@ function owned(
 				controller,
 				formulas,
 				editable: true,
+				cellSelection: true,
 				history: true,
 				'aria-label': 'Sums',
 				cellFormulas: held.value,
@@ -330,4 +332,212 @@ test('`recalculate` reports every formula cell that does not hold its value, and
 	await plain.settle()
 	expect(calls).toBe(0)
 	expect(plain.checks()).toEqual([])
+})
+
+test('an agent reads and writes formulas with actions, and a wrong argument names what is valid', async () => {
+	const { controller } = owned(start(), shared)
+	const agent = createAgent()
+	const seen = agent.snapshot().find((component) => component.label === 'Sums')
+	expect(seen?.actions).toEqual(
+		expect.arrayContaining([
+			'getCellFormula',
+			'setCellFormula',
+			'getFormulaSummary',
+			'evaluateFormula',
+			'getFormulaFunctions',
+			'recalculate',
+		]),
+	)
+	const done = await agent.act({
+		steps: [{ ref: 'Sums', action: 'setCellFormula', args: ['c', 'total', '=[price@a]+[price]'] }],
+	})
+	expect(done.ok).toBe(true)
+	await nextTick()
+	expect(controller.getCellFormula('c', 'total')).toMatchObject({ text: '=A1+A3', value: 3 })
+	expect(controller.evaluateFormula('=A1*10', { rowId: 'b', columnId: 'total' })).toBe(20)
+	expect(
+		controller.getFormulaFunctions().find((entry) => entry.name === 'WEEKOF')?.args,
+	).toBeTruthy()
+	expect(controller.getFormulaSummary()).toEqual({
+		lines: [
+			{ columnId: 'total', formula: '=[price]*[qty]', cells: 2, rowId: 'a', ofColumn: false },
+			{
+				columnId: 'sum',
+				formula: '=SUM([price@a]:[price@b])',
+				cells: 1,
+				rowId: 'c',
+				ofColumn: false,
+			},
+			{ columnId: 'total', formula: '=[price@a]+[price]', cells: 1, rowId: 'c', ofColumn: false },
+		],
+		more: 0,
+	})
+	expect(controller.getFormulaSummary(1).more).toBe(2)
+
+	const wrong = await agent.act({
+		steps: [{ ref: 'Sums', action: 'getCellFormula', args: ['c', 'cost'] }],
+	})
+	expect(wrong.error?.message).toContain('Columns: price, qty, total, sum.')
+	expect(() => controller.getFormulaSummary(0)).toThrow('a whole number from 1 to 500')
+	expect(() => controller.evaluateFormula('=SUMM(1)', { rowId: 'a', columnId: 'total' })).toThrow(
+		'No function `SUMM`',
+	)
+	expect(() => controller.evaluateFormula('5', { rowId: 'a', columnId: 'total' })).toThrow(
+		'A formula is a text that starts with `=`',
+	)
+	expect(() => controller.evaluateFormula('=1')).toThrow('No cell is active')
+	expect(() => controller.setCellFormula('zz', 'total', '=1')).toThrow('No row "zz"')
+})
+
+test('the snapshot of an agent is as large with 300 formula cells as without them', () => {
+	const many = Array.from({ length: 300 }, (_, index) => ({
+		id: `r${index}`,
+		price: index,
+		qty: 2,
+	}))
+	const cells: Record<string, Record<string, string>> = {}
+	for (const row of many) cells[row.id] = { total: '=[price]*[qty]' }
+	const size = (cellFormulas: CellFormulas, label: string) => {
+		const wrapper = mount(
+			() =>
+				h(Table<Sum>, {
+					rows: many,
+					columns: sumColumns,
+					formulas: engine,
+					cellFormulas,
+					'aria-label': label,
+				}),
+			{ attachTo: document.body },
+		)
+		wrappers.push(wrapper)
+		const found = createAgent()
+			.snapshot()
+			.find((component) => component.label === label)
+		return JSON.stringify(found).length - label.length
+	}
+	expect(size({ cells }, 'With')).toBe(size({}, 'Bare'))
+})
+
+test('`useFormulaBar` follows the active cell, keeps a draft with its cell, saves it, and keeps a refusal with its words', async () => {
+	const { controller, held, rows } = owned(start(), shared)
+	await nextTick()
+	const scope = effectScope()
+	const bar = scope.run(() => useFormulaBar(controller))
+	if (!bar) throw new Error('No bar.')
+	expect(bar.ready.value).toBe(false)
+	controller.selectCells({ rowId: 'a', columnId: 'total' })
+	await nextTick()
+	expect([bar.address.value, bar.text.value, bar.dirty.value]).toEqual(['C1', '=A1*B1', false])
+
+	bar.input('=A1*B1*2')
+	// The active cell moves; the draft stays with its cell.
+	controller.selectCells({ rowId: 'b', columnId: 'price' })
+	await nextTick()
+	expect([bar.address.value, bar.text.value, bar.dirty.value]).toEqual(['C1', '=A1*B1*2', true])
+	expect(bar.commit()).toBe(true)
+	await nextTick()
+	expect(held.value.cells?.a?.total).toBe('=[price]*[qty]*2')
+	expect(rows.value[0]?.total).toBe(12)
+	expect([bar.address.value, bar.text.value]).toEqual(['A2', '1.5'])
+
+	bar.input('=SUMM(1)')
+	expect(bar.commit()).toBe(false)
+	expect(bar.error.value).toContain('No function `SUMM`')
+	expect(bar.text.value).toBe('=SUMM(1)')
+	bar.cancel()
+	expect([bar.text.value, bar.error.value, bar.dirty.value]).toEqual(['1.5', '', false])
+	scope.stop()
+})
+
+test('a table with `manualPage` does no check after new rows', async () => {
+	let calls = 0
+	const counted = {
+		...engine,
+		recheck: (...args: Parameters<typeof engine.recheck>) => {
+			calls++
+			return engine.recheck(...args)
+		},
+	}
+	const rows = shallowRef<Sum[]>(start())
+	const reasons: string[] = []
+	const wrapper = mount(
+		() =>
+			h(Table<Sum>, {
+				rows: rows.value,
+				columns: sumColumns,
+				formulas: counted,
+				manualPage: true,
+				rowCount: 3,
+				cellFormulas: shared,
+				'aria-label': 'Paged',
+				onCellEdit: (_edits: readonly CellEdit[], details: TableEditDetails) =>
+					reasons.push(details.reason),
+			}),
+		{ attachTo: document.body },
+	)
+	wrappers.push(wrapper)
+	await nextTick()
+	rows.value = rows.value.map((row) => ({ ...row, price: row.price + 1 }))
+	await nextTick()
+	await Promise.resolve()
+	await nextTick()
+	expect(calls).toBe(0)
+	expect(reasons).toEqual([])
+})
+
+test('in a table that holds its formulas, a new formula of a cell that keeps its value renders that cell and no other, and its slot reads the formula', async () => {
+	const rendered: string[] = []
+	const rows = shallowRef<Sum[]>(start())
+	const controller = createTableController()
+	const cell = (props: {
+		node: { id: string }
+		column: { id: string }
+		text: string
+		formula?: { text: string }
+	}) => {
+		rendered.push(`${props.node.id}|${props.column.id}`)
+		return `${props.text} ${props.formula?.text ?? '-'}`
+	}
+	const wrapper = mount(
+		() =>
+			h(
+				Table<Sum>,
+				{
+					rows: rows.value,
+					columns: sumColumns,
+					controller,
+					formulas: engine,
+					editable: true,
+					'aria-label': 'Renders',
+					// A prop of the owner renders the whole table when it changes, as every prop of `Table` does.
+					defaultCellFormulas: shared,
+					// The owner gives new rows only when a value changed.
+					onCellEdit: (edits: readonly CellEdit[]) => {
+						if (edits.every((edit) => edit.value === edit.previous)) return
+						rows.value = rows.value.map((row) => {
+							const mine = edits.filter((edit) => edit.rowId === row.id)
+							return mine.length
+								? { ...row, ...Object.fromEntries(mine.map((edit) => [edit.columnId, edit.value])) }
+								: row
+						})
+					},
+				},
+				{ cell },
+			),
+		{ attachTo: document.body },
+	)
+	wrappers.push(wrapper)
+	await nextTick()
+	rendered.length = 0
+	const b = () => wrapper.get('tbody tr:nth-child(2) td[data-column="total"]')
+	expect(b().text()).toBe('6 =A2*B2')
+	// The total of b stays 6, so only its formula changes.
+	controller.setCellFormula('b', 'total', '=6')
+	await nextTick()
+	expect(rendered).toEqual(['b|total'])
+	expect(b().text()).toBe('6 =6')
+	controller.setCellFormula('b', 'total', null)
+	await nextTick()
+	expect(b().text()).toBe('6 -')
+	expect(b().attributes('data-formula')).toBeUndefined()
 })

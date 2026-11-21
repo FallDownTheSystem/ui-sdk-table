@@ -276,6 +276,14 @@ describe('a table without the `formulas` option', () => {
 			expect(() => view.api.setCellFormula('a', 'total', '=1')).toThrow(
 				'This table has no formulas',
 			)
+			for (const read of [
+				() => view.api.getFormulaSummary(),
+				() => view.api.evaluateFormula('=1', { rowId: 'a', columnId: 'total' }),
+				() => view.api.getFormulaFunctions(),
+				() => view.api.recalculate(),
+			]) {
+				expect(read).toThrow('This table has no formulas: pass `formulas`.')
+			}
 		} finally {
 			view.unmount()
 		}

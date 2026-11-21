@@ -607,3 +607,29 @@ test.describe('fill, copy, paste, cut and clear with formulas', () => {
 		await expect(lineCell(table, 2, 'price')).toHaveText('0.20')
 	})
 })
+
+test('the formula bar follows the active cell, a formula typed there lands in the cell, and Escape puts the text back', async ({
+	page,
+}) => {
+	const table = await openLines(page)
+	const bar = page.getByTestId('bar')
+	await lineCell(table, 1, 'price').click()
+	await expect(page.getByTestId('bar-address')).toHaveText('B2')
+	await expect(bar).toHaveValue('0.5')
+	await lineCell(table, 1, 'total').click()
+	await expect(page.getByTestId('bar-address')).toHaveText('D2')
+	await bar.fill('=B2*C2')
+	await bar.press('Enter')
+	await expect(lineCell(table, 1, 'total')).toHaveText('45.00')
+	await expect(lineCell(table, 1, 'total')).toBeFocused()
+	await expect(bar).toHaveValue('=B2*C2')
+
+	await bar.fill('=SUMM(1)')
+	await bar.press('Enter')
+	await expect(page.getByTestId('bar-error')).toContainText('No function `SUMM`')
+	await expect(bar).toBeFocused()
+	await bar.press('Escape')
+	await expect(bar).toHaveValue('=B2*C2')
+	await expect(page.getByTestId('bar-error')).toHaveText('')
+	await expect(lineCell(table, 1, 'total')).toBeFocused()
+})

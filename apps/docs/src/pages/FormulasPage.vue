@@ -13,6 +13,7 @@ import {
 	formulaColumn,
 	parseFormula,
 	printFormula,
+	useFormulaBar,
 } from 'ui-sdk-table-vue/formulas'
 import { computed, shallowRef } from 'vue'
 
@@ -192,6 +193,21 @@ const lineColumns: ColumnDef<Line>[] = [
 		width: 120,
 	},
 ]
+// The formula bar of the sheet: a field above it for the active cell.
+const lineController = createTableController()
+const bar = useFormulaBar(lineController)
+const linesTable = shallowRef<HTMLElement | null>(null)
+function backToCell() {
+	linesTable.value?.querySelector<HTMLElement>('[data-active]')?.focus()
+}
+function commitBar() {
+	if (bar.commit()) backToCell()
+}
+function cancelBar() {
+	bar.cancel()
+	backToCell()
+}
+
 function editLines(edits: readonly CellEdit<Line>[]) {
 	lines.value = lines.value.map((line) => {
 		const mine = edits.filter((edit) => edit.rowId === line.id)
@@ -342,9 +358,26 @@ function filterPeriod() {
 		</button>
 	</div>
 	<output data-testid="line-formulas">{{ JSON.stringify(lineFormulas) }}</output>
-	<div class="scroller">
+	<form class="toolbar" @submit.prevent="commitBar">
+		<output data-testid="bar-address">{{ bar.address.value }}</output>
+		<label>
+			Formula bar
+			<input
+				data-testid="bar"
+				spellcheck="false"
+				:value="bar.text.value"
+				:disabled="!bar.ready.value"
+				:aria-invalid="!!bar.error.value"
+				@input="bar.input(($event.target as HTMLInputElement).value)"
+				@keydown.escape.prevent="cancelBar"
+			/>
+		</label>
+		<output role="status" data-testid="bar-error">{{ bar.error.value }}</output>
+	</form>
+	<div ref="linesTable" class="scroller">
 		<Table
 			v-model:cell-formulas="lineFormulas"
+			:controller="lineController"
 			:formulas="engine"
 			sheet
 			column-letters

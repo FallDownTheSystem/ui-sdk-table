@@ -31,6 +31,7 @@ export type {
 	FormulaPlace,
 	FormulaResult,
 	FormulaSheet,
+	FormulaSummaryLine,
 	FormulaView,
 } from './formula/types'
 export type { ExportCell, ExportColumn, ExportData, ExportOptions, ExportRow } from './export/data'
