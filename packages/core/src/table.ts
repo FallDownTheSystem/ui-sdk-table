@@ -1332,14 +1332,25 @@ export const table = definePrimitive({
 
 		let seenRows = options().rows
 		let seenColumns = options().columns
-		let seenPages = `${options().manualPage}|${options().rowCount}|${options().loading}`
+		let seenEngine = options().formulas
+		const pagesOf = (next: TableOptions) =>
+			`${next.manualPage}|${next.rowCount}|${next.loading}|${next.locale}`
+		let seenPages = pagesOf(options())
 		context.onOptions((next) => {
 			// The count and the end of a load can come after the rows, and each
-			// can change the last page as new rows can.
-			const pages = `${next.manualPage}|${next.rowCount}|${next.loading}`
-			if (next.rows === seenRows && next.columns === seenColumns && pages === seenPages) return
+			// can change the last page as new rows can. A locale and an engine
+			// change the texts of the view, so a listener of `subscribe` reads again.
+			const pages = pagesOf(next)
+			if (
+				next.rows === seenRows &&
+				next.columns === seenColumns &&
+				next.formulas === seenEngine &&
+				pages === seenPages
+			)
+				return
 			seenRows = next.rows
 			seenColumns = next.columns
+			seenEngine = next.formulas
 			seenPages = pages
 			context.store.set({ revision: state().revision + 1 })
 		})

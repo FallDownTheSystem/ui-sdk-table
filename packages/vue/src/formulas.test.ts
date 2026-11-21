@@ -6,6 +6,7 @@ import { createFormulaEngine, useFormulaBar } from './formulas'
 import {
 	createTableController,
 	Table,
+	useTableView,
 	type CellEdit,
 	type CellFormulas,
 	type TableEditDetails,
@@ -540,4 +541,40 @@ test('in a table that holds its formulas, a new formula of a cell that keeps its
 	await nextTick()
 	expect(b().text()).toBe('6 -')
 	expect(b().attributes('data-formula')).toBeUndefined()
+})
+
+test('a new locale of the table reaches the view and the formula bar, with no other change', async () => {
+	const locale = shallowRef('en-US')
+	// The rows and the columns stay the same objects, so only the locale is new.
+	const rows: Line[] = [{ id: 'a', price: 2, qty: 3 }]
+	const controller = createTableController()
+	const scope = effectScope()
+	const { view, bar } =
+		scope.run(() => ({ view: useTableView(controller), bar: useFormulaBar(controller) })) ?? {}
+	const wrapper = mount(
+		() =>
+			h(Table<Line>, {
+				rows,
+				columns,
+				controller,
+				formulas: engine,
+				locale: locale.value,
+				sheet: true,
+				defaultCellFormulas: { cells: { a: { total: '=ROUND([price]*1.5, 1)' } } },
+				'aria-label': 'Lines',
+			}),
+		{ attachTo: document.body },
+	)
+	wrappers.push(wrapper)
+	await nextTick()
+	controller.selectCells({ rowId: 'a', columnId: 'total' })
+	await nextTick()
+	expect(view?.value?.formula?.text).toBe('=ROUND(A1*1.5, 1)')
+	expect(bar?.text.value).toBe('=ROUND(A1*1.5, 1)')
+
+	locale.value = 'de-DE'
+	await nextTick()
+	expect(view?.value?.formula?.text).toBe('=ROUND(A1*1,5; 1)')
+	expect(bar?.text.value).toBe('=ROUND(A1*1,5; 1)')
+	scope.stop()
 })

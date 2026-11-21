@@ -10,7 +10,7 @@ import {
 	type ColumnDef,
 } from 'ui-sdk-table-vue'
 import { createFormulaEngine } from 'ui-sdk-table-vue/formulas'
-import { shallowRef, watch } from 'vue'
+import { computed, shallowRef } from 'vue'
 import SinkSegment from '../../parts/SinkSegment.vue'
 
 type Row = { id: string; item: string; price: number; marked?: unknown }
@@ -41,20 +41,16 @@ const controller = createTableController()
 const view = useTableView(controller)
 const locale = shallowRef<Locale>('de-DE')
 const formulas = shallowRef<CellFormulas>(START)
-// The formula of C1 as a person of this language reads it, and what a sum gives. The language
-// is an option and no change of the table, so the view does not tell it: read after each render.
-const typed = shallowRef('')
-const sum = shallowRef('')
-watch(
-	[view, locale],
-	() => {
-		if (!view.value) return
-		typed.value = controller.getCellFormula('a', 'marked')?.text ?? ''
-		const value = controller.evaluateFormula('=SUM(C1:C2)', { rowId: 'a', columnId: 'item' })
-		sum.value = typeof value === 'number' ? value.toLocaleString(locale.value) : String(value)
-	},
-	{ flush: 'post', immediate: true },
+// The formula of C1 as a person of this language reads it, and what a sum gives. A new
+// language is a change of the view, so both follow it.
+const typed = computed(() =>
+	view.value ? (controller.getCellFormula('a', 'marked')?.text ?? '') : '',
 )
+const sum = computed(() => {
+	if (!view.value) return ''
+	const value = controller.evaluateFormula('=SUM(C1:C2)', { rowId: 'a', columnId: 'item' })
+	return typeof value === 'number' ? value.toLocaleString(locale.value) : String(value)
+})
 </script>
 
 <template>
