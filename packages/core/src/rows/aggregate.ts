@@ -39,29 +39,34 @@ export const aggregates: Record<AggregateName, (values: readonly unknown[]) => u
 	first: (values) => present(values)[0],
 }
 
+/** Which function counts the total of a column. Without it, the `aggregate` of the column does. */
+export type AggregatePick<Row> = (
+	column: ColumnDef<Row>,
+) => AggregateName | AggregateFn<Row> | undefined
+
 /** One value for each column that has an `aggregate`, over the given rows. */
 export function aggregateRows<Row>(
 	rows: readonly DataRow<Row>[],
 	columns: readonly ColumnDef<Row>[],
+	pick?: AggregatePick<Row>,
 ): Record<string, unknown> {
 	const result: Record<string, unknown> = {}
 	for (const column of leafColumns(columns)) {
-		if (!column.aggregate) continue
+		const aggregate = pick ? pick(column) : column.aggregate
+		if (!aggregate) continue
 		const values = rows.map((node) => cellValue(node.row, column))
-		if (typeof column.aggregate === 'function') {
-			const custom: AggregateFn<Row> = column.aggregate
+		if (typeof aggregate === 'function') {
+			const custom: AggregateFn<Row> = aggregate
 			result[column.id] = custom(
 				values,
 				rows.map((node) => node.row),
 			)
 			continue
 		}
-		const built = aggregates[column.aggregate] as
-			| ((values: readonly unknown[]) => unknown)
-			| undefined
+		const built = aggregates[aggregate] as ((values: readonly unknown[]) => unknown) | undefined
 		if (!built) {
 			throw new Error(
-				`No aggregate "${String(column.aggregate)}" for column "${column.id}". Aggregates: ${Object.keys(aggregates).join(', ')}, or a function.`,
+				`No aggregate "${String(aggregate)}" for column "${column.id}". Aggregates: ${Object.keys(aggregates).join(', ')}, or a function.`,
 			)
 		}
 		result[column.id] = built(values)
@@ -77,8 +82,9 @@ export function aggregateRows<Row>(
 export function totalRows<Row>(
 	rows: readonly DataRow<Row>[],
 	columns: readonly ColumnDef<Row>[],
+	pick?: AggregatePick<Row>,
 ): Record<string, unknown> {
 	const all: DataRow<Row>[] = []
 	walkRows(rows, (node) => all.push(node))
-	return aggregateRows(all, columns)
+	return aggregateRows(all, columns, pick)
 }

@@ -4,10 +4,15 @@ import {
 	cellKey,
 	cellValue,
 	editText,
+	aggregateName,
 	table as tablePrimitive,
 	toText,
+	type AggregateName,
 	type CellEdit,
+	type CellFormat,
+	type CellFormats,
 	type CellRange,
+	type ColumnAggregates,
 	type ColumnDef,
 	type ColumnPinning,
 	type ColumnVisibility,
@@ -67,6 +72,7 @@ import {
 	TableCol,
 	TableEditError,
 	TableEditor,
+	TableFillHandle,
 	TableFoot,
 	TableHead,
 	TableHeaderCell,
@@ -91,6 +97,8 @@ const MODELS = [
 	'columnWidths',
 	'columnPinning',
 	'rowPinning',
+	'columnAggregates',
+	'cellFormats',
 	'cellRange',
 ] as const
 type Model = (typeof MODELS)[number]
@@ -109,6 +117,7 @@ const STRUCTURE = [
 	'columnDrag',
 	'rowPinning',
 	'rowWindow',
+	'columnAggregates',
 ] as const
 
 const OPTIONS = [
@@ -143,6 +152,7 @@ const OPTIONS = [
 	'hasDetail',
 	'sheet',
 	'history',
+	'fillHandle',
 	'editable',
 	'cellSelection',
 	'manualSort',
@@ -163,6 +173,9 @@ const OPTIONS = [
 	'defaultColumnWidths',
 	'defaultColumnPinning',
 	'defaultRowPinning',
+	'defaultColumnAggregates',
+	'defaultCellFormats',
+	'formatColors',
 	'defaultCellRange',
 ] as const
 
@@ -284,17 +297,26 @@ const OWN_ATTRS: ReadonlySet<string> = new Set([
 	'aria-setsize',
 	'aria-sort',
 	'data-active',
+	'data-aggregate',
+	'data-align',
+	'data-bold',
 	'data-cell-selection',
 	'data-checking',
+	'data-color',
 	'data-column',
 	'data-dragging',
 	'data-editable',
 	'data-editing',
 	'data-empty',
 	'data-expanded',
+	'data-fill',
+	'data-fill-edge',
+	'data-fill-target',
+	'data-filling',
 	'data-format',
 	'data-grabbed',
 	'data-invalid',
+	'data-italic',
 	'data-kind',
 	'data-lead',
 	'data-loading',
@@ -302,6 +324,7 @@ const OWN_ATTRS: ReadonlySet<string> = new Set([
 	'data-pinned',
 	'data-pinned-edge',
 	'data-range-edge',
+	'data-row-header',
 	'data-row-window',
 	'data-selected',
 	'data-sheet',
@@ -314,7 +337,10 @@ const OWN_ATTRS: ReadonlySet<string> = new Set([
 
 // An option that takes `true` or another value. Without `Boolean` in its
 // type, the short form `<Table history>` passes an empty text.
-const MIXED: Readonly<Record<string, unknown[]>> = { history: [Boolean, Object] }
+const MIXED: Readonly<Record<string, unknown[]>> = {
+	history: [Boolean, Object],
+	fillHandle: [Boolean, String],
+}
 
 /** The attributes of a caller without the names that belong to the table. */
 function callerAttrs(attrs: PartAttrs | undefined): PartAttrs | undefined {
@@ -354,6 +380,8 @@ export type TableEmits = {
 	'update:columnWidths': (value: ColumnWidths) => void
 	'update:columnPinning': (value: ColumnPinning) => void
 	'update:rowPinning': (value: RowPinning) => void
+	'update:columnAggregates': (value: ColumnAggregates) => void
+	'update:cellFormats': (value: CellFormats) => void
 	'update:cellRange': (value: CellRange | null) => void
 	sortChange: (value: readonly SortRule[], details: TableChangeDetails) => void
 	filterChange: (value: FilterState, details: TableChangeDetails) => void
@@ -367,6 +395,8 @@ export type TableEmits = {
 	columnWidthsCommit: (value: ColumnWidths, details: TableCommitDetails) => void
 	columnPinningChange: (value: ColumnPinning, details: TableChangeDetails) => void
 	rowPinningChange: (value: RowPinning, details: TableChangeDetails) => void
+	columnAggregatesChange: (value: ColumnAggregates, details: TableChangeDetails) => void
+	cellFormatsChange: (value: CellFormats, details: TableChangeDetails) => void
 	cellRangeChange: (value: CellRange | null, details: TableChangeDetails) => void
 	cellRangeCommit: (value: CellRange | null, details: TableCommitDetails) => void
 	/** Cells got new values. Put them into the rows; `details.cancel()` refuses them. */
@@ -397,8 +427,15 @@ export type CellSlotProps<Row> = {
 	node: DataRow<Row>
 	column: ColumnDef<Row>
 	value: unknown
-	/** The value as text, with the format of the column. */
+	/** The value as text, with the format of the cell, else of its column. */
 	text: string
+	/**
+	 * The format that the cell has of its own, from `cellFormats`: the format
+	 * of its column with the format of the cell over it. `undefined` when
+	 * neither says anything. Its looks are also on the cell as `data-align`,
+	 * `data-bold`, `data-italic`, `data-color` and `data-fill`.
+	 */
+	format: CellFormat | undefined
 	selected: boolean
 	expanded: boolean
 	expandable: boolean
@@ -436,6 +473,20 @@ export type EditorSlotProps<Row> = {
 	save: (value: unknown, event?: Event) => void
 	/** Closes the editor without a save. Focus goes back to the cell. */
 	cancel: () => void
+}
+
+export type RowHeaderSlotProps<Row> = {
+	row: Row
+	node: DataRow<Row>
+	column: ColumnDef<Row>
+	/** The number of the row, from 1: its place among the rows that the table shows, counted over the pages. */
+	number: number
+	/**
+	 * Selects the cells of the row. With Shift in the event, the rows from
+	 * the active cell to this one. A press on the cell does the same; this is
+	 * for a control inside it. It throws without the `cellSelection` option.
+	 */
+	selectRow: (event?: Event) => void
 }
 
 export type DetailSlotProps<Row> = {
@@ -478,6 +529,8 @@ export type GroupTotalSlotProps<Row> = {
 	text: string
 	/** The totals of every column that has one, by column id. */
 	totals: Record<string, unknown>
+	/** The function of the total: one of the built-in names, `custom` for a function of the column, or `undefined` without a total. */
+	aggregate: AggregateName | 'custom' | undefined
 	expanded: boolean
 	level: number
 	path: readonly GroupPathEntry<Row>[]
@@ -489,6 +542,14 @@ export type FootSlotProps<Row> = {
 	text: string
 	/** The totals of every column that has one, by column id. */
 	totals: Record<string, unknown>
+	/** The function of the total: one of the built-in names, `custom` for a function of the column, or `undefined` without a total. */
+	aggregate: AggregateName | 'custom' | undefined
+	/**
+	 * Chooses the function of the total of this column, for a picker in the
+	 * footer. `null` takes the total away, and `undefined` gives the column
+	 * the `aggregate` of its definition back. The group rows and an export follow.
+	 */
+	setAggregate: (aggregate: AggregateName | null | undefined, event?: Event) => void
 }
 
 export type TableSlots<Row> = {
@@ -516,6 +577,8 @@ export type TableSlots<Row> = {
 	/** The label cell of a group row. */
 	group?: (props: GroupSlotProps<Row>) => VNodeChild
 	'group-total'?: (props: GroupTotalSlotProps<Row>) => VNodeChild
+	/** The cell with the number of a row, in a column with `rowHeader`. */
+	'row-header'?: (props: RowHeaderSlotProps<Row>) => VNodeChild
 	/** The detail row of a row, for the rows that `hasDetail` names. */
 	detail?: (props: DetailSlotProps<Row>) => VNodeChild
 	/** Shown in place of the rows when no row passes the filters. */
@@ -558,6 +621,8 @@ const TableImpl = defineComponent(
 			onColumnWidthsChange: report('columnWidths'),
 			onColumnPinningChange: report('columnPinning'),
 			onRowPinningChange: report('rowPinning'),
+			onColumnAggregatesChange: report('columnAggregates'),
+			onCellFormatsChange: report('cellFormats'),
 			onCellRangeChange: report('cellRange'),
 			onCellRangeCommit: (value: CellRange | null, details: TableCommitDetails) =>
 				(emit as (name: string, ...args: unknown[]) => void)('cellRangeCommit', value, details),
@@ -674,7 +739,7 @@ const TableImpl = defineComponent(
 					const totals = api.totals(group)
 					const totalTexts: Record<string, string> = {}
 					for (const total of api.allColumns()) {
-						if (total.aggregate !== undefined) {
+						if (api.aggregateOf(total) !== undefined) {
 							totalTexts[total.id] = api.totalText(total, totals[total.id])
 						}
 					}
@@ -697,7 +762,7 @@ const TableImpl = defineComponent(
 					api.groupText(group),
 				)
 				// A total of a column under the label has no cell of its own, so the label says it.
-				const hidden = split === undefined ? [] : covered.filter((total) => total.aggregate)
+				const hidden = split === undefined ? [] : covered.filter((total) => api.aggregateOf(total))
 				if (!hidden.length) return button
 				const totals = api.totals(group)
 				return [button, ...hidden.map((total) => ` ${api.totalText(total, totals[total.id])}`)]
@@ -719,7 +784,10 @@ const TableImpl = defineComponent(
 				...columns.slice(span).map((column, offset) => {
 					const totals = api.totals(group)
 					const value = totals[column.id]
-					const text = column.aggregate ? api.totalText(column, value) : ''
+					const aggregate = aggregateName(api.aggregateOf(column))
+					// The text is made when the cell renders: a new format of the column
+					// renders this cell, and not its row.
+					const text = () => (aggregate ? api.totalText(column, value) : '')
 					const slot = slots[`group-total-${column.id}`] ?? slots['group-total']
 					return h(
 						TableCell,
@@ -736,13 +804,14 @@ const TableImpl = defineComponent(
 										group,
 										column,
 										value,
-										text,
+										text: text(),
 										totals,
+										aggregate,
 										expanded: flat.expanded,
 										level: flat.level,
 										path,
 									})
-								: text,
+								: text(),
 					)
 				}),
 			])
@@ -758,9 +827,29 @@ const TableImpl = defineComponent(
 			const toggleSelected = (event?: Event) => api.toggleSelected(flat.id, event)
 			const toggleExpanded = (event?: Event) => api.toggleExpanded(flat.id, event)
 			type RowState = { selected: boolean; expanded: boolean }
+			type CellState = {
+				editing: boolean
+				checking: boolean
+				error?: string
+				fillHandle: boolean
+				format?: CellFormat
+			}
 
-			function content(column: ColumnDef, col: number, state: RowState) {
-				const text = api.text(node.row, column)
+			/** What a cell holds: its editor, or its content, with the fill handle in the cell at the corner of the selected cells. */
+			function inCell(column: ColumnDef, col: number, state: RowState, cell: CellState) {
+				if (cell.editing) return editor(node, column, cell.error, cell.checking)
+				const shown = content(column, col, state, cell.format)
+				return cell.fillHandle ? [shown, h(TableFillHandle, { key: 'fill-handle' })] : shown
+			}
+
+			function content(
+				column: ColumnDef,
+				col: number,
+				state: RowState,
+				format: CellFormat | undefined,
+			) {
+				// With the id of the row, the format of the cell decides the text.
+				const text = api.text(node.row, column, flat.id)
 				const slot = slots[`col-${column.id}`] ?? slots.cell
 				if (slot) {
 					return slot({
@@ -769,6 +858,7 @@ const TableImpl = defineComponent(
 						column,
 						value: cellValue(node.row, column),
 						text,
+						format,
 						selected: state.selected,
 						expanded: state.expanded,
 						expandable: flat.expandable,
@@ -809,37 +899,63 @@ const TableImpl = defineComponent(
 					// selection, so a new selection renders this row and no other.
 					default: ({ state }: { state: RowState }) =>
 						columns.map((column, col) =>
-							h(
-								TableCell,
-								{
-									...(props.cellAttrs
-										? cellAttrs({
-												kind: 'cell',
-												column,
-												row: node.row,
-												node,
-												value: cellValue(node.row, column),
-											})
-										: undefined),
-									key: column.id,
-									value: cellId(flat.id, column.id),
-									row: index,
-									col,
-								},
-								{
-									// The state of the cell part says whether its editor is open,
-									// so the start and the end of an edit render one cell.
-									default: (cell: {
-										state: { editing: boolean; checking: boolean; error?: string }
-									}) =>
-										cell.state.editing
-											? editor(node, column, cell.state.error, cell.state.checking)
-											: content(column, col, state),
-								},
-							),
+							column.rowHeader
+								? rowHeader(column, col)
+								: h(
+										TableCell,
+										{
+											...(props.cellAttrs
+												? cellAttrs({
+														kind: 'cell',
+														column,
+														row: node.row,
+														node,
+														value: cellValue(node.row, column),
+													})
+												: undefined),
+											key: column.id,
+											value: cellId(flat.id, column.id),
+											row: index,
+											col,
+										},
+										{
+											// The state of the cell part says whether its editor is open,
+											// so the start and the end of an edit render one cell.
+											default: (cell: { state: CellState }) =>
+												inCell(column, col, state, cell.state),
+										},
+									),
 						),
 				},
 			)
+
+			// The number of the row is its header: a `th`, as the header of a column is.
+			function rowHeader(column: ColumnDef, col: number) {
+				return h(
+					TableHeaderCell,
+					{
+						...(props.cellAttrs
+							? cellAttrs({ kind: 'cell', column, row: node.row, node, value: undefined })
+							: undefined),
+						key: column.id,
+						value: cellId(flat.id, column.id),
+						row: index,
+						col,
+					},
+					() => {
+						const number = api.rowNumber(flat.id) ?? 0
+						return slots['row-header']
+							? slots['row-header']({
+									row: node.row,
+									node,
+									column,
+									number,
+									selectRow: (event?: Event) => api.selectRowCells(flat.id, event),
+								})
+							: String(number)
+					},
+				)
+			}
 		}
 
 		function editor(
@@ -950,7 +1066,9 @@ const TableImpl = defineComponent(
 				h(TablePlainRow, { ...rowAttrs({ kind: 'foot' }), index, footer: true }, () =>
 					columns.map((column, col) => {
 						const value = totals[column.id]
-						const text = column.aggregate ? api.totalText(column, value) : ''
+						const aggregate = aggregateName(api.aggregateOf(column))
+						// As in a group row: the text is made when the cell renders.
+						const text = () => (aggregate ? api.totalText(column, value) : '')
 						const slot = slots[`foot-${column.id}`] ?? slots.foot
 						return h(
 							TableCell,
@@ -961,7 +1079,18 @@ const TableImpl = defineComponent(
 								row: index,
 								col,
 							},
-							() => (slot ? slot({ column, value, text, totals }) : text),
+							() =>
+								slot
+									? slot({
+											column,
+											value,
+											text: text(),
+											totals,
+											aggregate,
+											setAggregate: (name: AggregateName | null | undefined, event?: Event) =>
+												api.chooseAggregate(column.id, name, event),
+										})
+									: text(),
 						)
 					}),
 				),

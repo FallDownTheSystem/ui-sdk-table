@@ -434,3 +434,159 @@ describe('the path of a group', () => {
 		}
 	})
 })
+
+describe('the function of a total, chosen at run time', () => {
+	test('a choice wins over the definition, in the footer, in a group row, in `getTotals` and in an export', () => {
+		const view = setup()
+		try {
+			view.api.setColumnAggregate('score', 'mean')
+			expect(view.state.columnAggregates).toEqual({ score: 'mean' })
+			expect(view.changes.at(-1)).toMatchObject({ key: 'columnAggregates' })
+			expect(view.api.getView().columnAggregates).toEqual({ score: 'mean' })
+			expect(view.api.getTotals()).toEqual({
+				score: { value: 35, text: '35' },
+				hours: { value: 3.5, text: '3.50' },
+			})
+			expect(view.api.getTotals(DESIGN).score).toEqual({ value: 40, text: '40' })
+			expect(view.api.totals(group(view, DESIGN))).toEqual({ score: 40, hours: 4 })
+			const data = view.api.exportData({ groups: true, totals: true })
+			const score = data.columns.findIndex((column) => column.id === 'score')
+			expect(data.rows.find((row) => row.kind === 'total')?.cells[score]).toEqual({
+				value: 35,
+				text: '35',
+			})
+			expect(
+				data.rows.find((row) => row.kind === 'group' && row.label?.startsWith('Design'))?.cells[
+					score
+				],
+			).toEqual({ value: 40, text: '40' })
+			// A count is a plain number, whatever the format of the column.
+			view.api.setColumnAggregate('hours', 'count')
+			expect(view.api.getTotals().hours).toEqual({ value: 4, text: '4' })
+			// `undefined` gives the column the function of its definition back.
+			view.api.setColumnAggregate('score', undefined)
+			view.api.setColumnAggregate('hours', undefined)
+			expect(view.state.columnAggregates).toEqual({})
+			expect(view.api.getTotals()).toEqual({
+				score: { value: 140, text: '140' },
+				hours: { value: 3.5, text: '3.50' },
+			})
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('`null` takes a total away, and the footer row goes with the last one', () => {
+		const view = setup()
+		try {
+			expect(view.api.footerRowCount()).toBe(1)
+			const rows = view.api.gridRowCount()
+			view.api.setColumnAggregate('score', null)
+			expect(view.api.getTotals()).toEqual({ hours: { value: 3.5, text: '3.50' } })
+			expect(view.api.footerRowCount()).toBe(1)
+			// The label of a group row now covers the score column too.
+			expect(view.api.groupSpan()).toBe(4)
+			expect(view.api.groupCell(1, 3)).toBe('group-label')
+			view.api.setColumnAggregate('hours', null)
+			expect(view.api.getTotals()).toEqual({})
+			expect(view.api.footerRowCount()).toBe(0)
+			expect(view.api.gridRowCount()).toBe(rows - 1)
+			// A group row is one wide cell again.
+			expect(view.api.groupSpan()).toBeUndefined()
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a column without an `aggregate` gets one, and the footer row comes', () => {
+		const plain: ColumnDef<Person>[] = [{ id: 'name' }, { id: 'team' }, { id: 'score' }]
+		const view = setup({}, plain)
+		try {
+			expect(view.api.footerRowCount()).toBe(0)
+			expect(view.api.groupSpan()).toBeUndefined()
+			view.api.setColumnAggregate('score', 'max')
+			expect(view.api.footerRowCount()).toBe(1)
+			expect(view.api.groupSpan()).toBe(2)
+			expect(view.api.getTotals()).toEqual({ score: { value: 70, text: '70' } })
+			expect(view.api.getTotals(PLATFORM)).toEqual({ score: { value: 20, text: '20' } })
+			// The column object is the one of the caller, with no `aggregate` on it.
+			expect(view.api.column('score')).toBe(plain[2])
+			expect(plain[2]).toEqual({ id: 'score' })
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('the cells of a total say their function, and a chosen function names the footer cell', () => {
+		const view = setup()
+		try {
+			const total = view.part('cell', `t|${DESIGN}|score`)
+			expect(total?.getAttribute('data-aggregate')).toBe('sum')
+			expect(view.part('cell', `t|${DESIGN}|note`)?.hasAttribute('data-aggregate')).toBe(false)
+			expect(view.part('cell', `g|${DESIGN}`)?.hasAttribute('data-aggregate')).toBe(false)
+			const score = view.api.column('score')
+			if (!score) throw new Error('no score column')
+			// The function of the definition is not said: the cell reads as before.
+			expect(view.api.footerLabel(score)).toBeUndefined()
+			view.api.setColumnAggregate('score', 'mean')
+			expect(view.api.footerLabel(score)).toBe('Average: 35')
+			view.api.setColumnAggregate('score', null)
+			expect(view.api.footerLabel(score)).toBeUndefined()
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('the totals of the owner still win, and a total for a column whose total was taken away is refused', () => {
+		const view = setup({ totals: { table: { score: 1234 } } })
+		try {
+			view.api.setColumnAggregate('score', 'mean')
+			// The owner hears the change and gives the number of the function: the table shows what it gives.
+			expect(view.api.getTotals().score).toEqual({ value: 1234, text: '1,234' })
+			view.api.setColumnAggregate('score', null)
+			expect(() => view.api.getTotals()).toThrow(
+				'Column "score" has no `aggregate`, so it shows no total. Columns with a total: hours.',
+			)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('`setColumnAggregate` checks its arguments and lists the valid values', () => {
+		const view = setup()
+		try {
+			expect(() => view.api.setColumnAggregate('age', 'sum')).toThrow(
+				'No column "age" to set the total of. Columns: name, team, country, score, hours, note.',
+			)
+			expect(() => view.api.setColumnAggregate('score', 'median' as 'sum')).toThrow(
+				'No aggregate "median" for column "score". Aggregates: sum, mean, min, max, count, uniqueCount, first; null for no total, or undefined for the aggregate of the column.',
+			)
+			// The same choice again is no change.
+			view.api.setColumnAggregate('score', 'mean')
+			const changes = view.changes.length
+			view.api.setColumnAggregate('score', 'mean')
+			view.api.setColumnAggregate('hours', undefined)
+			expect(view.changes).toHaveLength(changes)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a listener can refuse a choice, and a default starts the table with one', () => {
+		const refused = setup({ onColumnAggregatesChange: (_value, details) => details.cancel() })
+		try {
+			refused.api.setColumnAggregate('score', 'mean')
+			expect(refused.state.columnAggregates).toEqual({})
+			expect(refused.api.getTotals().score?.value).toBe(140)
+		} finally {
+			refused.unmount()
+		}
+		const started = setup({ defaultColumnAggregates: { score: 'max', hours: null } })
+		try {
+			expect(started.api.getTotals()).toEqual({ score: { value: 70, text: '70' } })
+			expect(started.api.groupSpan()).toBe(3)
+		} finally {
+			started.unmount()
+		}
+	})
+})

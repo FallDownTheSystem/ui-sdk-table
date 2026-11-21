@@ -18,7 +18,9 @@ export { defaultMessages, type TableMessages } from './messages'
 export type { ExportCell, ExportColumn, ExportData, ExportOptions, ExportRow } from './export/data'
 export type { RowAlign } from './behaviors/window'
 export type { CellBounds, CellRange } from './behaviors/range'
+export type { FillDirection, FillDraft } from './behaviors/fill'
 export {
+	aggregateName,
 	table,
 	type CellRef,
 	type ColumnTotal,
@@ -31,6 +33,7 @@ export {
 	type ColumnFacetValue,
 	type PageUnit,
 	type ColumnVisibility,
+	type ColumnAggregates,
 	type ColumnWidths,
 	type RowPin,
 	type RowPinning,
@@ -40,9 +43,12 @@ export {
 	type TableController,
 	type TableEditDetails,
 	type TableEditReason,
+	type FillWay,
 	type TableHistoryOptions,
 	type CellSelectionView,
 	type TableOptions,
 	type TableReason,
+	type TableStepReason,
+	type FormatTarget,
 	type TableView,
 } from './table'

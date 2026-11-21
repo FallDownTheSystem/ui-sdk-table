@@ -1,4 +1,5 @@
 import type { ChangeSource } from '@ui-sdk/core'
+import type { CellFormats } from './formats'
 
 /** One cell of a step: the value that it held before the step and after it. */
 export type CellChange = { rowId: string; columnId: string; before: unknown; after: unknown }
@@ -15,7 +16,14 @@ export type TableStep<Reason extends string = string> = {
 	reason: Reason
 	/** Who made it: a person with a key or a pointer, code, or an agent. */
 	source: ChangeSource
+	/** The cells that got a new value. Empty for a step of formats. */
 	cells: readonly CellChange[]
+	/**
+	 * The formats before and after, for a step of formats, and how many cells
+	 * the change was for. Two references to values that share their parts, so
+	 * a step for 50,000 cells holds two pointers.
+	 */
+	formats?: { before: CellFormats; after: CellFormats; cells: number }
 }
 
 /** A step as `getHistory` shows it: what made it and how many cells it holds, without the values. */
@@ -23,7 +31,10 @@ export type HistoryEntry<Reason extends string = string> = {
 	id: number
 	reason: Reason
 	source: ChangeSource
+	/** How many cells got a new value. 0 for a step of formats. */
 	cells: number
+	/** Whether the step changed formats and no value. */
+	formats: boolean
 }
 
 /** What a step weighs against the `maxCells` of the history. A step is never free, so the list has an end. */

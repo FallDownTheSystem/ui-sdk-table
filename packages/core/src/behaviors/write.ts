@@ -34,7 +34,12 @@ export function createCellWrites<Reason extends string>(
 	options: {
 		rowById: (id: string) => DataRow<unknown> | undefined
 		/** Parses a text and checks the value, as the editor of the column does. */
-		check: (input: WriteInput, row: unknown, column: ColumnDef) => Checked | Promise<Checked>
+		check: (
+			input: WriteInput,
+			row: unknown,
+			column: ColumnDef,
+			rowId: string,
+		) => Checked | Promise<Checked>
 		/** The value that a cell holds now. */
 		valueOf: (node: DataRow<unknown>, column: ColumnDef) => unknown
 		/** Tells the owner. Returns whether a listener refused. */
@@ -73,7 +78,7 @@ export function createCellWrites<Reason extends string>(
 				const node = options.rowById(target.rowId)
 				if (!node) throw new Error(refusal.rowGone())
 				nodes.push(node)
-				return options.check(target.input, node.row, target.column)
+				return options.check(target.input, node.row, target.column, node.id)
 			})
 			const finish = (checked: readonly Checked[], late = false): number => {
 				// A check that takes time can answer after the table is gone. Nothing is reported then.

@@ -64,3 +64,43 @@ export function createTurnValues(rows: () => unknown): TurnValues {
 		},
 	}
 }
+
+export type TurnValue<Value> = {
+	/** The value of now: what the table reported in this turn, else what the state holds. */
+	read(): Value
+	/** Keeps a value that was reported and that no listener refused, until the turn ends or the owner passes a value. */
+	took(value: Value): void
+}
+
+/**
+ * A state key that the owner holds, for the turn in which the table reported
+ * a new value of it.
+ *
+ * The state follows the owner, and the owner passes the new value at its
+ * next render. A second change in the same turn (two calls from code, an
+ * undo after an undo) would start from the value before the first one, and
+ * the first change would be lost without a word. So for one turn the table
+ * starts from the value that it reported last.
+ *
+ * `given` is what the owner passes for the key, or `undefined` when the
+ * table keeps the value itself: then the state is right at once and nothing
+ * is held.
+ */
+export function createTurnValue<Value>(given: () => unknown, now: () => Value): TurnValue<Value> {
+	let held: { given: unknown; value: Value } | undefined
+	return {
+		read() {
+			if (held && held.given !== given()) held = undefined
+			return held ? held.value : now()
+		},
+		took(value) {
+			const passed = given()
+			if (passed === undefined) return
+			const mine = { given: passed, value }
+			held = mine
+			queueMicrotask(() => {
+				if (held === mine) held = undefined
+			})
+		},
+	}
+}

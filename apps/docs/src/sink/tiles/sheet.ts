@@ -1,0 +1,62 @@
+import type { TileCopy } from '../types'
+
+export const tiles: TileCopy[] = [
+	{
+		id: 'sheet-type',
+		title: 'Type over a cell.',
+		blurb: 'A character opens the cell, Enter goes down, and an arrow key goes on.',
+		size: 'wide',
+		tone: 'paper',
+	},
+	{
+		id: 'sheet-fill',
+		title: 'Drag to fill.',
+		blurb: 'Two numbers go on with their step, and one value repeats.',
+		size: 'tall',
+		tone: 'moss',
+	},
+	{
+		id: 'sheet-undo',
+		title: 'Take it back.',
+		blurb: 'An undo reports the old value, as any edit does.',
+		tone: 'clay',
+	},
+	{
+		id: 'sheet-formats',
+		title: 'Format a range.',
+		blurb: 'Bold, a colour and one decimal more are data that the page keeps.',
+		size: 'wide',
+		tone: 'mist',
+	},
+	{
+		id: 'sheet-sum',
+		title: 'Sum a selection.',
+		blurb: 'Drag over numbers, and the bar counts them after a pause.',
+		tone: 'ink',
+	},
+	{
+		id: 'sheet-numbers',
+		title: 'Number the rows.',
+		blurb: 'A press on a number selects its row, and Shift takes the rows between.',
+		tone: 'sun',
+	},
+	{
+		id: 'sheet-totals',
+		title: 'Pick the total.',
+		blurb: 'The footer turns a sum into an average, and the group rows follow.',
+		size: 'wide',
+		tone: 'plum',
+	},
+	{
+		id: 'sheet-cut',
+		title: 'Cut, paste, empty.',
+		blurb: 'A cut and a paste move a block, each as one step.',
+		tone: 'paper',
+	},
+	{
+		id: 'sheet-saved',
+		title: 'Open saved formats.',
+		blurb: 'A column shown as a share and two marked cells come with the document.',
+		tone: 'clay',
+	},
+]

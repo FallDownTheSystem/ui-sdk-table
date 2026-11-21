@@ -79,9 +79,39 @@ export type TableMessages = {
 	historyBusy: () => string
 	/** What a screen reader says when one change holds more cells than the history keeps, so it cannot be undone. */
 	historyTooLarge: (details: { cells: number }) => string
+	/** The name of the header of a row: its number, from 1. A screen reader says it with each cell of the row. */
+	rowNumber: (details: { number: number }) => string
+	/** What a screen reader says after a fill. */
+	cellsFilled: (details: { cells: number }) => string
+	/** Why a fill did nothing: a column refuses one of its values. */
+	fillRefused: (details: { column: string; text: string; message: string }) => string
+	/** Why a fill did nothing: no cell under it can be edited. */
+	fillNowhere: () => string
+	/** Why a fill did nothing: it would go from pinned rows to rows of the list, which are no neighbours in the data. */
+	fillOverPinned: () => string
+	/** What a screen reader says after the formats of cells changed from a key or from code. */
+	cellsFormatted: (details: { cells: number }) => string
+	/**
+	 * The name of a function of the sum row, for a picker and for the name of
+	 * a footer cell: `sum`, `mean`, `min`, `max`, `count`, `uniqueCount`,
+	 * `first`, or `custom` for a function of the column.
+	 */
+	aggregateLabel: (name: string) => string
+	/** The name of a footer cell whose function a person chose: the function and the total. */
+	totalLabel: (details: { label: string; text: string }) => string
 }
 
 const cellCount = (cells: number) => (cells === 1 ? '1 cell' : `${cells} cells`)
+
+const AGGREGATE_LABELS: Readonly<Record<string, string>> = {
+	sum: 'Sum',
+	mean: 'Average',
+	min: 'Smallest',
+	max: 'Largest',
+	count: 'Count',
+	uniqueCount: 'Different values',
+	first: 'First',
+}
 
 /** What an undo or a redo did, in one text: the cells that changed, then the ones that could not, then the ones out of view. */
 function stepText(
@@ -143,4 +173,14 @@ export const defaultMessages: TableMessages = {
 	historyBusy: () => 'A value is checked now. Undo and redo wait for the answer.',
 	historyTooLarge: ({ cells }) =>
 		`A change of ${cellCount(cells)} is too large to undo. The history is empty now.`,
+	rowNumber: ({ number }) => `Row ${number}`,
+	cellsFilled: ({ cells }) => `${cellCount(cells)} filled.`,
+	fillRefused: ({ column, text, message }) =>
+		`Nothing was filled. ${column} refuses "${text}": ${message}`,
+	fillNowhere: () => 'Nothing was filled. No cell here can be edited.',
+	fillOverPinned: () =>
+		'Nothing was filled. A fill cannot go from pinned rows to the rows of the list.',
+	cellsFormatted: ({ cells }) => `${cellCount(cells)} formatted.`,
+	aggregateLabel: (name) => AGGREGATE_LABELS[name] ?? 'Total',
+	totalLabel: ({ label, text }) => `${label}: ${text}`,
 }

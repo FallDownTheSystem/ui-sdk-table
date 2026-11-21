@@ -19,6 +19,7 @@ export const {
 	Cell: TableCell,
 	Editor: TableEditor,
 	EditError: TableEditError,
+	FillHandle: TableFillHandle,
 	Resizer: TableResizer,
 } = createParts(table, {
 	root: 'table',
@@ -33,6 +34,7 @@ export const {
 	cell: 'td',
 	editor: 'input',
 	'edit-error': 'span',
+	'fill-handle': 'span',
 	resizer: 'span',
 })
 

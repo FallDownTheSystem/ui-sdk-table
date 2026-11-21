@@ -26,6 +26,12 @@ describe('a table without `sheet` and without `history`', () => {
 				['z', MOD],
 				['y', MOD],
 				['Z', { ...MOD, shiftKey: true }],
+				// The range holds two rows and three columns, so a sheet would fill.
+				['d', MOD],
+				['r', MOD],
+				// A sheet would make the range bold and italic.
+				['b', MOD],
+				['i', MOD],
 				['Tab'],
 				['Tab', { shiftKey: true }],
 			]
@@ -99,6 +105,10 @@ describe('a table without `sheet` and without `history`', () => {
 		const { view, told, cell } = sheetTable({ editable: true, cellSelection: true })
 		try {
 			expect(view.root.hasAttribute('data-sheet')).toBe(false)
+			// No cell holds the fill handle, whatever is selected.
+			view.api.selectCells({ rowId: 'a', columnId: 'stock' })
+			expect(view.api.fillHandleAt({ row: 1, col: 3 })).toBe(false)
+			view.api.clearCellSelection()
 			expect(
 				cell('a', 'name')
 					.getAttributeNames()

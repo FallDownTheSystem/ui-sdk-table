@@ -2,11 +2,13 @@ import {
 	cellValue,
 	toText,
 	totalRows,
+	type AggregatePick,
 	type ColumnDef,
 	type DataRow,
 	type GroupRow,
 	type TableRow,
 } from '../rows'
+import type { CellFormat } from '../sheet/formats'
 
 export type ExportOptions = {
 	/**
@@ -51,6 +53,8 @@ export type ExportCell = {
 	value: unknown
 	/** The text of the cell, as a person sees it on the screen. */
 	text: string
+	/** The format that the cell has of its own, from the `cellFormats` of the table. */
+	format?: CellFormat
 }
 
 export type ExportRow<Row = unknown> = {
@@ -93,11 +97,16 @@ export type ExportSource<Row> = {
 	visibleColumns: () => readonly ColumnDef<Row>[]
 	allColumns: () => readonly ColumnDef<Row>[]
 	label: (column: ColumnDef<Row>) => string
-	text: (row: Row, column: ColumnDef<Row>) => string
+	/** The text of a cell. With the id of its row, the format of the cell decides. */
+	text: (row: Row, column: ColumnDef<Row>, rowId?: string) => string
+	/** The format that a cell has of its own, when the table has formats. */
+	formatOf?: (rowId: string, column: ColumnDef<Row>) => CellFormat | undefined
 	groupText: (group: GroupRow<Row>) => string
 	/** The totals of a group, or of every row that passes the filters, as the footer and the group rows show them. */
 	totals: (group?: GroupRow<Row>) => Record<string, unknown>
 	totalText: (column: ColumnDef<Row>, value: unknown) => string
+	/** The function of the total of a column, when it can be another than the `aggregate` of the column. */
+	aggregateOf?: AggregatePick<Row>
 	locale: () => string | undefined
 }
 
@@ -150,17 +159,22 @@ export function collectExport<Row>(
 		throw new Error(`\`rows\` of an export is one of: ${ROW_SETS.join(', ')}.`)
 	}
 	const columns = exportColumns(source, options.columns).filter(
-		(column) => column.exportable !== false,
+		// The numbers of the rows are places on the screen, and a file has its own.
+		(column) => column.exportable ?? !column.rowHeader,
 	)
 	const withChildren = options.children !== false
 	const rows: ExportRow<Row>[] = []
 
-	const cell = (row: Row, column: ColumnDef<Row>): ExportCell => {
+	const cell = (row: Row, column: ColumnDef<Row>, rowId: string): ExportCell => {
 		if (column.exportValue) {
 			const value = column.exportValue(row)
 			return { value, text: toText(value) }
 		}
-		return { value: cellValue(row, column), text: source.text(row, column) }
+		const format = source.formatOf?.(rowId, column)
+		const text = source.text(row, column, rowId)
+		return format
+			? { value: cellValue(row, column), text, format }
+			: { value: cellValue(row, column), text }
 	}
 
 	// A total is of the values that the file holds, so a column with
@@ -182,11 +196,12 @@ export function collectExport<Row>(
 	): ExportCell[] => {
 		const totals = shown
 			? exported.length
-				? { ...shown, ...totalRows(list, exported) }
+				? { ...shown, ...totalRows(list, exported, source.aggregateOf) }
 				: shown
-			: totalRows(list, valued)
+			: totalRows(list, valued, source.aggregateOf)
 		const cells = columns.map((column): ExportCell => {
-			if (column.aggregate === undefined) return { value: undefined, text: '' }
+			const aggregate = source.aggregateOf ? source.aggregateOf(column) : column.aggregate
+			if (aggregate === undefined) return { value: undefined, text: '' }
 			const value = totals[column.id]
 			return { value, text: column.exportValue ? toText(value) : source.totalText(column, value) }
 		})
@@ -223,7 +238,7 @@ export function collectExport<Row>(
 				kind: 'row',
 				row: node.row,
 				level,
-				cells: columns.map((column) => cell(node.row, column)),
+				cells: columns.map((column) => cell(node.row, column, node.id)),
 			})
 		}
 		// Each selected row is a row of its own, so its child rows come only when they are selected too.

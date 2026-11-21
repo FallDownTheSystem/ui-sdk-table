@@ -1594,3 +1594,148 @@ input {
 .cell-flag {
 	margin-inline-start: 4px;
 }
+
+/*
+ * A sheet: a line between the cells, the numbers of the rows, a square to
+ * fill from, and the looks of a format. A colour of a format is a name; the
+ * names of this page are `accent` and `alert`, and each tone gives them its
+ * own colours.
+ */
+.tile [data-slot='table']:is([data-sheet], :has([data-row-header])) :is(th, td):not(:last-child) {
+	border-inline-end: 1px solid var(--tile-rule);
+}
+
+/* The number of a row stays at the start while the table scrolls sideways. */
+.tile [data-slot='table-cell'][data-row-header] {
+	position: sticky;
+	z-index: 1;
+	inset-inline-start: 0;
+	inline-size: auto;
+	padding-inline: 6px;
+	background: var(--tile-band);
+	color: var(--tile-ink-2);
+	text-align: end;
+	cursor: default;
+	user-select: none;
+}
+
+.tile [data-slot='table'] tr[data-sticky] > [data-row-header] {
+	z-index: 3;
+}
+
+.tile [data-slot='table-fill-handle'] {
+	position: absolute;
+	z-index: 2;
+	inset-block-end: 0;
+	inset-inline-end: 0;
+	box-sizing: border-box;
+	inline-size: 8px;
+	block-size: 8px;
+	border-block-start: 1px solid var(--tile-surface);
+	border-inline-start: 1px solid var(--tile-surface);
+	background: var(--tile-accent);
+	cursor: crosshair;
+	touch-action: none;
+}
+
+/* The square is small, so the pointer can take it from a little way off. */
+.tile [data-slot='table-fill-handle']::before {
+	position: absolute;
+	inset: -7px 0 0 -7px;
+	content: '';
+}
+
+[dir='rtl'] .tile [data-slot='table-fill-handle']::before {
+	inset: -7px -7px 0 0;
+}
+
+/* While the square is dragged, the whole table shows the cross, and no text is selected. */
+.tile [data-slot='table'][data-filling] {
+	cursor: crosshair;
+	user-select: none;
+}
+
+/* The cells that the drag would fill: a tint, and a line around them all from the edges that each cell names. */
+.tile [data-slot='table-cell'][data-fill-target] {
+	background: color-mix(in oklab, var(--tile-accent) 7%, var(--tile-surface));
+	box-shadow:
+		var(--fill-top, 0 0 transparent), var(--fill-right, 0 0 transparent),
+		var(--fill-bottom, 0 0 transparent), var(--fill-left, 0 0 transparent);
+}
+
+.tile [data-slot='table-cell'][data-fill-edge~='top'] {
+	--fill-top: inset 0 2px 0 var(--tile-edge);
+}
+
+.tile [data-slot='table-cell'][data-fill-edge~='right'] {
+	--fill-right: inset -2px 0 0 var(--tile-edge);
+}
+
+.tile [data-slot='table-cell'][data-fill-edge~='bottom'] {
+	--fill-bottom: inset 0 -2px 0 var(--tile-edge);
+}
+
+.tile [data-slot='table-cell'][data-fill-edge~='left'] {
+	--fill-left: inset 2px 0 0 var(--tile-edge);
+}
+
+.tile [data-slot='table-cell'][data-align='start'] {
+	text-align: start;
+}
+
+.tile [data-slot='table-cell'][data-align='center'] {
+	text-align: center;
+}
+
+.tile [data-slot='table-cell'][data-align='end'] {
+	text-align: end;
+}
+
+.tile [data-slot='table-cell'][data-bold] {
+	font-weight: 700;
+}
+
+.tile [data-slot='table-cell'][data-italic] {
+	font-style: italic;
+}
+
+.tile [data-slot='table-cell'][data-color='accent'] {
+	color: var(--tile-accent);
+}
+
+.tile [data-slot='table-cell'][data-color='alert'] {
+	color: var(--tile-danger);
+}
+
+/* A fill is opaque, so a cell that sticks hides what scrolls under it. */
+.tile [data-slot='table-cell'][data-fill='accent'] {
+	background-color: color-mix(in oklab, var(--tile-accent) 24%, var(--tile-surface));
+}
+
+.tile [data-slot='table-cell'][data-fill='alert'] {
+	background-color: color-mix(in oklab, var(--tile-danger) 20%, var(--tile-surface));
+}
+
+/* A selected cell with a fill keeps its colour, a step deeper, so both can be seen. */
+.tile [data-slot='table-cell'][data-selected][data-fill='accent'] {
+	background-color: color-mix(in oklab, var(--tile-accent) 34%, var(--tile-surface));
+}
+
+.tile [data-slot='table-cell'][data-selected][data-fill='alert'] {
+	background-color: color-mix(in oklab, var(--tile-danger) 30%, var(--tile-surface));
+}
+
+/* A colour of the text goes a step toward the ink over a fill, so it still reads there. */
+.tile [data-slot='table-cell'][data-fill][data-color='accent'] {
+	color: color-mix(in oklab, var(--tile-accent) 60%, var(--tile-ink));
+}
+
+.tile [data-slot='table-cell'][data-fill][data-color='alert'] {
+	color: color-mix(in oklab, var(--tile-danger) 60%, var(--tile-ink));
+}
+
+/* A button of one letter is as wide as it is high. */
+.tile [data-slot='button'].look {
+	inline-size: 28px;
+	padding: 0;
+}

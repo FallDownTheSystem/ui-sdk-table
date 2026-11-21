@@ -12,9 +12,13 @@ async function open(page: Page, query = '') {
 
 // Rows and columns as `aria-rowindex` and `aria-colindex` count them, from 1.
 // Row 1 is the header row, rows 2 to 13 are the products p1 to p12, row 14 is
-// the footer. The columns are product, group, price, discount, stock, date.
+// the footer. Column 1 holds the numbers of the rows; then product, group,
+// price, discount, stock, date.
 const cell = (table: Locator, row: number, col: number) =>
 	table.locator(`tr[aria-rowindex="${row}"] > [aria-colindex="${col}"]`)
+// The footer cell of a column holds the picker of its function, and then its text.
+const total = (table: Locator, col: number) =>
+	table.locator(`tfoot [aria-colindex="${col}"] .total-text`)
 const editor = (table: Locator) => table.locator('[data-slot="table-editor"]')
 const selected = (table: Locator) => table.locator('[aria-selected="true"]')
 const log = (page: Page) => page.getByTestId('log').locator('li')
@@ -23,12 +27,12 @@ const status = (page: Page) => page.getByTestId('status')
 const clipboard = (page: Page) => page.evaluate(() => navigator.clipboard.readText())
 const polite = (page: Page) => page.locator('[aria-live="polite"]')
 const assertive = (page: Page) => page.locator('[aria-live="assertive"]')
-const PRODUCT = 1
-const GROUP = 2
-const PRICE = 3
-const DISCOUNT = 4
-const STOCK = 5
-const DATE = 6
+const PRODUCT = 2
+const GROUP = 3
+const PRICE = 4
+const DISCOUNT = 5
+const STOCK = 6
+const DATE = 7
 
 test('Ctrl+Z takes an edit back, Ctrl+Y and Ctrl+Shift+Z put it on again, and focus is on the cell', async ({
 	page,
@@ -237,7 +241,7 @@ test('type 5, Enter, type 6, Enter fills two cells of a column', async ({ page }
 	await expect(cell(table, 4, STOCK)).toHaveText('7')
 	await expect(cell(table, 3, STOCK)).toBeFocused()
 	// The footer follows the rows.
-	await expect(cell(table, 14, STOCK)).toHaveText('8,628')
+	await expect(total(table, STOCK)).toHaveText('8,628')
 })
 
 test('after a character, an arrow saves and moves; after F2, an arrow moves the caret', async ({
@@ -596,4 +600,511 @@ test('an undo that the owner refuses keeps its step, and the table says so', asy
 	await price.click()
 	await page.keyboard.press('Control+z')
 	await expect(price).toHaveText('€0.12')
+})
+
+// --- Row numbers -----------------------------------------------------------
+
+const NUMBER = 1
+const handle = (table: Locator) => table.locator('[data-slot="table-fill-handle"]')
+const summary = (page: Page) => page.getByTestId('summary')
+const frame = (page: Page) => page.locator('.scroller')
+
+async function center(target: Locator) {
+	const box = await target.boundingBox()
+	if (!box) throw new Error('The element has no box.')
+	return { x: box.x + box.width / 2, y: box.y + box.height / 2, box }
+}
+
+/** Drags with the mouse from one element to another, and lifts unless told to hold. */
+async function drag(page: Page, from: Locator, to: Locator, lift = true) {
+	const start = await center(from)
+	const end = await center(to)
+	await page.mouse.move(start.x, start.y)
+	await page.mouse.down()
+	await page.mouse.move((start.x + end.x) / 2, (start.y + end.y) / 2, { steps: 4 })
+	await page.mouse.move(end.x, end.y, { steps: 4 })
+	if (lift) await page.mouse.up()
+}
+
+test('the number of a row is its header: a press selects the row, Shift more rows, and a drag three rows', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await expect(table.getByRole('rowheader')).toHaveCount(12)
+	const third = cell(table, 4, NUMBER)
+	await expect(third).toHaveText('3')
+	await expect(third).toHaveAccessibleName('Row 3')
+	// A cell of the row is named with the header of its row and of its column.
+	await expect(table.getByRole('gridcell', { name: 'Washer 6 mm' })).toHaveCount(1)
+
+	await third.click()
+	// Focus is on the number, and the cells of its row are the range.
+	await expect(third).toBeFocused()
+	await expect(status(page)).toHaveText('p3 #, 1 by 6 cells from p3 product to p3 date')
+	await expect(selected(table)).toHaveCount(6)
+	// The number itself is in no range, and a copy leaves it out.
+	await expect(third).not.toHaveAttribute('aria-selected')
+	await page.keyboard.press('Control+c')
+	expect(await clipboard(page)).toBe('Washer 6 mm\tFasteners\t0.02\t0.1\t15000\t2026-01-19')
+
+	await cell(table, 6, NUMBER).click({ modifiers: ['Shift'] })
+	await expect(selected(table)).toHaveCount(18)
+
+	await drag(page, cell(table, 8, NUMBER), cell(table, 10, NUMBER))
+	await expect(status(page)).toHaveText('p7 #, 3 by 6 cells from p7 product to p9 date')
+	// The keys go on from the number that was pressed: an arrow moves to the number under it.
+	await expect(cell(table, 8, NUMBER)).toBeFocused()
+	await page.keyboard.press('ArrowDown')
+	await expect(cell(table, 9, NUMBER)).toBeFocused()
+	// Delete on a number empties the cells of the rows that are selected, as on any cell of a sheet.
+	await cell(table, 12, NUMBER).click()
+	await page.keyboard.press('Delete')
+	await expect(
+		assertive(page).filter({ hasText: 'Nothing was cleared. Product refuses an empty value' }),
+	).not.toHaveCount(0)
+	await expect(cell(table, 12, NUMBER)).toHaveText('11')
+})
+
+test('the numbers stay at the start while the table scrolls sideways, and a pinned column stays beside them', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 520, height: 700 })
+	const table = await open(page)
+	await page.getByRole('checkbox', { name: 'Pin Product' }).check()
+	const number = cell(table, 3, NUMBER)
+	const product = cell(table, 3, PRODUCT)
+	await expect(product).toHaveAttribute('data-pinned', 'start')
+	const before = [await number.boundingBox(), await product.boundingBox()]
+	await frame(page).evaluate((el) => el.scrollTo({ left: 300, behavior: 'instant' }))
+	await expect.poll(() => frame(page).evaluate((el) => el.scrollLeft)).toBe(300)
+	expect((await number.boundingBox())?.x).toBeCloseTo(before[0]?.x ?? -1, 0)
+	expect((await product.boundingBox())?.x).toBeCloseTo(before[1]?.x ?? -1, 0)
+	// The number of the header row and of the footer row stay too.
+	expect((await cell(table, 1, NUMBER).boundingBox())?.x).toBeCloseTo(before[0]?.x ?? -1, 0)
+})
+
+// --- Fill ------------------------------------------------------------------
+
+test('a drag of the handle down three rows repeats a value, marks the cells on its way, and Ctrl+Z takes it back', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const first = cell(table, 2, STOCK)
+	await first.click()
+	await expect(handle(table)).toHaveCount(1)
+	await drag(page, handle(table), cell(table, 5, STOCK), false)
+	await expect(table).toHaveAttribute('data-filling', '')
+	await expect(table.locator('[data-fill-target]')).toHaveCount(3)
+	await expect(cell(table, 3, STOCK)).toHaveAttribute('data-fill-edge', 'top left right')
+	await expect(cell(table, 5, STOCK)).toHaveAttribute('data-fill-edge', 'bottom left right')
+	await expect(log(page)).toHaveCount(0)
+	await page.mouse.up()
+
+	await expect(table).not.toHaveAttribute('data-filling')
+	await expect(table.locator('[data-fill-target]')).toHaveCount(0)
+	await expect(log(page).first()).toHaveText('fill: p2.stock=4200 p3.stock=4200 p4.stock=4200')
+	for (const row of [3, 4, 5]) await expect(cell(table, row, STOCK)).toHaveText('4,200')
+	await expect(polite(page).filter({ hasText: '3 cells filled.' })).not.toHaveCount(0)
+	// The source and the target are the range now, with the handle at its end, and focus stayed on the cell.
+	await expect(selected(table)).toHaveCount(4)
+	await expect(first).toBeFocused()
+	await expect(cell(table, 5, STOCK).locator('[data-slot="table-fill-handle"]')).toHaveCount(1)
+	await expect(steps(page)).toHaveText('1 to undo, 0 to redo')
+
+	await page.keyboard.press('Control+z')
+	await expect(cell(table, 3, STOCK)).toHaveText('9,800')
+	await expect(cell(table, 4, STOCK)).toHaveText('15,000')
+	await expect(cell(table, 5, STOCK)).toHaveText('7,600')
+	await expect(steps(page)).toHaveText('0 to undo, 1 to redo')
+})
+
+test('1, 2 dragged down gives 3, 4, 5, and a drag upward goes on backwards', async ({ page }) => {
+	const table = await open(page)
+	await cell(table, 6, STOCK).click()
+	await page.keyboard.type('1')
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('2')
+	await page.keyboard.press('Enter')
+	await cell(table, 6, STOCK).click()
+	await page.keyboard.press('Shift+ArrowDown')
+	await drag(page, handle(table), cell(table, 10, STOCK))
+	await expect(log(page).first()).toHaveText('fill: p7.stock=3 p8.stock=4 p9.stock=5')
+
+	// Upward from the same two cells: 0 and then a number under zero, which the column refuses. Nothing changes.
+	await cell(table, 6, STOCK).click()
+	await page.keyboard.press('Shift+ArrowDown')
+	await drag(page, handle(table), cell(table, 4, STOCK))
+	await expect(
+		assertive(page).filter({ hasText: 'Nothing was filled. Stock refuses "-1"' }),
+	).not.toHaveCount(0)
+	await expect(cell(table, 5, STOCK)).toHaveText('7,600')
+	await expect(cell(table, 4, STOCK)).toHaveText('15,000')
+	await expect(log(page)).toHaveCount(3)
+})
+
+test('a drag forward fills along the row, and Escape during a drag changes nothing', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await cell(table, 2, DISCOUNT).click()
+	await drag(page, handle(table), cell(table, 2, STOCK))
+	await expect(log(page).first()).toHaveText('fill: p1.stock=0')
+	await expect(cell(table, 2, STOCK)).toHaveText('0')
+
+	await cell(table, 3, STOCK).click()
+	await drag(page, handle(table), cell(table, 6, STOCK), false)
+	await expect(table.locator('[data-fill-target]')).toHaveCount(3)
+	await page.keyboard.press('Escape')
+	await expect(table.locator('[data-fill-target]')).toHaveCount(0)
+	await expect(table).not.toHaveAttribute('data-filling')
+	await page.mouse.up()
+	await expect(cell(table, 4, STOCK)).toHaveText('15,000')
+	await expect(log(page)).toHaveCount(1)
+})
+
+test('Ctrl+D fills the range down and Ctrl+R forward; with one cell the keys are not taken', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await cell(table, 2, PRICE).click()
+	await page.keyboard.press('Shift+ArrowDown')
+	await page.keyboard.press('Shift+ArrowDown')
+	await page.keyboard.press('Control+d')
+	await expect(log(page).first()).toHaveText('fill: p2.price=0.12 p3.price=0.12')
+	await expect(cell(table, 2, PRICE)).toBeFocused()
+
+	await cell(table, 6, DISCOUNT).click()
+	await page.keyboard.press('Shift+ArrowRight')
+	await page.keyboard.press('Control+r')
+	// The discount of the hammer is 0.15, which is no whole number: the stock column refuses it.
+	await expect(
+		assertive(page).filter({ hasText: 'Nothing was filled. Stock refuses "0.15"' }),
+	).not.toHaveCount(0)
+	await cell(table, 7, DISCOUNT).click()
+	await page.keyboard.press('Shift+ArrowRight')
+	await page.keyboard.press('Control+r')
+	await expect(log(page).first()).toHaveText('fill: p6.stock=0')
+
+	// One cell has nothing to fill, so Control+R stays the reload of the browser.
+	await cell(table, 9, PRICE).click()
+	const taken = await page.evaluate(
+		() =>
+			new Promise<boolean>((resolve) => {
+				addEventListener('keydown', (event) => {
+					if (event.key !== 'r') return
+					queueMicrotask(() => resolve(event.defaultPrevented))
+					// The test must stay on the page.
+					event.preventDefault()
+				})
+				document.activeElement?.dispatchEvent(
+					new KeyboardEvent('keydown', {
+						key: 'r',
+						code: 'KeyR',
+						ctrlKey: true,
+						bubbles: true,
+						cancelable: true,
+					}),
+				)
+			}),
+	)
+	expect(taken).toBe(true)
+	await expect(log(page)).toHaveCount(2)
+})
+
+test('with 50,000 rows, a drag of the handle to the edge of the frame scrolls and fills more rows than were in view', async ({
+	page,
+}) => {
+	// High enough that the lower edge of the frame is in the window: the rows scroll in the frame.
+	await page.setViewportSize({ width: 1280, height: 1100 })
+	const table = await open(page)
+	await page.getByRole('button', { name: '50,000 rows' }).click()
+	await expect(table).toHaveAttribute('aria-rowcount', '50002')
+	await cell(table, 2, STOCK).click()
+	const from = await center(handle(table))
+	const box = await frame(page).boundingBox()
+	if (!box) throw new Error('The frame has no box.')
+	await page.mouse.move(from.x, from.y)
+	await page.mouse.down()
+	await page.mouse.move(from.x, from.y + 60, { steps: 4 })
+	// Near the lower edge, over the footer that sticks there. The pointer rests, and the rows go by under it.
+	await page.mouse.move(from.x, box.y + box.height - 10, { steps: 6 })
+	await expect
+		.poll(() => frame(page).evaluate((el) => el.scrollTop), { timeout: 20_000 })
+		.toBeGreaterThan(200 * 36)
+	// The rows of the start left the page long ago, and the drag goes on. The row of the active
+	// cell is kept in the page, so the row after it is the one to look for.
+	await expect(table.locator('tr[aria-rowindex="3"]')).toHaveCount(0)
+	await page.mouse.up()
+	const line = (await log(page).first().textContent()) ?? ''
+	expect(line).toMatch(/^fill: p2\.stock=4200 p3\.stock=4200 .* and \d+ more$/)
+	// The fill passed row 200. Every twelfth row holds 4200 already and is no edit, and the line names six cells.
+	expect(Number(/and (\d+) more/.exec(line)?.[1])).toBeGreaterThan(150)
+	await expect(steps(page)).toHaveText('1 to undo, 0 to redo')
+	// The undo brings the person back to the first cell of the step.
+	await page.keyboard.press('Control+z')
+	await expect(cell(table, 3, STOCK)).toHaveText('9,800')
+})
+
+test('the handle sits at the end corner of its cell: the right side, and the left side from right to left', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await cell(table, 3, STOCK).click()
+	let at = await center(handle(table))
+	let box = (await center(cell(table, 3, STOCK))).box
+	expect(at.x).toBeGreaterThan(box.x + box.width - 12)
+	expect(at.y).toBeGreaterThan(box.y + box.height - 12)
+
+	const rtl = await open(page, '&dir=rtl')
+	await cell(rtl, 3, STOCK).click()
+	at = await center(handle(rtl))
+	box = (await center(cell(rtl, 3, STOCK))).box
+	expect(at.x).toBeLessThan(box.x + 12)
+	expect(at.y).toBeGreaterThan(box.y + box.height - 12)
+	// The end side is the left: Control+R fills to the left of the pointer of a reader, into the next column.
+	await cell(rtl, 3, DISCOUNT).click()
+	await page.keyboard.press('Shift+ArrowLeft')
+	await expect(selected(rtl)).toHaveCount(2)
+	await page.keyboard.press('Control+r')
+	await expect(log(page).first()).toHaveText('fill: p2.stock=0')
+})
+
+test('the handle of a cell in a pinned column is in view and can be dragged while the table is scrolled sideways', async ({
+	page,
+}) => {
+	// Narrow, so the table scrolls sideways, and high, so the drag is far from an edge that scrolls.
+	await page.setViewportSize({ width: 520, height: 1400 })
+	const table = await open(page)
+	await page.getByRole('checkbox', { name: 'Pin Product' }).check()
+	await cell(table, 3, PRODUCT).click()
+	await frame(page).evaluate((el) => el.scrollTo({ left: 300, behavior: 'instant' }))
+	const at = await center(handle(table))
+	const top = await page.evaluate(
+		({ x, y }) => document.elementFromPoint(x, y)?.getAttribute('data-slot'),
+		{ x: at.x, y: at.y },
+	)
+	expect(top).toBe('table-fill-handle')
+	await drag(page, handle(table), cell(table, 5, PRODUCT))
+	await expect(log(page).first()).toHaveText('fill: p3.product="Nut M6" p4.product="Nut M6"')
+})
+
+// --- The summary of the selected cells ---------------------------------------
+
+test('the status bar shows the sum of a dragged range after the drag pauses, and follows an edit inside it', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await expect(summary(page)).toHaveText('No cell is selected')
+	await drag(page, cell(table, 2, STOCK), cell(table, 4, STOCK))
+	await expect(selected(table)).toHaveCount(3)
+	await expect(summary(page)).toHaveText(
+		'Sum 29,000, average 9,667, smallest 4,200, largest 15,000, 3 of 3 cells with a value',
+	)
+	// The bar is a plain region: a sum after each step of a selection would be noise for a person who listens.
+	await expect(summary(page)).not.toHaveAttribute('aria-live')
+
+	await page.keyboard.type('1000')
+	await page.keyboard.press('Enter')
+	await expect(summary(page)).toContainText('Sum 25,800')
+	// Cells of two columns have no one format, so the numbers are plain.
+	await page.keyboard.press('Escape')
+	await drag(page, cell(table, 6, PRICE), cell(table, 6, STOCK))
+	await expect(summary(page)).toHaveText(
+		'Sum 100.05, average 33.35, smallest 0.15, largest 85, 3 of 3 cells with a value',
+	)
+	await cell(table, 2, PRODUCT).click()
+	await expect(summary(page)).toHaveText('1 of 1 cells with a value')
+})
+
+// --- The function of a total -------------------------------------------------
+
+test('a select in a footer cell changes sum to average, the group rows follow, and the footer row goes with its last total', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await page.getByRole('checkbox', { name: 'Group by group' }).check()
+	const pick = table.getByRole('combobox', { name: 'Total of Stock' })
+	const groupTotals = table.locator('td[data-kind="group-total"][data-column="stock"]')
+	await expect(pick).toHaveValue('sum')
+	await expect(total(table, STOCK)).toHaveText('37,610')
+	await expect(groupTotals.first()).toHaveText('36,600')
+
+	await pick.selectOption('mean')
+	await expect(total(table, STOCK)).toHaveText('3,134')
+	await expect(groupTotals.first()).toHaveText('9,150')
+	await expect(groupTotals.first()).toHaveAttribute('data-aggregate', 'mean')
+	// A person who cannot see the picker hears the function with the number.
+	await expect(table.locator('tfoot [data-column="stock"]')).toHaveAttribute(
+		'aria-label',
+		'Average: 3,134',
+	)
+	// The choice is no step of the history.
+	await expect(steps(page)).toHaveText('0 to undo, 0 to redo')
+
+	// A column without a total in its definition gets one.
+	await table.getByRole('combobox', { name: 'Total of Price' }).selectOption('max')
+	await expect(total(table, PRICE)).toHaveText('€54.00')
+
+	await table.getByRole('combobox', { name: 'Total of Price' }).selectOption('')
+	await table.getByRole('combobox', { name: 'Total of Stock' }).selectOption('')
+	await expect(table.locator('tfoot')).toHaveCount(0)
+	await expect(groupTotals).toHaveCount(0)
+	await page.getByRole('button', { name: 'Totals as defined' }).click()
+	await expect(total(table, STOCK)).toHaveText('37,610')
+})
+
+// --- Cell formats ------------------------------------------------------------
+
+test('one decimal more on a range changes the text of those cells only, and the format stays on its row after a sort', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await cell(table, 2, PRICE).click()
+	await page.keyboard.press('Shift+ArrowDown')
+	await page.getByRole('button', { name: 'One decimal more' }).click()
+	await expect(cell(table, 2, PRICE)).toHaveText('€0.120')
+	await expect(cell(table, 3, PRICE)).toHaveText('€0.050')
+	await expect(cell(table, 4, PRICE)).toHaveText('€0.02')
+	await expect(log(page).first()).toHaveText('formats: imperative')
+	await expect(polite(page).filter({ hasText: '2 cells formatted.' })).not.toHaveCount(0)
+	// A press on a button of the page takes focus, and the cells stay selected.
+	await expect(selected(table)).toHaveCount(2)
+
+	// Highest price first: the bolt and the nut are far down now, with their format.
+	await table.getByRole('button', { name: /^Price/ }).click()
+	await table.getByRole('button', { name: /^Price/ }).click()
+	await expect(cell(table, 2, PRICE)).toHaveText('€54.00')
+	await expect(table.locator('tbody td', { hasText: '€0.120' })).toHaveCount(1)
+	await expect(table.locator('tbody td', { hasText: '€0.050' })).toHaveCount(1)
+	await expect(
+		table.locator('tbody tr', { hasText: 'Bolt M6' }).locator(`[aria-colindex="${PRICE}"]`),
+	).toHaveText('€0.120')
+})
+
+test('Ctrl+B makes the range bold and Ctrl+I italic, the buttons show it, and Ctrl+Z takes each away', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const first = cell(table, 2, PRODUCT)
+	await first.click()
+	await page.keyboard.press('Shift+ArrowDown')
+	await page.keyboard.press('Control+b')
+	await expect(table.locator('[data-bold]')).toHaveCount(2)
+	await expect(first).toHaveCSS('font-weight', '700')
+	await expect(cell(table, 4, PRODUCT)).toHaveCSS('font-weight', '400')
+	await expect(log(page).first()).toHaveText('formats: shortcut')
+	await expect(page.getByRole('button', { name: 'Bold' })).toHaveAttribute('aria-pressed', 'true')
+	// The key is the table's: focus is on the cell, and no bookmark bar or other thing of the browser took it.
+	await expect(first).toBeFocused()
+
+	await page.keyboard.press('Control+i')
+	await expect(first).toHaveCSS('font-style', 'italic')
+	await expect(steps(page)).toHaveText('2 to undo, 0 to redo')
+
+	await page.keyboard.press('Control+z')
+	await expect(table.locator('[data-italic]')).toHaveCount(0)
+	await expect(table.locator('[data-bold]')).toHaveCount(2)
+	await expect(log(page).first()).toHaveText('formats: undo')
+	await page.keyboard.press('Control+z')
+	await expect(table.locator('[data-bold]')).toHaveCount(0)
+	await expect(page.getByRole('button', { name: 'Bold' })).toHaveAttribute('aria-pressed', 'false')
+	await page.keyboard.press('Control+y')
+	await expect(table.locator('[data-bold]')).toHaveCount(2)
+
+	// Every cell is bold, so the key takes it away. The button of the page does the same.
+	await page.keyboard.press('Control+b')
+	await expect(table.locator('[data-bold]')).toHaveCount(0)
+	await page.getByRole('button', { name: 'Bold' }).click()
+	await expect(table.locator('[data-bold]')).toHaveCount(2)
+
+	// In an open editor the keys are the field's, and change no format.
+	await first.click()
+	await page.keyboard.press('F2')
+	await page.keyboard.press('Control+b')
+	await page.keyboard.press('Escape')
+	await expect(table.locator('[data-bold]')).toHaveCount(2)
+})
+
+test('a fill colour is on a pinned cell while the table scrolls sideways, and hides the cells under it', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 520, height: 700 })
+	const table = await open(page)
+	await page.getByRole('checkbox', { name: 'Pin Product' }).check()
+	const product = cell(table, 3, PRODUCT)
+	await product.click()
+	await page.getByTestId('format-fill').selectOption('amber')
+	await page.getByTestId('format-color').selectOption('red')
+	await expect(product).toHaveAttribute('data-fill', 'amber')
+	await expect(product).toHaveAttribute('data-color', 'red')
+	// Another cell, so the tint of the selection is not on the one that is measured.
+	await cell(table, 6, PRODUCT).click()
+	const filled = await product.evaluate((el) => getComputedStyle(el).backgroundColor)
+	expect(filled).toBe('rgb(255, 241, 207)')
+
+	await frame(page).evaluate((el) => el.scrollTo({ left: 300, behavior: 'instant' }))
+	const at = await center(product)
+	const top = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.textContent, {
+		x: at.x,
+		y: at.y,
+	})
+	expect(top).toBe('Nut M6')
+	expect(await product.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(filled)
+})
+
+test('a whole column shown as a percentage holds for rows that come later', async ({ page }) => {
+	const table = await open(page)
+	await table.getByRole('button', { name: 'Select the cells of Stock' }).click()
+	await expect(selected(table)).toHaveCount(12)
+	await page.getByTestId('format-kind').selectOption('percentage')
+	await expect(cell(table, 2, STOCK)).toHaveText('420,000%')
+	await expect(cell(table, 2, STOCK)).toHaveAttribute('data-format', 'percentage')
+	// The header and the total of the column show as the column does.
+	await expect(cell(table, 1, STOCK)).toHaveAttribute('data-format', 'percentage')
+	await expect(total(table, STOCK)).toHaveText('3,761,000%')
+
+	// Other rows: none of them was there when the format was given.
+	await page.getByRole('button', { name: '50,000 rows' }).click()
+	await expect(table).toHaveAttribute('aria-rowcount', '50002')
+	await expect(cell(table, 20, STOCK)).toHaveText('4,000%')
+
+	await cell(table, 20, STOCK).click()
+	await page.getByRole('button', { name: 'Clear the format' }).click()
+	// One cell says nothing of its own, so the column still decides.
+	await expect(cell(table, 20, STOCK)).toHaveText('4,000%')
+})
+
+test('a CSV export holds the text of the screen for cells with a format of their own', async ({
+	page,
+}) => {
+	await page.addInitScript(() => {
+		const files: Blob[] = []
+		Object.assign(window, { exported: files })
+		const create = URL.createObjectURL.bind(URL)
+		URL.createObjectURL = (blob: Blob | MediaSource) => {
+			if (blob instanceof Blob) files.push(blob)
+			return create(blob)
+		}
+	})
+	const table = await open(page)
+	await cell(table, 2, PRICE).click()
+	await page.keyboard.press('Shift+ArrowDown')
+	await page.getByRole('button', { name: 'One decimal more' }).click()
+	await cell(table, 4, DISCOUNT).click()
+	await page.getByTestId('format-kind').selectOption('decimal')
+	await page.getByTestId('format-fill').selectOption('green')
+	await expect(cell(table, 4, DISCOUNT)).toHaveText('0.10')
+
+	const download = page.waitForEvent('download')
+	await page.getByRole('button', { name: 'Export CSV' }).click()
+	expect((await download).suggestedFilename()).toBe('price-list.csv')
+	const csv = await page.evaluate(() =>
+		(window as unknown as { exported: Blob[] }).exported[0]?.text(),
+	)
+	const lines = csv?.split('\r\n') ?? []
+	// No column of row numbers, and each cell as the screen shows it.
+	expect(lines[0]).toBe('Product,Group,Price,Discount,Stock,Listed')
+	expect(lines[1]).toBe('Bolt M6,Fasteners,€0.120,0%,"4,200","Jan 12, 2026"')
+	expect(lines[2]).toBe('Nut M6,Fasteners,€0.050,0%,"9,800","Jan 12, 2026"')
+	expect(lines[3]).toBe('Washer 6 mm,Fasteners,€0.02,0.10,"15,000","Jan 19, 2026"')
 })

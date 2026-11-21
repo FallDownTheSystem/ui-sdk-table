@@ -48,6 +48,11 @@ export type TableRange<State> = {
 	keydown(event: KeyboardEvent): boolean
 	/** Starts a range on a press, and paints it while the pointer drags. Shift stretches the range. */
 	pointerdown(event: PointerEvent, cell: GridCell): void
+	/**
+	 * A press on the header of a row: its row is the range, a drag takes more
+	 * rows, and Shift takes the rows from the active cell to this one.
+	 */
+	pointerdownRows(event: PointerEvent, cell: GridCell): void
 }
 
 /**
@@ -59,6 +64,10 @@ export type TableRange<State> = {
  * data: a range with a header cell in it would copy a header as a value. So
  * a range lives in the rows of the body. A range that starts outside them is
  * refused, and a range that reaches outside them ends at their edge.
+ *
+ * The same holds for the columns of row headers: they hold the number of a
+ * row and no value. A range ends at the first column after them, and a
+ * range that starts on a row header is a range of whole rows.
  */
 export function createTableRange<State extends object>(
 	context: Pick<PrimitiveContext<any, State, any>, 'store' | 'onDestroy'>,
@@ -70,6 +79,8 @@ export function createTableRange<State extends object>(
 		cols: () => number
 		/** The first and the last grid row that a range can hold. `undefined` when there is none. */
 		body: () => { first: number; last: number } | undefined
+		/** The first column that a range can hold. The columns before it are row headers. Defaults to 0. */
+		firstCol?: () => number
 		set: (range: CellRange | null, details: { reason: CellRangeReason; event?: Event }) => boolean
 		/** Runs once when a drag that changed the range ends. */
 		commit?: (range: CellRange | null, details: { reason: 'drag'; event?: Event }) => void
@@ -82,9 +93,21 @@ export function createTableRange<State extends object>(
 		if (!range) return null
 		const body = options.body()
 		if (!body) return null
+		const firstCol = options.firstCol?.() ?? 0
+		const lastCol = options.cols() - 1
+		if (firstCol > lastCol) return null
+		const row = (cell: GridCell) => Math.max(body.first, Math.min(body.last, cell.row))
+		// A range from a row header is the rows from its start to its end, whole.
+		if (wholeRows || range.anchor.col < firstCol) {
+			return {
+				anchor: { row: row(range.anchor), col: firstCol },
+				end: { row: row(range.end), col: lastCol },
+			}
+		}
 		const clamp = (cell: GridCell): GridCell => {
-			const row = Math.max(body.first, Math.min(body.last, cell.row))
-			return row === cell.row ? cell : { row, col: cell.col }
+			const col = Math.max(firstCol, cell.col)
+			const at = row(cell)
+			return at === cell.row && col === cell.col ? cell : { row: at, col }
 		}
 		const anchor = clamp(range.anchor)
 		const end = clamp(range.end)
@@ -115,6 +138,8 @@ export function createTableRange<State extends object>(
 	let asked: { range: CellRange | null } | undefined
 	let steps = 0
 	let stop: (() => void) | undefined
+	// A drag that started on a row header paints whole rows until the pointer lifts.
+	let wholeRows = false
 
 	const range = createCellRange(context, {
 		key: options.key,
@@ -144,7 +169,7 @@ export function createTableRange<State extends object>(
 		}),
 	)
 
-	return {
+	const api: TableRange<State> = {
 		bounds: (state) => range.bounds(state),
 		contains: (state, cell) => range.contains(state, cell),
 		cellAttrs: (state, cell) => range.cellAttrs(state, cell),
@@ -156,29 +181,51 @@ export function createTableRange<State extends object>(
 		// From a header cell or the footer row, a range has no start. The keys move focus there.
 		keydown: (event) =>
 			onBody(options.grid.active()) ? range.keydown(event) : options.grid.keydown(event),
-		pointerdown(event, cell) {
+		pointerdown: (event, cell) => press(event, cell, false),
+		pointerdownRows(event, cell) {
+			if (!event.shiftKey) {
+				press(event, cell, true)
+				return
+			}
 			stop?.()
-			const before = current()
-			asked = undefined
-			range.pointerdown(event, cell)
-			if (!options.commit || event.shiftKey) return
-			const page = event.target instanceof Node ? event.target.ownerDocument : null
-			if (!page) return
-			// The press itself can drop a range. Only what comes after it is a drag.
-			steps = 0
-			const end = (up: Event) => {
-				stop?.()
-				const now = asked ? asked.range : current()
-				asked = undefined
-				if (steps > 0 && !same(now, before)) options.commit?.(now, { reason: 'drag', event: up })
-			}
-			stop = () => {
-				stop = undefined
-				page.removeEventListener('pointerup', end, true)
-				page.removeEventListener('pointercancel', end, true)
-			}
-			page.addEventListener('pointerup', end, true)
-			page.addEventListener('pointercancel', end, true)
+			const active = options.grid.active()
+			range.selectRows(onBody(active) && active ? active.row : cell.row, cell.row, {
+				reason: 'item-press',
+				event,
+			})
 		},
+	}
+
+	return api
+
+	function press(event: PointerEvent, cell: GridCell, rows: boolean): void {
+		stop?.()
+		const before = current()
+		asked = undefined
+		wholeRows = rows
+		range.pointerdown(event, cell)
+		// The press on a row header selects its row. A press on a cell selects nothing.
+		if (rows) range.select({ anchor: cell, end: cell }, { reason: 'item-press', event })
+		const page = event.target instanceof Node ? event.target.ownerDocument : null
+		if ((!options.commit && !rows) || event.shiftKey || !page) {
+			wholeRows = false
+			return
+		}
+		// The press itself can drop a range. Only what comes after it is a drag.
+		steps = 0
+		const end = (up: Event) => {
+			stop?.()
+			const now = asked ? asked.range : current()
+			asked = undefined
+			if (steps > 0 && !same(now, before)) options.commit?.(now, { reason: 'drag', event: up })
+		}
+		stop = () => {
+			stop = undefined
+			wholeRows = false
+			page.removeEventListener('pointerup', end, true)
+			page.removeEventListener('pointercancel', end, true)
+		}
+		page.addEventListener('pointerup', end, true)
+		page.addEventListener('pointercancel', end, true)
 	}
 }

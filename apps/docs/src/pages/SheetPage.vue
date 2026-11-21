@@ -1,13 +1,23 @@
 <script setup lang="ts">
 import {
 	applyEdits,
+	CELL_FORMAT_NAMES,
 	createTableController,
+	rowNumberColumn,
 	Table,
+	useSelectionSummary,
 	useTableSearch,
 	useTableView,
+	type AggregateName,
 	type CellEdit,
+	type CellFormat,
+	type CellFormatPatch,
+	type CellFormats,
+	type ColumnAggregates,
 	type ColumnDef,
+	type ColumnPinning,
 	type StandardSchemaV1,
+	type TableChangeDetails,
 	type TableEditDetails,
 } from 'ui-sdk-table-vue'
 import { computed, shallowRef } from 'vue'
@@ -98,6 +108,8 @@ const priceSchema: StandardSchemaV1 = {
 }
 
 const columns: ColumnDef<Product>[] = [
+	// The number of each row, as its header: a press on it selects the row.
+	rowNumberColumn<Product>(),
 	{
 		id: 'product',
 		header: 'Product',
@@ -161,6 +173,55 @@ const columns: ColumnDef<Product>[] = [
 const controller = createTableController()
 const view = useTableView(controller)
 const search = useTableSearch(controller)
+// What the selected cells add up to, counted after the selection rests.
+const summary = useSelectionSummary(controller)
+
+// The formats and the functions of the totals are state of the owner, as the
+// rows are: an app saves them with its document.
+const formats = shallowRef<CellFormats>({})
+const aggregates = shallowRef<ColumnAggregates>({})
+const pinned = shallowRef(false)
+// One object for each answer: a new object at each render of the page would be a new state of the table.
+const PINNED: ColumnPinning = { start: ['product'] }
+const NOT_PINNED: ColumnPinning = {}
+// The names that a format can carry as a colour. The style of the page gives each its colours.
+const COLORS = ['red', 'amber', 'green', 'blue']
+const TOTALS: readonly AggregateName[] = ['sum', 'mean', 'min', 'max', 'count']
+const TOTAL_COLUMNS = ['price', 'discount', 'stock']
+
+// The format of the active cell, for the pressed buttons of the toolbar.
+const active = computed<CellFormat>(() => {
+	const at = view.value?.activeCell
+	// Read here so that a change of the formats makes this answer again.
+	void formats.value
+	return at ? controller.getCellFormat(at.rowId, at.columnId) : {}
+})
+
+function format(patch: CellFormatPatch) {
+	controller.formatCells(patch)
+}
+
+/** One decimal more or fewer for the selected cells, from what the active cell shows. */
+function decimals(step: number) {
+	const at = view.value?.activeCell
+	const shown = active.value.format ?? columns.find((column) => column.id === at?.columnId)?.format
+	// What a format shows when nothing says how many: a price has two, a share and a count none.
+	const usual = shown === 'currency' || shown === 'decimal' ? 2 : 0
+	const now = active.value.decimals ?? usual
+	format({ decimals: Math.min(10, Math.max(0, now + step)) })
+}
+
+function onFormats(_value: CellFormats, details: TableChangeDetails) {
+	log.value = [`formats: ${details.reason}`, ...log.value].slice(0, 6)
+}
+
+/** A file with the cells as the screen shows them. The writers load at the first export. */
+async function exportCsv() {
+	const { downloadCsv } = await import('ui-sdk-table-vue/export')
+	downloadCsv(controller.exportData({ totals: true }), 'price-list')
+}
+
+const valueOf = (event: Event) => (event.target as HTMLSelectElement).value
 const rows = shallowRef(createProducts(LIST.length))
 const large = shallowRef(false)
 const grouped = shallowRef(false)
@@ -229,10 +290,17 @@ const focusOnMount = (el: unknown) => {
 		again. Tab leaves the table; inside a selected range it walks the range, and Escape drops the
 		range.
 	</p>
+	<p>
+		Drag the square at the corner of the selected cells to fill, or press Ctrl+D and Ctrl+R: one
+		line repeats, and two numbers or two days go on with their step. A press on a row number selects
+		the row. Ctrl+B and Ctrl+I make the selected cells bold and italic, and the buttons below give
+		them a format. The footer picks the function of each total.
+	</p>
 	<div class="toolbar">
 		<button type="button" :aria-pressed="!large" @click="load(false)">12 rows</button>
 		<button type="button" :aria-pressed="large" @click="load(true)">50,000 rows</button>
 		<label><input v-model="grouped" type="checkbox" /> Group by group</label>
+		<label><input v-model="pinned" type="checkbox" /> Pin Product</label>
 		<label><input v-model="locked" type="checkbox" /> Refuse every edit</label>
 		<label><input v-model="slow" type="checkbox" /> Slow check of prices</label>
 		<label>
@@ -254,13 +322,110 @@ const focusOnMount = (el: unknown) => {
 		</span>
 		<span> Cell: <output data-testid="status">{{ status }}</output> </span>
 	</div>
-	<div class="scroller" :class="{ tall: large }" :dir="rtl ? 'rtl' : undefined">
+	<div class="toolbar" role="toolbar" aria-label="Format of the selected cells">
+		<button
+			type="button"
+			class="look"
+			aria-label="Bold"
+			:aria-pressed="active.bold === true"
+			:disabled="!view?.activeCell"
+			@click="controller.toggleCellFormat('bold')"
+		>
+			<b>B</b>
+		</button>
+		<button
+			type="button"
+			class="look"
+			aria-label="Italic"
+			:aria-pressed="active.italic === true"
+			:disabled="!view?.activeCell"
+			@click="controller.toggleCellFormat('italic')"
+		>
+			<i>I</i>
+		</button>
+		<label>
+			Side
+			<select
+				data-testid="format-align"
+				:value="active.align ?? ''"
+				:disabled="!view?.activeCell"
+				@change="format({ align: (valueOf($event) || null) as CellFormat['align'] | null })"
+			>
+				<option value="">As the column</option>
+				<option value="start">Start</option>
+				<option value="center">Center</option>
+				<option value="end">End</option>
+			</select>
+		</label>
+		<label>
+			Show as
+			<select
+				data-testid="format-kind"
+				:value="active.format ?? ''"
+				:disabled="!view?.activeCell"
+				@change="format({ format: (valueOf($event) || null) as CellFormat['format'] | null })"
+			>
+				<option value="">As the column</option>
+				<option v-for="name in CELL_FORMAT_NAMES" :key="name" :value="name">{{ name }}</option>
+			</select>
+		</label>
+		<button
+			type="button"
+			aria-label="One decimal more"
+			:disabled="!view?.activeCell"
+			@click="decimals(1)"
+		>
+			.0 +
+		</button>
+		<button
+			type="button"
+			aria-label="One decimal fewer"
+			:disabled="!view?.activeCell"
+			@click="decimals(-1)"
+		>
+			.0 −
+		</button>
+		<label>
+			Fill
+			<select
+				data-testid="format-fill"
+				:value="active.fill ?? ''"
+				:disabled="!view?.activeCell"
+				@change="format({ fill: valueOf($event) || null })"
+			>
+				<option value="">None</option>
+				<option v-for="name in COLORS" :key="name" :value="name">{{ name }}</option>
+			</select>
+		</label>
+		<label>
+			Text
+			<select
+				data-testid="format-color"
+				:value="active.color ?? ''"
+				:disabled="!view?.activeCell"
+				@change="format({ color: valueOf($event) || null })"
+			>
+				<option value="">None</option>
+				<option v-for="name in COLORS" :key="name" :value="name">{{ name }}</option>
+			</select>
+		</label>
+		<button type="button" :disabled="!view?.activeCell" @click="controller.clearCellFormats()">
+			Clear the format
+		</button>
+		<button type="button" @click="aggregates = {}">Totals as defined</button>
+		<button type="button" @click="exportCsv">Export CSV</button>
+	</div>
+	<div class="scroller sheet" :class="{ tall: large }" :dir="rtl ? 'rtl' : undefined">
 		<Table
+			v-model:cell-formats="formats"
+			v-model:column-aggregates="aggregates"
 			:rows="rows"
 			:columns="columns"
 			:controller="controller"
 			:group-by="grouped ? ['group'] : []"
 			:default-expanded="GROUPS.map((group) => `group/group=${group}`)"
+			:column-pinning="pinned ? PINNED : NOT_PINNED"
+			:format-colors="COLORS"
 			:row-window="large"
 			:row-height="large ? ROW_HEIGHT : undefined"
 			sheet
@@ -268,6 +433,7 @@ const focusOnMount = (el: unknown) => {
 			sticky-footer
 			aria-label="Price list"
 			@cell-edit="onCellEdit"
+			@cell-formats-change="onFormats"
 		>
 			<template #header="{ column, label, leaf, sort, toggleSort, selectColumn }">
 				<button v-if="leaf && column.sortable" type="button" @click="toggleSort">
@@ -275,7 +441,7 @@ const focusOnMount = (el: unknown) => {
 				</button>
 				<span v-else>{{ label }}</span>
 				<button
-					v-if="leaf"
+					v-if="leaf && !column.rowHeader"
 					type="button"
 					class="column-pick"
 					:aria-label="`Select the cells of ${label}`"
@@ -298,8 +464,34 @@ const focusOnMount = (el: unknown) => {
 				/>
 				<span v-if="error" class="cell-error">{{ error }}</span>
 			</template>
+			<template #foot="{ column, text, aggregate, setAggregate }">
+				<template v-if="TOTAL_COLUMNS.includes(column.id)">
+					<select
+						class="total-pick"
+						:aria-label="`Total of ${column.header}`"
+						:value="aggregate ?? ''"
+						@change="setAggregate((valueOf($event) || null) as AggregateName | null, $event)"
+						@keydown.stop
+					>
+						<option value="">No total</option>
+						<option v-for="name in TOTALS" :key="name" :value="name">{{ name }}</option>
+					</select>
+					<span class="total-text">{{ text }}</span>
+				</template>
+			</template>
 		</Table>
 	</div>
+	<p class="summary" data-testid="summary">
+		<template v-if="summary && summary.numbers > 1">
+			Sum {{ summary.texts.sum }}, average {{ summary.texts.mean }}, smallest
+			{{ summary.texts.min }}, largest {{ summary.texts.max }}, {{ summary.count }} of
+			{{ summary.cells }} cells with a value
+		</template>
+		<template v-else-if="summary"
+			>{{ summary.count }} of {{ summary.cells }} cells with a value</template
+		>
+		<template v-else>No cell is selected</template>
+	</p>
 	<h2>Last reports</h2>
 	<button type="button" @click="log = []">Clear the list</button>
 	<ol data-testid="log">

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import { applyEdits, type CellEdit } from '../edit'
 import type { ColumnDef } from '../rows'
 import { table, type TableOptions } from '../table'
+import { setFormats, type CellFormats } from './formats'
 
 // A measurement, not a pass or fail check: it runs only on request, with
 // `BENCH=1 vp test run packages/core/src/sheet/sheet.perf --silent=false`,
@@ -217,6 +218,147 @@ describe.runIf(requested)('sheet with 50,000 rows', () => {
 			() => void applyEdits(replaced, edits),
 		)
 
+		console.table(results)
+	}, 120_000)
+
+	test('median time of a fill, a summary, a format and a change of a total', async () => {
+		const results: Record<string, number> = {}
+
+		// The owner of this table never changes its rows, so every fill starts from the same values.
+		const fill = setup({ sheet: true })
+		const selectColumn = () =>
+			fill.view.api.selectCells(
+				{ rowId: 'p0', columnId: 'score' },
+				{ rowId: `p${ROWS - 1}`, columnId: 'score' },
+			)
+		selectColumn()
+		results['fill down of 49,999 cells from one line, with its step'] = await median(
+			() => void fill.view.api.fillCells('down'),
+			() => selectColumn(),
+		)
+		// A cell that holds the value already is no edit, so a few cells report nothing.
+		expect(fill.reports.at(-1)).toBeGreaterThan(ROWS - 100)
+		results['fill down of 49,998 cells as a series from two lines'] = await median(
+			() => void fill.view.api.fillCells('down', 2),
+			() => selectColumn(),
+		)
+		expect(fill.reports.at(-1)).toBeGreaterThan(ROWS - 100)
+		fill.view.unmount()
+
+		const sum = setup({})
+		results['summary of 250,000 selected cells, first ask'] = await median(
+			() => void sum.view.api.getSelectionSummary(),
+			(round) => {
+				// Another range each round, so nothing of the last answer is kept.
+				sum.view.api.selectCells(
+					{ rowId: 'p0', columnId: 'name' },
+					{ rowId: `p${ROWS - 1 - round}`, columnId: 'joined' },
+				)
+			},
+		)
+		results['summary of the same selection, again'] = await median(
+			() => void sum.view.api.getSelectionSummary(),
+		)
+		expect(sum.view.api.getSelectionSummary()?.cells).toBe((ROWS - 8) * 5)
+		sum.view.unmount()
+
+		// The formats: the pure function first, then the table with its history.
+		const ids = Array.from({ length: ROWS }, (_, index) => `p${index}`)
+		let made: CellFormats = {}
+		results['setFormats, one format for 50,000 cells of one column'] = await median(() => {
+			made = setFormats({}, { rows: ids, columns: ['score'] }, { bold: true })
+		})
+		const rowRecords = new Set(Object.values(made.cells ?? {}))
+		const formatObjects = new Set([...rowRecords].flatMap((row) => Object.values(row)))
+		results['  keys of that value'] = Object.keys(made.cells ?? {}).length
+		results['  objects of that value beside its one record (rows, formats)'] =
+			rowRecords.size + formatObjects.size
+		results['setFormats, a second property on the same 50,000 cells'] = await median(
+			() => void setFormats(made, { rows: ids, columns: ['score'] }, { fill: 'red' }),
+		)
+		results['setFormats, a whole column over 50,000 cell formats'] = await median(
+			() => void setFormats(made, { columns: ['score'] }, { bold: true }),
+		)
+
+		const formats = setup({ sheet: true, formatColors: ['red'] })
+		const block = {
+			from: { rowId: 'p0', columnId: 'name' },
+			to: { rowId: `p${BLOCK - 1}`, columnId: 'joined' },
+		}
+		results['formatCells, 50,000 cells (10,000 rows by 5 columns), with its step'] = await median(
+			() => formats.view.api.formatCells({ bold: true }, block),
+			() => formats.view.api.clearCellFormats(block),
+		)
+		const held = formats.view.api.getView().cellFormats
+		const heldRows = new Set(Object.values(held.cells ?? {}))
+		results['  objects of the state for those cells (rows, formats)'] =
+			heldRows.size + new Set([...heldRows].flatMap((row) => Object.values(row))).size
+		results['undo of that format step'] = await median(
+			() => formats.view.api.undo(),
+			(round) => {
+				if (round > 0) formats.view.api.redo()
+			},
+		)
+		formats.view.api.redo()
+		results['formatCells, a whole column of 50,000 rows'] = await median((round) =>
+			formats.view.api.formatCells({ decimals: round % 2 ? 1 : 3 }, { columns: ['score'] }),
+		)
+		formats.view.unmount()
+
+		const totals = setup({})
+		void totals.view.api.getTotals()
+		results['change of the function of a total, then the totals'] = await median((round) => {
+			totals.view.api.setColumnAggregate('score', round % 2 ? 'sum' : 'mean')
+			void totals.view.api.getTotals()
+		})
+		totals.view.unmount()
+		const grouped = setup({ groupBy: ['team', 'country'], groupTotals: true })
+		void grouped.view.api.getTotals()
+		results['the same with 25 groups, then the totals of each group'] = await median((round) => {
+			grouped.view.api.setColumnAggregate('score', round % 2 ? 'sum' : 'mean')
+			void grouped.view.api.getTotals()
+			for (const team of TEAMS) {
+				for (const country of COUNTRIES) {
+					void grouped.view.api.getTotals(`group/team=${team}/country=${country}`)
+				}
+			}
+		})
+		grouped.view.unmount()
+
+		console.table(results)
+	}, 120_000)
+
+	// The cost of a text, which every cell, a copy and an export pay. The first
+	// line uses nothing that the table did not have before cells had formats,
+	// so it also runs on the code before them.
+	test('median time of every text of the table', async () => {
+		const results: Record<string, number> = {}
+		const formatted: ColumnDef<Person>[] = columns.map((column) =>
+			column.id === 'score' ? { ...column, format: 'decimal' } : column,
+		)
+		const plain = setup({ columns: formatted })
+		results['export of 250,000 texts, no cell format'] = await median(
+			() => void plain.view.api.exportData(),
+		)
+		expect(plain.view.api.exportData().rows).toHaveLength(ROWS)
+		if ('formatCells' in plain.view.api) {
+			plain.view.api.formatCells({ decimals: 1 }, { columns: ['score'] })
+			results['export of 250,000 texts, one column with a format'] = await median(
+				() => void plain.view.api.exportData(),
+			)
+			plain.view.api.clearCellFormats({ columns: ['score'] })
+			plain.view.api.formatCells(
+				{ decimals: 1 },
+				{
+					from: { rowId: 'p0', columnId: 'score' },
+					to: { rowId: `p${ROWS - 2}`, columnId: 'score' },
+				},
+			)
+			results['export of 250,000 texts, 49,999 cells with a format of their own'] = await median(
+				() => void plain.view.api.exportData(),
+			)
+		}
+		plain.view.unmount()
 		console.table(results)
 	}, 120_000)
 })

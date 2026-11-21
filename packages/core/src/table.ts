@@ -16,6 +16,7 @@ import {
 	type CommitDetails,
 } from '@ui-sdk/core'
 import { createCellEdit, type LateSave, type SaveResult } from './behaviors/edit'
+import { byFillDraft, createFillHandle, type FillDirection, type FillDraft } from './behaviors/fill'
 import { createStepHistory, type HistoryCounts, type HistoryResult } from './behaviors/history'
 import { createCellWrites, type WriteInput, type WriteTarget } from './behaviors/write'
 import { createTableGrid, GRID_KEYS, type GridArea, type GridCell } from './behaviors/grid'
@@ -29,6 +30,24 @@ import {
 	type CellRange,
 } from './behaviors/range'
 import { createColumnReorder, type ReorderDraft } from './behaviors/reorder'
+import {
+	byCellFormat,
+	CELL_ALIGNS,
+	CELL_DATE_STYLES,
+	CELL_FORMAT_KEYS,
+	CELL_FORMAT_NAMES,
+	CELL_MAX_DECIMALS,
+	CLEAR_FORMAT,
+	formatNames,
+	ownFormat,
+	resolveFormat,
+	revertFormats,
+	setFormats,
+	type CellFormat,
+	type CellFormatPatch,
+	type CellFormats,
+	type FormatPlace,
+} from './sheet/formats'
 import { createColumnResize, type ResizeDraft } from './behaviors/resize'
 import { createStickyRows } from './behaviors/sticky'
 import {
@@ -60,9 +79,11 @@ import {
 	type ParseTexts,
 	type Checked,
 } from './edit'
-import { createTurnValues } from './edit/turn'
+import { createTurnValue, createTurnValues } from './edit/turn'
+import { fillValues } from './sheet/fill'
 import { moveFrom, type Move } from './sheet/moves'
 import { stepSize, type HistoryEntry, type TableStep } from './sheet/steps'
+import { summarize, type RangeSummary } from './sheet/summary'
 import { createDebounce } from './debounce'
 import { collectExport, type ExportData, type ExportOptions } from './export/data'
 import { formatValue, isNumericFormat } from './format'
@@ -87,6 +108,9 @@ import {
 	uniqueValues,
 	valueKey,
 	walkRows,
+	aggregates,
+	type AggregateFn,
+	type AggregateName,
 	type ColumnDef,
 	type DataRow,
 	type FilterKind,
@@ -109,8 +133,14 @@ export type TableReason =
 	| 'move-key'
 	| 'resize-key'
 	| 'escape-key'
+	| 'shortcut'
+	| 'undo'
+	| 'redo'
 
 export type TableChangeDetails = ChangeDetails<TableReason>
+
+/** What made a step of the history: the reason of an edit, or of a change of formats. */
+export type TableStepReason = TableEditReason | 'shortcut'
 export type TableCommitDetails = CommitDetails<TableReason>
 
 /**
@@ -133,10 +163,26 @@ export type TableEditReason =
 	| 'redo'
 export type TableEditDetails = ChangeDetails<TableEditReason>
 
+/** Where a fill goes from its source. `forward` is toward the end of a row in reading order. */
+export type FillWay = 'down' | 'up' | 'forward' | 'back'
+
 /** A cell of the data, by the id of its row and of its column. */
 export type CellRef = { rowId: string; columnId: string }
 
+/**
+ * The cells that a change of formats is for: the cells from one to another
+ * as the table shows them, or whole columns. Whole columns also hold for
+ * rows that come later.
+ */
+export type FormatTarget = { from: CellRef; to?: CellRef } | { columns: readonly string[] }
+
 export type ColumnVisibility = Readonly<Record<string, boolean>>
+/**
+ * The function of the total of a column, chosen at run time, by column id.
+ * An entry wins over the `aggregate` of the column, and `null` takes the
+ * total of the column away.
+ */
+export type ColumnAggregates = Readonly<Record<string, AggregateName | null>>
 export type ColumnWidths = Readonly<Record<string, number>>
 
 export type SortDirection = 'asc' | 'desc'
@@ -250,6 +296,16 @@ export type TableController = {
 	 * it. A caller puts the text on the clipboard. It throws as `clearCells` does.
 	 */
 	cutCells(): string | Promise<string>
+	/**
+	 * Fills the selected cells from their first line: `'down'` from the first
+	 * row, `'up'` from the last row, `'forward'` from the first column,
+	 * `'back'` from the last column. `source` is how many lines the fill
+	 * starts from, 1 without it; with two or more, numbers and days with one
+	 * step go on, and everything else repeats. Each value passes the check of
+	 * its column, and one refusal stops the fill before any cell changes. It
+	 * throws when the selected cells are one line in that direction.
+	 */
+	fillCells(direction: FillWay, source?: number): void | Promise<void>
 	/** Selects every cell of the body. Needs the `cellSelection` option. */
 	selectAllCells(): void
 	/** Selects every cell of a row, or of the rows from one to another as the list shows them. */
@@ -269,7 +325,46 @@ export type TableController = {
 	/** Forgets every step. Call it when the rows become other data, such as another document. */
 	clearHistory(): void
 	/** The steps of the history, oldest first, and how many of them are applied: `undo` takes back the last of those. */
-	getHistory(): { entries: readonly HistoryEntry<TableEditReason>[]; position: number }
+	getHistory(): { entries: readonly HistoryEntry<TableStepReason>[]; position: number }
+	/**
+	 * Chooses the function of the total of a column, in the footer, in the
+	 * group rows and in an export: `sum`, `mean`, `min`, `max`, `count`,
+	 * `uniqueCount` or `first`. `null` takes the total of the column away, and
+	 * `undefined` gives the column the `aggregate` of its definition back.
+	 */
+	setColumnAggregate(columnId: string, aggregate: AggregateName | null | undefined): void
+	/**
+	 * Changes the format of cells: how their values become text (`format`,
+	 * `decimals`, `currency`, `dateStyle`) and how they look (`align`, `bold`,
+	 * `italic`, `color`, `fill`). A key with `null` takes that property away.
+	 * Without a target, the selected cells get it; when those are every row
+	 * that the table has, the format goes to the whole columns and holds for
+	 * rows that come later. It throws for a property, a format name or a
+	 * colour that the table does not know, and lists the valid ones.
+	 */
+	formatCells(patch: CellFormatPatch, target?: FormatTarget): void
+	/** Takes every format of cells away: of the target, or of the selected cells. */
+	clearCellFormats(target?: FormatTarget): void
+	/**
+	 * Makes the selected cells bold or italic, for a button of a toolbar, as
+	 * the keys of a sheet do: on, unless every selected cell has it, and then off.
+	 */
+	toggleCellFormat(property: 'bold' | 'italic'): void
+	/**
+	 * The format that a cell has of its own: the format of its column in
+	 * `cellFormats` with the format of the cell over it. An empty object when
+	 * neither says anything, and for the number of a row. The `format` of the
+	 * column definition is not in it.
+	 */
+	getCellFormat(rowId: string, columnId: string): CellFormat
+	/**
+	 * What the selected cells add up to: how many hold a value and a number,
+	 * and the sum, the mean, the smallest and the largest of the numbers, each
+	 * also as text. Counted when it is asked for, and kept for the same
+	 * selection and the same rows. `null` when no cell of a data row is
+	 * selected. Group rows and the numbers of the rows are left out.
+	 */
+	getSelectionSummary(): RangeSummary | null
 	/**
 	 * The cells of the table as plain data, for a file: every row that passes
 	 * the filters and the visible columns, or what the options ask for. The
@@ -351,6 +446,10 @@ export type TableView = {
 	/** Whether one of them is open now. An id in `expanded` that no group or row has any more does not count. */
 	hasExpanded: boolean
 	loading: boolean
+	/** The functions of the totals that were chosen at run time, by column id. */
+	columnAggregates: ColumnAggregates
+	/** The formats of cells and columns that were set at run time. */
+	cellFormats: CellFormats
 	/** Whether `undo` has a step to take back. Always false without the `history` option. */
 	canUndo: boolean
 	canRedo: boolean
@@ -458,7 +557,7 @@ export type GroupPathEntry<Row = unknown> = {
 /** How a press on a header changes the sort: see the `multiSort` option. */
 export type MultiSortMode = 'none' | 'modifier' | 'always'
 
-type ReadActions = 'getView' | 'getFacets' | 'getTotals' | 'subscribe'
+type ReadActions = 'getView' | 'getFacets' | 'getTotals' | 'getSelectionSummary' | 'subscribe'
 
 type CellActions =
 	| 'editCell'
@@ -470,6 +569,11 @@ type CellActions =
 	| 'pasteCells'
 	| 'clearCells'
 	| 'cutCells'
+	| 'fillCells'
+	| 'formatCells'
+	| 'clearCellFormats'
+	| 'toggleCellFormat'
+	| 'getCellFormat'
 	| 'selectAllCells'
 	| 'selectCellRows'
 	| 'selectCellColumns'
@@ -634,6 +738,39 @@ export type TableOptions<Row = unknown> = {
 	onRowPinningChange?: (value: RowPinning, details: TableChangeDetails) => void
 
 	/**
+	 * The function of the total of a column where a person chose one, by
+	 * column id: `sum`, `mean`, `min`, `max`, `count`, `uniqueCount` or
+	 * `first`. An entry wins over the `aggregate` of the column, and `null`
+	 * takes the total of the column away. The footer, the group rows,
+	 * `getTotals` and an export all follow it. With `totals` of the owner, the
+	 * owner hears the change and gives the number of the chosen function.
+	 */
+	columnAggregates?: ColumnAggregates
+	defaultColumnAggregates?: ColumnAggregates
+	onColumnAggregatesChange?: (value: ColumnAggregates, details: TableChangeDetails) => void
+
+	/**
+	 * The formats of cells and of whole columns: how a value becomes text and
+	 * how the cell looks, by row id and column id. A property of a cell wins
+	 * over the same property of its column, and both win over the `format`
+	 * of the column definition. The looks reach a cell as `data-align`,
+	 * `data-bold`, `data-italic`, `data-color` and `data-fill`, and the style
+	 * of the app gives them a meaning. The value is reported whole and shares
+	 * what did not change, so an owner saves it as it is. Colour alone must
+	 * not carry a meaning: a screen reader says the text of a cell, not its looks.
+	 */
+	cellFormats?: CellFormats
+	defaultCellFormats?: CellFormats
+	onCellFormatsChange?: (value: CellFormats, details: TableChangeDetails) => void
+	/**
+	 * The names that `color` and `fill` of a cell format can have, such as
+	 * `['red', 'amber', 'green']`. The table writes a name into `data-color`
+	 * or `data-fill`, and the style of the app maps it to its own colours for
+	 * light and dark. Without the option, a format can carry no colour.
+	 */
+	formatColors?: readonly string[]
+
+	/**
 	 * The rules of a data sheet. In the editor, Enter saves and moves down
 	 * (with Shift up), and an arrow key saves and moves when a character
 	 * opened the editor. Inside a selected range, Enter and Tab walk the range
@@ -655,6 +792,14 @@ export type TableOptions<Row = unknown> = {
 	 * `true` to change them. Defaults to the `sheet` option.
 	 */
 	history?: boolean | TableHistoryOptions
+	/**
+	 * The fill handle: a small part at the corner of the selected cells that
+	 * a person drags to fill more cells, and with `sheet` the keys Control+D
+	 * (fill down) and Control+R (fill forward). `'vertical'` and
+	 * `'horizontal'` let a fill go along one axis only. Needs cell selection.
+	 * Defaults to the `sheet` option.
+	 */
+	fillHandle?: boolean | 'vertical' | 'horizontal'
 	/** Whether a person can edit cells. A column can say otherwise. Defaults to the `sheet` option. */
 	editable?: boolean
 	/**
@@ -730,6 +875,9 @@ type TableState = {
 	columnWidths: ColumnWidths
 	columnPinning: ColumnPinning
 	rowPinning: RowPinning
+	columnAggregates: ColumnAggregates
+	/** The formats of cells and columns. Not a key of `controlled`: an agent reads a format with `getCellFormat`, and its snapshot stays small. */
+	cellFormats: CellFormats
 	cellRange: CellRange | null
 	/**
 	 * The text of a search field that the filter does not hold yet: it waits
@@ -741,6 +889,10 @@ type TableState = {
 	searchPending: boolean
 	/** How many steps `undo` and `redo` have. The steps themselves are not state. */
 	history: HistoryCounts
+	/** The cells that a drag of the fill handle would fill, or `null`. Live: it changes with each move of the pointer. */
+	fillDraft: FillDraft | null
+	/** Whether a drag of the fill handle runs. Live. */
+	filling: boolean
 	/** The id of the cell that is edited (`cellKey`), or `null`. */
 	editing: string | null
 	/** The id of the cell whose new value is checked now, or `null`. */
@@ -776,6 +928,8 @@ const NO_VISIBILITY: ColumnVisibility = {}
 const NO_WIDTHS: ColumnWidths = {}
 const NO_PINNING: ColumnPinning = {}
 const NO_ROW_PINNING: RowPinning = {}
+const NO_AGGREGATES: ColumnAggregates = {}
+const AGGREGATE_NAMES = Object.keys(aggregates) as AggregateName[]
 const NO_ERRORS: Readonly<Record<string, string>> = {}
 const NO_LIMITS: TableHistoryOptions = {}
 const NO_FLAT: FlatRow<unknown>[] = []
@@ -789,6 +943,7 @@ const DEFAULT_COLUMN_MIN_WIDTH = 48
 const RESIZE_STEP = 10
 const RESIZE_LARGE_STEP = 50
 const SORT_MODES: readonly MultiSortMode[] = ['none', 'modifier', 'always']
+const FILL_WAYS: readonly FillWay[] = ['down', 'up', 'forward', 'back']
 const FACET_ROWS = ['filtered', 'all'] as const
 
 /** The ids of the columns that a person can move: the visible ones that are not pinned and do not lead the table. */
@@ -813,6 +968,9 @@ const QUIET = {
 	searchDraft: [],
 	searchPending: [],
 	history: [],
+	fillDraft: [],
+	filling: [],
+	cellFormats: [],
 } as const
 
 /** For a part that reads no state at all. */
@@ -829,6 +987,7 @@ const SILENT = {
 	columnPinning: [],
 	columnDrag: [],
 	rowPinning: [],
+	columnAggregates: [],
 } as const
 
 const EDIT_REASONS: readonly TableEditReason[] = [
@@ -845,6 +1004,8 @@ const EDIT_REASONS: readonly TableEditReason[] = [
 ]
 
 const NO_HISTORY: HistoryCounts = { undo: 0, redo: 0 }
+const NO_FORMATS: CellFormats = Object.freeze({})
+const NO_FORMAT: CellFormat = Object.freeze({})
 const HISTORY_LIMIT = 100
 const HISTORY_MAX_CELLS = 100_000
 
@@ -853,6 +1014,11 @@ const together =
 	(...cleanups: (() => void)[]) =>
 	() =>
 		cleanups.forEach((cleanup) => cleanup())
+
+/** The name of the function of a total: one of the built-in names, or `custom` for a function of the column. */
+export const aggregateName = (
+	aggregate: AggregateName | AggregateFn<any> | undefined,
+): AggregateName | 'custom' | undefined => (typeof aggregate === 'function' ? 'custom' : aggregate)
 
 function listed(ids: Iterable<string>): string {
 	const list = [...ids]
@@ -926,8 +1092,16 @@ export const table = definePrimitive({
 		rowPinning: 'value',
 		defaultRowPinning: 'value',
 		onRowPinningChange: 'callback',
+		columnAggregates: 'value',
+		defaultColumnAggregates: 'value',
+		onColumnAggregatesChange: 'callback',
+		cellFormats: 'value',
+		defaultCellFormats: 'value',
+		onCellFormatsChange: 'callback',
+		formatColors: 'value',
 		sheet: 'boolean',
 		history: 'value',
+		fillHandle: 'value',
 		editable: 'boolean',
 		onCellEdit: 'callback',
 		cellSelection: 'boolean',
@@ -954,10 +1128,11 @@ export const table = definePrimitive({
 		'columnWidths',
 		'columnPinning',
 		'rowPinning',
+		'columnAggregates',
 		'cellRange',
 	],
 	commits: ['columnWidths', 'cellRange'],
-	live: ['columnResize'],
+	live: ['columnResize', 'fillDraft', 'filling'],
 	state: (options: TableOptions): TableState => {
 		const columnVisibility =
 			options.columnVisibility ?? options.defaultColumnVisibility ?? NO_VISIBILITY
@@ -975,6 +1150,9 @@ export const table = definePrimitive({
 			columnWidths: options.columnWidths ?? options.defaultColumnWidths ?? NO_WIDTHS,
 			columnPinning,
 			rowPinning: options.rowPinning ?? options.defaultRowPinning ?? NO_ROW_PINNING,
+			columnAggregates:
+				options.columnAggregates ?? options.defaultColumnAggregates ?? NO_AGGREGATES,
+			cellFormats: options.cellFormats ?? options.defaultCellFormats ?? NO_FORMATS,
 			rowWindow: firstRowWindow(
 				options.rowHeight ?? options.estimatedRowHeight ?? DEFAULT_ROW_HEIGHT,
 				options.overscan ?? DEFAULT_OVERSCAN,
@@ -992,6 +1170,8 @@ export const table = definePrimitive({
 			searchDraft: null,
 			searchPending: false,
 			history: NO_HISTORY,
+			fillDraft: null,
+			filling: false,
 			editing: null,
 			editChecking: null,
 			editErrors: NO_ERRORS,
@@ -1012,6 +1192,8 @@ export const table = definePrimitive({
 		if (options.columnWidths !== undefined) synced.columnWidths = options.columnWidths
 		if (options.columnPinning !== undefined) synced.columnPinning = options.columnPinning
 		if (options.rowPinning !== undefined) synced.rowPinning = options.rowPinning
+		if (options.columnAggregates !== undefined) synced.columnAggregates = options.columnAggregates
+		if (options.cellFormats !== undefined) synced.cellFormats = options.cellFormats
 		if (options.cellRange !== undefined) synced.cellRange = options.cellRange
 		return synced
 	},
@@ -1108,24 +1290,73 @@ export const table = definePrimitive({
 			return found?.header ?? columnId
 		}
 
-		function text(row: unknown, column: ColumnDef): string {
+		/** The text of a value by the definition of its column alone. A search and the label of a group read this: neither follows a format that a person gave a cell. */
+		function columnText(row: unknown, column: ColumnDef): string {
 			const value = cellValue(row, column)
 			return column.format
 				? formatValue(value, column.format, column.formatOptions, { locale: options().locale })
 				: toText(value)
 		}
 
+		const hasFormats = (formats: CellFormats) => !!formats.columns || !!formats.cells
+
+		/**
+		 * The text of a cell as a person sees it. With the id of the row, the
+		 * format of the cell decides; without it, the format of the column.
+		 * A table without formats pays one test for this.
+		 */
+		function text(row: unknown, column: ColumnDef, rowId?: string): string {
+			const formats = state().cellFormats
+			if (!hasFormats(formats)) return columnText(row, column)
+			const shown = resolveFormat(column, formats, rowId)
+			const value = cellValue(row, column)
+			return shown.format
+				? formatValue(value, shown.format, shown.options, { locale: options().locale })
+				: toText(value)
+		}
+
+		/** The name of the format that a cell shows with: an empty cell with a number format reads a number. */
+		const shownFormat = (column: ColumnDef, rowId: string): string | undefined => {
+			const formats = state().cellFormats
+			return hasFormats(formats) ? resolveFormat(column, formats, rowId).format : column.format
+		}
+
+		const pickAggregate = (
+			chosen: ColumnAggregates,
+			column: ColumnDef,
+		): AggregateName | AggregateFn<unknown> | undefined =>
+			column.id in chosen ? (chosen[column.id] ?? undefined) : column.aggregate
+		/**
+		 * The function of the total of a column: the one that was chosen at run
+		 * time, else the `aggregate` of the column. Every reader of a total asks
+		 * here, so the footer, the group rows, `getTotals` and an export agree.
+		 */
+		const aggregateOf = (column: ColumnDef) => pickAggregate(state().columnAggregates, column)
+		const aggregatesNow = createTurnValue(
+			() => options().columnAggregates,
+			() => state().columnAggregates,
+		)
+		// The formats of now for a change that starts from them. What a cell
+		// shows is the state, which follows the owner.
+		const formatsNow = createTurnValue(
+			() => options().cellFormats,
+			() => state().cellFormats,
+		)
+
 		function totalText(column: ColumnDef, value: unknown): string {
-			const counts = column.aggregate === 'count' || column.aggregate === 'uniqueCount'
-			if (!column.format || counts || typeof column.aggregate === 'function') return toText(value)
-			return formatValue(value, column.format, column.formatOptions, { locale: options().locale })
+			const aggregate = aggregateOf(column)
+			const counts = aggregate === 'count' || aggregate === 'uniqueCount'
+			// A total shows as its column does: a column that a person made a currency sums to a currency.
+			const shown = resolveFormat(column, state().cellFormats)
+			if (!shown.format || counts || typeof aggregate === 'function') return toText(value)
+			return formatValue(value, shown.format, shown.options, { locale: options().locale })
 		}
 
 		/** The value of a group as its column shows it. */
 		function groupValueText(group: GroupRow<unknown>): string {
 			const column = layout().byId.get(group.columnId)
 			const sample = group.leaves[0]
-			return column && sample ? text(sample.row, column) : toText(group.value)
+			return column && sample ? columnText(sample.row, column) : toText(group.value)
 		}
 
 		function groupText(group: GroupRow<unknown>): string {
@@ -1188,6 +1419,9 @@ export const table = definePrimitive({
 		const model = createRowModel<unknown>({
 			rows: () => options().rows ?? NO_ROWS,
 			columns: definitions,
+			// An empty choice is no choice: the totals of a table without one are counted as before.
+			aggregates: () =>
+				state().columnAggregates === NO_AGGREGATES ? undefined : state().columnAggregates,
 			// Read at each use, so a table that gets these options later still works.
 			get getRowId() {
 				return options().getRowId
@@ -1197,7 +1431,7 @@ export const table = definePrimitive({
 			},
 			locale: () => options().locale,
 			filter: () => list().filter,
-			filterText: text,
+			filterText: columnText,
 			searchMode: () => options().searchMode,
 			fuzzyThreshold: () => options().fuzzyThreshold,
 			sort: () => list().sort,
@@ -1310,43 +1544,47 @@ export const table = definePrimitive({
 		const headerRowCount = () => layout().headerRows.length
 		/** Without rows, the body holds one row that says so. */
 		const bodyRowCount = () => bodyRows().length || 1
-		const hasTotals = memo((columns: readonly ColumnDef[]) =>
-			columns.some((column) => column.aggregate !== undefined),
+		const hasTotals = memo((columns: readonly ColumnDef[], chosen: ColumnAggregates) =>
+			columns.some((column) => pickAggregate(chosen, column) !== undefined),
 		)
 		/** The footer is one row of column totals, and it exists when a column has a total. */
-		const footerRowCount = () => (hasTotals(layout().leaves) ? 1 : 0)
+		const footerRowCount = () => (hasTotals(layout().leaves, state().columnAggregates) ? 1 : 0)
 		const rowCount = () => headerRowCount() + bodyRowCount() + footerRowCount()
 
 		// The totals of the owner, checked once for each object that the owner gives.
-		const givenTotals = memo((given: TableTotalsSource | undefined, columns: ColumnLayout) => {
-			if (given === undefined) return undefined
-			const wrong = () =>
-				new Error(
-					'`totals` is an object with `table` (totals by column id) and `groups` (totals by group id, then by column id).',
-				)
-			const record = (value: unknown): value is Record<string, unknown> =>
-				typeof value === 'object' && value !== null && !Array.isArray(value)
-			if (!record(given)) throw wrong()
-			if (Object.keys(given).some((key) => key !== 'table' && key !== 'groups')) throw wrong()
-			const check = (totals: unknown) => {
-				if (!record(totals)) throw wrong()
-				for (const id of Object.keys(totals)) {
-					const found = columns.byId.get(id)
-					const withTotal = columns.all.filter((column) => column.aggregate !== undefined)
-					if (!found || found.aggregate === undefined) {
-						throw new Error(
-							`${found ? `Column "${id}" has no \`aggregate\`, so it shows no total` : `No column "${id}" to give a total to`}. Columns with a total: ${listed(withTotal.map((column) => column.id))}.`,
+		const givenTotals = memo(
+			(given: TableTotalsSource | undefined, columns: ColumnLayout, chosen: ColumnAggregates) => {
+				if (given === undefined) return undefined
+				const wrong = () =>
+					new Error(
+						'`totals` is an object with `table` (totals by column id) and `groups` (totals by group id, then by column id).',
+					)
+				const record = (value: unknown): value is Record<string, unknown> =>
+					typeof value === 'object' && value !== null && !Array.isArray(value)
+				if (!record(given)) throw wrong()
+				if (Object.keys(given).some((key) => key !== 'table' && key !== 'groups')) throw wrong()
+				const check = (totals: unknown) => {
+					if (!record(totals)) throw wrong()
+					for (const id of Object.keys(totals)) {
+						const found = columns.byId.get(id)
+						const withTotal = columns.all.filter(
+							(column) => pickAggregate(chosen, column) !== undefined,
 						)
+						if (!found || pickAggregate(chosen, found) === undefined) {
+							throw new Error(
+								`${found ? `Column "${id}" has no \`aggregate\`, so it shows no total` : `No column "${id}" to give a total to`}. Columns with a total: ${listed(withTotal.map((column) => column.id))}.`,
+							)
+						}
 					}
 				}
-			}
-			if (given.table !== undefined) check(given.table)
-			if (given.groups !== undefined) {
-				if (!record(given.groups)) throw wrong()
-				for (const totals of Object.values(given.groups)) check(totals)
-			}
-			return given
-		})
+				if (given.table !== undefined) check(given.table)
+				if (given.groups !== undefined) {
+					if (!record(given.groups)) throw wrong()
+					for (const totals of Object.values(given.groups)) check(totals)
+				}
+				return given
+			},
+		)
 		const mergedTotals = new WeakMap<
 			Record<string, unknown>,
 			{ own: Readonly<Record<string, unknown>>; result: Record<string, unknown> }
@@ -1359,7 +1597,7 @@ export const table = definePrimitive({
 		 */
 		function totalsOf(group?: GroupRow<unknown>): Record<string, unknown> {
 			const counted = model.aggregate(group)
-			const given = givenTotals(options().totals, layout())
+			const given = givenTotals(options().totals, layout(), state().columnAggregates)
 			const own = group ? given?.groups?.[group.id] : given?.table
 			if (!own) return counted
 			const kept = mergedTotals.get(counted)
@@ -1374,25 +1612,32 @@ export const table = definePrimitive({
 		// and the columns after that up to the first one with a total. The label
 		// never crosses from pinned columns to free ones: a cell sticks or scrolls
 		// as a whole.
-		const labelSpan = memo((columns: ColumnLayout, on: boolean): number | undefined => {
-			const leaves = columns.leaves
-			const first = leaves[0]
-			if (!on || !first || !hasTotals(leaves)) return undefined
-			const pin = columns.pins.get(first.id)
-			let span = 1
-			let named = !isLead(first)
-			for (let next = leaves[span]; next; next = leaves[span]) {
-				if (columns.pins.get(next.id) !== pin) break
-				if (named && next.aggregate !== undefined) break
-				if (!isLead(next)) named = true
-				span++
-			}
-			return span
-		})
+		const labelSpan = memo(
+			(columns: ColumnLayout, on: boolean, chosen: ColumnAggregates): number | undefined => {
+				const leaves = columns.leaves
+				const first = leaves[0]
+				if (!on || !first || !hasTotals(leaves, chosen)) return undefined
+				const pin = columns.pins.get(first.id)
+				let span = 1
+				let named = !isLead(first)
+				for (let next = leaves[span]; next; next = leaves[span]) {
+					if (columns.pins.get(next.id) !== pin) break
+					if (named && pickAggregate(chosen, next) !== undefined) break
+					if (!isLead(next)) named = true
+					span++
+				}
+				return span
+			},
+		)
 		/** The columns that the label cell of a group row covers, or `undefined` when a group row is one wide cell. */
-		const groupSpan = () => labelSpan(layout(), options().groupTotals ?? true)
+		const groupSpan = () =>
+			labelSpan(layout(), options().groupTotals ?? true, state().columnAggregates)
 
 		/** What a cell of a group row is: its label, the total of a column, or the place of a column without one. */
+		const columnFormatNames = memo((columns: readonly ColumnDef[]) =>
+			columns.flatMap((item) => formatNames(undefined, item.id)),
+		)
+
 		function groupCell(
 			row: number,
 			col: number,
@@ -1401,7 +1646,8 @@ export const table = definePrimitive({
 			if (flat?.node.kind !== 'group') return undefined
 			const span = groupSpan()
 			if (span === undefined || col < span) return 'group-label'
-			return layout().leaves[col]?.aggregate === undefined ? 'group-blank' : 'group-total'
+			const leaf = layout().leaves[col]
+			return leaf && aggregateOf(leaf) !== undefined ? 'group-total' : 'group-blank'
 		}
 
 		function area(cell: GridCell): GridArea {
@@ -1571,6 +1817,8 @@ export const table = definePrimitive({
 		const editing = () => hasEditing(layout().all, editableByDefault())
 
 		function canEdit(node: DataRow<unknown>, column: ColumnDef): boolean {
+			// The number of a row is its place, and no value of the data.
+			if (column.rowHeader) return false
 			const rule = column.editable ?? editableByDefault()
 			return typeof rule === 'function' ? rule(node.row) : rule
 		}
@@ -1603,6 +1851,69 @@ export const table = definePrimitive({
 
 		const inBody = (row: number) =>
 			row >= headerRowCount() && row < headerRowCount() + bodyRows().length
+
+		// The columns of row headers lead the table. A range starts after the last of them.
+		const afterRowHeaders = memo((leaves: readonly ColumnDef[]) => {
+			let first = 0
+			leaves.forEach((leaf, index) => {
+				if (leaf.rowHeader) first = index + 1
+			})
+			return first
+		})
+		const firstRangeCol = () => afterRowHeaders(layout().leaves)
+		/** Whether a place of the grid is the header of a data row: the cell with its number. */
+		const isRowHeader = (cell: GridCell): boolean =>
+			layout().leaves[cell.col]?.rowHeader === true && cellIdAt(cell.row, cell.col) !== undefined
+
+		// How many rows of the body before each place hold no data: group rows and detail rows.
+		const passedOver = memo((rows: readonly FlatRow<unknown>[]) => {
+			const before = new Int32Array(rows.length)
+			let count = 0
+			rows.forEach((flat, index) => {
+				before[index] = count
+				if (flat.node.kind !== 'row' || flat.detail) count++
+			})
+			return count ? before : undefined
+		})
+		// The data rows that the pages before this one show, with the rows that are open now.
+		const shownBefore = memo(
+			(rows: readonly TableRow<unknown>[], end: number, open: ReadonlySet<string>) => {
+				let count = 0
+				const walk = (list: readonly TableRow<unknown>[], to: number) => {
+					for (let index = 0; index < to; index++) {
+						const node = list[index]
+						if (!node) continue
+						if (node.kind === 'row') count++
+						if (node.children?.length && open.has(node.id)) {
+							walk(node.children, node.children.length)
+						}
+					}
+				}
+				walk(rows, Math.min(end, rows.length))
+				return count
+			},
+		)
+		/**
+		 * The number of a data row, from 1: its place among the data rows that
+		 * the table shows, counted over the pages before this one. A group row
+		 * and a detail row have no number. It is a place and no id: after a
+		 * sort, row 1 is another row.
+		 */
+		function rowNumber(rowId: string): number | undefined {
+			const rows = bodyRows()
+			const index = flatIndex(rows).get(rowId)
+			const flat = index === undefined ? undefined : rows[index]
+			if (index === undefined || !flat || flat.node.kind !== 'row' || flat.detail) return undefined
+			const place = index + 1 - (passedOver(rows)?.[index] ?? 0)
+			const page = state().page
+			if (!page || model.page() <= 1) return place
+			const start = (model.page() - 1) * page.pageSize
+			// With pages from a server, the table has one page and the server counts the rows.
+			if ((options().manualPage ?? false) || pageUnit(model.grouped()) === 'rows') {
+				return place + start
+			}
+			return place + shownBefore(model.grouped(), start, idSet(state().expanded))
+		}
 
 		const parseTexts = (): ParseTexts => ({
 			notNumber: message('notNumber'),
@@ -1688,10 +1999,26 @@ export const table = definePrimitive({
 		 * held before, and that step would block every step under it.
 		 */
 		function applyStep(
-			step: TableStep<TableEditReason>,
+			step: TableStep<TableStepReason>,
 			direction: 'undo' | 'redo',
 			event?: Event,
 		): HistoryResult {
+			if (step.formats) {
+				// A step of formats: the formats that the step changed go back, and
+				// what the owner changed beside it since stays.
+				const { before, after, cells } = step.formats
+				const now = formatsNow.read()
+				const next =
+					direction === 'undo'
+						? revertFormats(now, after, before)
+						: revertFormats(now, before, after)
+				if (next !== now) {
+					if (!change('cellFormats', next, { reason: direction, event })) return 'refused'
+					formatsNow.took(next)
+				}
+				applied = { cells: next === now ? 0 : cells, gone: 0, hidden: 0 }
+				return 'done'
+			}
 			const edits: CellEdit[] = []
 			const places: GridCell[] = []
 			let gone = 0
@@ -1774,7 +2101,7 @@ export const table = definePrimitive({
 			context.store.set({ active: cell })
 		}
 
-		const history = createStepHistory<TableState, TableStep<TableEditReason>>(context, {
+		const history = createStepHistory<TableState, TableStep<TableStepReason>>(context, {
 			key: 'history',
 			enabled: historyOn,
 			limit: () => historyLimits().limit ?? HISTORY_LIMIT,
@@ -1859,7 +2186,14 @@ export const table = definePrimitive({
 			const failed = (error: unknown) => (error instanceof Error ? error.message : String(error))
 			let checked: Checked | Promise<Checked>
 			try {
-				checked = resolveValue(input, node.row, column, parseTexts(), options().locale)
+				checked = resolveValue(
+					input,
+					node.row,
+					column,
+					parseTexts(),
+					options().locale,
+					shownFormat(column, node.id),
+				)
 			} catch (error) {
 				return failed(error)
 			}
@@ -1879,15 +2213,24 @@ export const table = definePrimitive({
 
 		const writes = createCellWrites<TableEditReason>(context, {
 			rowById: (id) => model.rowById(id),
-			check: (input: WriteInput, row, column) =>
-				resolveValue(input, row, column, parseTexts(), options().locale),
+			check: (input: WriteInput, row, column, rowId) =>
+				resolveValue(
+					input,
+					row,
+					column,
+					parseTexts(),
+					options().locale,
+					shownFormat(column, rowId),
+				),
 			valueOf: valueNow,
 			report: (edits, details) => report(edits, details.reason, details.event),
 			refusal: {
 				value: ({ reason, column, text, message: why }) =>
 					reason === 'clear' || reason === 'cut'
 						? message('clearRefused')({ column: label(column.id), message: why })
-						: message('pasteRefused')({ column: label(column.id), text, message: why }),
+						: reason === 'fill'
+							? message('fillRefused')({ column: label(column.id), text, message: why })
+							: message('pasteRefused')({ column: label(column.id), text, message: why }),
 				invalid: () => message('invalidValue')(),
 				rowGone: () => message('editRowGone')(),
 				refused: () => message('editRefused')(),
@@ -2011,6 +2354,7 @@ export const table = definePrimitive({
 				const first = headerRowCount()
 				return count ? { first, last: first + count - 1 } : undefined
 			},
+			firstCol: firstRangeCol,
 			set: (next, details) => change('cellRange', next, details),
 			commit: (next, details) => commit('cellRange', next, details),
 			reveal: (cell) => {
@@ -2034,7 +2378,9 @@ export const table = definePrimitive({
 			const first = headerRowCount()
 			const top = Math.max(bounds.top, first)
 			const bottom = Math.min(bounds.bottom, first + bodyRows().length - 1)
-			return top > bottom ? undefined : { ...bounds, top, bottom }
+			// The number of a row is no cell of the data: an active row header selects nothing.
+			const left = Math.max(bounds.left, firstRangeCol())
+			return top > bottom || left > bounds.right ? undefined : { ...bounds, top, bottom, left }
 		}
 
 		/**
@@ -2171,6 +2517,189 @@ export const table = definePrimitive({
 			return typeof cleared === 'number' ? say(cleared) : cleared.then(say)
 		}
 
+		/** The data rows between two rows of the grid, in order. A group row and a detail row hold no values. */
+		function dataRowsBetween(top: number, bottom: number) {
+			const head = headerRowCount()
+			const rows = bodyRows()
+			const found: { id: string; node: DataRow<unknown>; pinned: RowPin | undefined }[] = []
+			for (let row = top; row <= bottom; row++) {
+				const flat = rows[row - head]
+				if (!flat || flat.node.kind !== 'row' || flat.detail) continue
+				found.push({ id: flat.id, node: flat.node, pinned: flat.pinned })
+			}
+			return found
+		}
+
+		/**
+		 * Fills the cells of `target` from the cells of `source`, which are
+		 * beside each other along one axis. Each line goes on as `fillValues`
+		 * says: a series with one step continues, everything else repeats. A
+		 * line counts data rows, so a group row is passed over. The new values
+		 * pass the check of their column, and one refusal stops the fill
+		 * before any cell changes. Cells that cannot be edited are left as
+		 * they are, and keep their place in the line.
+		 */
+		function fill(source: CellBounds, target: CellBounds, event?: Event): void | Promise<void> {
+			const leaves = layout().leaves
+			const vertical = target.left === source.left && target.right === source.right
+			const from = dataRowsBetween(source.top, source.bottom)
+			const to = vertical ? dataRowsBetween(target.top, target.bottom) : from
+			const [first] = from
+			if (!first) throw new Error(message('fillNowhere')())
+			// A pinned row and a row of the list stand next to each other on the
+			// screen and not in the data: a series over both would follow no order.
+			if (
+				to.some((row) => row.pinned !== first.pinned) ||
+				from.some((row) => row.pinned !== first.pinned)
+			) {
+				throw new Error(message('fillOverPinned')())
+			}
+			const targets: WriteTarget[] = []
+			if (vertical) {
+				const back = target.bottom < source.top
+				// The nearest cell first, as `fillValues` counts.
+				if (back) to.reverse()
+				for (let col = source.left; col <= source.right; col++) {
+					const column = leaves[col]
+					if (!column) continue
+					const values = fillValues(
+						from.map((row) => valueNow(row.node, column)),
+						to.length,
+						back,
+					)
+					to.forEach((row, index) => {
+						if (!canEdit(row.node, column)) return
+						// A value of the same column needs no `parse`: it is a value already.
+						targets.push({ rowId: row.id, column, input: { value: values[index] } })
+					})
+				}
+			} else {
+				const back = target.right < source.left
+				const sources = leaves.slice(source.left, source.right + 1)
+				const cols: ColumnDef[] = leaves.slice(target.left, target.right + 1)
+				if (back) cols.reverse()
+				for (const row of from) {
+					const values = fillValues(
+						sources.map((column) => valueNow(row.node, column)),
+						cols.length,
+						back,
+					)
+					cols.forEach((column, index) => {
+						if (!canEdit(row.node, column)) return
+						// A value of another column is a text for this one, as in a paste: the
+						// `parse` of this column makes its own kind of value of it, or refuses it.
+						targets.push({ rowId: row.id, column, input: { text: toText(values[index]) } })
+					})
+				}
+			}
+			if (!targets.length) throw new Error(message('fillNowhere')())
+			const finish = (cells: number): void => {
+				if (cellSelection()) {
+					const filled = {
+						anchor: {
+							row: Math.min(source.top, target.top),
+							col: Math.min(source.left, target.left),
+						},
+						end: {
+							row: Math.max(source.bottom, target.bottom),
+							col: Math.max(source.right, target.right),
+						},
+					}
+					range.select(filled, { reason: 'imperative' })
+				}
+				announce(message('cellsFilled')({ cells }))
+			}
+			const written = writes.write(targets, { reason: 'fill', event })
+			return typeof written === 'number' ? finish(written) : written.then(finish)
+		}
+
+		/**
+		 * The selected cells as the source and the target of a fill: the first
+		 * `lines` lines in the direction of the fill are the source, and the
+		 * rest is the target. `undefined` when the cells hold no more lines.
+		 */
+		function fillParts(
+			way: FillWay,
+			lines: number,
+		): { source: CellBounds; target: CellBounds } | undefined {
+			const bounds = selectedCells()
+			if (!bounds) return undefined
+			if (way === 'forward' || way === 'back') {
+				if (bounds.right - bounds.left + 1 <= lines) return undefined
+				const edge = way === 'forward' ? bounds.left + lines : bounds.right - lines
+				return way === 'forward'
+					? { source: { ...bounds, right: edge - 1 }, target: { ...bounds, left: edge } }
+					: { source: { ...bounds, left: edge + 1 }, target: { ...bounds, right: edge } }
+			}
+			// A line of a vertical fill is a data row.
+			const head = headerRowCount()
+			const rows = bodyRows()
+			const data: number[] = []
+			for (let row = bounds.top; row <= bounds.bottom; row++) {
+				const flat = rows[row - head]
+				if (flat && flat.node.kind === 'row' && !flat.detail) data.push(row)
+			}
+			if (data.length <= lines) return undefined
+			const edge = way === 'down' ? data[lines - 1] : data[data.length - lines]
+			if (edge === undefined) return undefined
+			return way === 'down'
+				? { source: { ...bounds, bottom: edge }, target: { ...bounds, top: edge + 1 } }
+				: { source: { ...bounds, top: edge }, target: { ...bounds, bottom: edge - 1 } }
+		}
+
+		const fillOption = () => options().fillHandle ?? sheet()
+		/** Whether a person can fill cells with the handle and the keys. */
+		const fillOn = () => fillOption() !== false && cellSelection() && editing()
+		const fillDirection = (): FillDirection => {
+			const given = fillOption()
+			return given === 'vertical' || given === 'horizontal' ? given : 'both'
+		}
+
+		const fillHandle = createFillHandle<TableState>(context, {
+			draft: 'fillDraft',
+			dragging: 'filling',
+			source: () => (fillOn() ? selectedCells() : undefined),
+			// A cell says its column and its row says its place, in every renderer.
+			placeOf: (el) => {
+				const col = Number(el.closest('[aria-colindex]')?.getAttribute('aria-colindex'))
+				const row = Number(el.closest('[aria-rowindex]')?.getAttribute('aria-rowindex'))
+				return col >= 1 && row >= 1 ? { row: row - 1, col: col - 1 } : undefined
+			},
+			limits: () => {
+				const count = bodyRows().length
+				const top = headerRowCount()
+				const right = layout().leaves.length - 1
+				const left = firstRangeCol()
+				return count && left <= right ? { top, bottom: top + count - 1, left, right } : undefined
+			},
+			direction: fillDirection,
+			commit: (draft, details) => {
+				// An editor that is open in another cell with a refused value keeps the person.
+				if (!edit.release(undefined, details.event)) return
+				attempt(() => fill(draft.source, draft.target, details.event))
+			},
+		})
+
+		/** The fill keys of a sheet: Control+D fills the selected cells down from their first row, Control+R forward from their first column. */
+		function fillKeydown(event: KeyboardEvent, cell: GridCell): boolean {
+			if (!sheet() || !fillOn() || !inBody(cell.row)) return false
+			const way: FillWay | undefined = matchesShortcut(event, 'mod+d')
+				? 'down'
+				: matchesShortcut(event, 'mod+r')
+					? 'forward'
+					: undefined
+			if (!way) return false
+			const direction = fillDirection()
+			if (direction !== 'both' && (direction === 'vertical') !== (way === 'down')) return false
+			// With nothing to fill, the key stays the browser's: Control+R loads the page again.
+			const parts = fillParts(way, 1)
+			if (!parts) return false
+			event.preventDefault()
+			if (!edit.release(undefined, event)) return true
+			attempt(() => fill(parts.source, parts.target, event))
+			return true
+		}
+
 		function onCopy(event: ClipboardEvent, say = true): void {
 			const bounds = selectedCells()
 			if (!bounds) return
@@ -2211,6 +2740,7 @@ export const table = definePrimitive({
 
 		/** The keys of a sheet on a body cell: Delete and Backspace empty the selected cells, and Tab stays inside a range. */
 		function sheetKeydown(event: KeyboardEvent, cell: GridCell): boolean {
+			if (fillKeydown(event, cell)) return true
 			if (!sheet() || event.altKey || event.ctrlKey || event.metaKey) return false
 			if (event.key === 'Tab') {
 				// Without a range, Tab leaves the table: a page is not a spreadsheet,
@@ -2587,6 +3117,39 @@ export const table = definePrimitive({
 			columnPinning: options().defaultColumnPinning ?? NO_PINNING,
 		}
 
+		/**
+		 * Gives a column another function for its total, or takes its total
+		 * away with `null`, or gives it the function of its definition back
+		 * with `undefined`.
+		 */
+		function chooseAggregate(
+			columnId: string,
+			aggregate: AggregateName | null | undefined,
+			event?: Event,
+		): void {
+			const found = column(String(columnId), 'set the total of')
+			if (found.rowHeader) {
+				throw new Error(`Column "${found.id}" holds the numbers of the rows, and has no total.`)
+			}
+			if (aggregate != null && !AGGREGATE_NAMES.includes(aggregate)) {
+				throw new Error(
+					`No aggregate "${String(aggregate)}" for column "${found.id}". Aggregates: ${AGGREGATE_NAMES.join(', ')}; null for no total, or undefined for the aggregate of the column.`,
+				)
+			}
+			// The choice of now, also when the owner did not pass the last one back yet.
+			const current = aggregatesNow.read()
+			const has = found.id in current
+			if (aggregate === undefined ? !has : has && current[found.id] === aggregate) return
+			const next: Record<string, AggregateName | null> = { ...current }
+			if (aggregate === undefined) delete next[found.id]
+			else next[found.id] = aggregate
+			const taken = change('columnAggregates', next, {
+				reason: event ? 'item-press' : 'imperative',
+				event,
+			})
+			if (taken) aggregatesNow.took(next)
+		}
+
 		function resetColumns(key: keyof typeof started): void {
 			if (!sameContent(started[key], state()[key])) change(key, started[key], { reason: 'reset' })
 		}
@@ -2851,6 +3414,7 @@ export const table = definePrimitive({
 			resetColumnVisibility: () => resetColumns('columnVisibility'),
 			resetColumnOrder: () => resetColumns('columnOrder'),
 			resetColumnPinning: () => resetColumns('columnPinning'),
+			setColumnAggregate: (columnId, aggregate) => chooseAggregate(columnId, aggregate),
 			moveColumn(columnId, index) {
 				requireVisible(columnId, 'move')
 				const track = state().columnTrack
@@ -3063,6 +3627,53 @@ export const table = definePrimitive({
 			return groups
 		})
 
+		/** A number of a summary as text, in the format of a column or as a plain number of the locale. */
+		function summaryText(value: number | undefined, column?: ColumnDef): string {
+			if (value === undefined) return ''
+			if (column?.format && isNumericFormat(column.format)) return totalText(column, value)
+			// A sum of floats can end in noise: six decimals are enough for a status bar.
+			return new Intl.NumberFormat(options().locale ?? 'en-US', {
+				maximumFractionDigits: 6,
+			}).format(value)
+		}
+
+		// The summary of the selected cells, kept for the same cells of the same
+		// rows. The rows are another array after each edit, so the answer follows the data.
+		const selectionSummary = memo(
+			(
+				top: number,
+				bottom: number,
+				left: number,
+				right: number,
+				rows: readonly FlatRow<unknown>[],
+				leaves: readonly ColumnDef[],
+				_locale: string | undefined,
+			): RangeSummary | null => {
+				const head = headerRowCount()
+				const columns = leaves.slice(left, right + 1)
+				const values: unknown[] = []
+				for (let row = top; row <= bottom; row++) {
+					const flat = rows[row - head]
+					// A group row and a detail row hold no values.
+					if (!flat || flat.node.kind !== 'row' || flat.detail) continue
+					for (const column of columns) values.push(cellValue(flat.node.row, column))
+				}
+				if (!values.length) return null
+				const counted = summarize(values)
+				const [only] = columns.length === 1 ? columns : []
+				return {
+					cells: values.length,
+					...counted,
+					texts: {
+						sum: summaryText(counted.sum, only),
+						mean: summaryText(counted.mean, only),
+						min: summaryText(counted.min, only),
+						max: summaryText(counted.max, only),
+					},
+				}
+			},
+		)
+
 		const subscriptions = new Set<() => void>()
 		context.onDestroy(() => {
 			for (const stop of subscriptions) stop()
@@ -3098,6 +3709,8 @@ export const table = definePrimitive({
 					hasExpandable: open.size > 0,
 					hasExpanded: current.expanded.some((id) => open.has(id)),
 					loading: options().loading ?? false,
+					columnAggregates: current.columnAggregates,
+					cellFormats: current.cellFormats,
 					canUndo: history.canUndo(current),
 					canRedo: history.canRedo(current),
 					activeCell: activeCellRef(),
@@ -3210,10 +3823,23 @@ export const table = definePrimitive({
 				const values = totalsOf(group)
 				const totals: Record<string, ColumnTotal> = {}
 				for (const found of layout().all) {
-					if (found.aggregate === undefined) continue
+					if (aggregateOf(found) === undefined) continue
 					totals[found.id] = { value: values[found.id], text: totalText(found, values[found.id]) }
 				}
 				return totals
+			},
+			getSelectionSummary: () => {
+				const bounds = selectedCells()
+				if (!bounds) return null
+				return selectionSummary(
+					bounds.top,
+					bounds.bottom,
+					bounds.left,
+					bounds.right,
+					bodyRows(),
+					layout().leaves,
+					options().locale,
+				)
 			},
 			subscribe(listener) {
 				if (typeof listener !== 'function') throw new Error('`subscribe` takes a function.')
@@ -3372,9 +3998,14 @@ export const table = definePrimitive({
 						allColumns: () => layout().all,
 						label: (column) => column.header ?? column.id,
 						text,
+						formatOf: (rowId, column) =>
+							hasFormats(state().cellFormats)
+								? ownFormat(state().cellFormats, rowId, column.id)
+								: undefined,
 						groupText,
 						totals: totalsOf,
 						totalText,
+						aggregateOf,
 						locale: () => options().locale,
 					},
 					exportOptions,
@@ -3389,6 +4020,34 @@ export const table = definePrimitive({
 				const text = copyText()
 				const cleared = clearAndSay('cut')
 				return cleared ? cleared.then(() => text) : text
+			},
+			fillCells(direction, source = 1) {
+				requireCellSelection()
+				if (!FILL_WAYS.includes(direction)) {
+					throw new Error(
+						`Cells are filled "down", "up", "forward" or "back", not "${String(direction)}".`,
+					)
+				}
+				if (!Number.isInteger(source) || source < 1) {
+					throw new Error(
+						`A fill starts from 1 or more lines of the selected cells, not from ${String(source)}.`,
+					)
+				}
+				const parts = fillParts(direction, source)
+				if (!parts) {
+					const bounds = selectedCells()
+					const vertical = direction === 'down' || direction === 'up'
+					const size = !bounds
+						? 0
+						: vertical
+							? dataRowsBetween(bounds.top, bounds.bottom).length
+							: bounds.right - bounds.left + 1
+					const unit = vertical ? (size === 1 ? 'row' : 'rows') : size === 1 ? 'column' : 'columns'
+					throw new Error(
+						`The selected cells hold ${size} ${unit}, so a fill ${direction} from ${source} of them has no cell to fill. Select the cells to fill from together with the cells to fill.`,
+					)
+				}
+				return fill(parts.source, parts.target)
 			},
 			selectAllCells() {
 				requireCellSelection()
@@ -3406,13 +4065,35 @@ export const table = definePrimitive({
 			},
 			selectCellColumns(fromColumnId, toColumnId = fromColumnId) {
 				requireCellSelection()
-				requireVisible(fromColumnId, 'select')
-				requireVisible(toColumnId, 'select')
+				requireRanged(fromColumnId)
+				requireRanged(toColumnId)
 				const index = layout().index
 				range.selectColumns(index.get(fromColumnId) ?? 0, index.get(toColumnId) ?? 0, {
 					reason: 'imperative',
 				})
 				activeIntoRange()
+			},
+			formatCells(patch, target) {
+				applyFormat(checkedPatch(patch), target, 'imperative')
+			},
+			clearCellFormats(target) {
+				applyFormat(CLEAR_FORMAT, target, 'imperative')
+			},
+			toggleCellFormat(property) {
+				if (property !== 'bold' && property !== 'italic') {
+					throw new Error(
+						`A format is turned on and off for "bold" or "italic", not for "${String(property)}". Set another property with \`formatCells\`.`,
+					)
+				}
+				toggleLook(property, 'imperative')
+			},
+			getCellFormat(rowId, columnId) {
+				requireRow(String(rowId), 'read the format of')
+				const found = column(String(columnId), 'read the format of')
+				// The number of a row can be the active cell, and a toolbar asks for
+				// the format of that one. It has none, which is an answer and no error.
+				if (found.rowHeader) return NO_FORMAT
+				return ownFormat(formatsNow.read(), String(rowId), found.id) ?? NO_FORMAT
 			},
 			undo: () => travelOrThrow('undo'),
 			redo: () => travelOrThrow('redo'),
@@ -3428,15 +4109,269 @@ export const table = definePrimitive({
 						reason: step.reason,
 						source: step.source,
 						cells: step.cells.length,
+						formats: !!step.formats,
 					})),
 					position,
 				}
 			},
 		}
 
+		/** A column whose cells can have a format: every column but the one with the numbers of the rows. */
+		function formatColumn(id: string): ColumnDef {
+			const found = column(id, 'format')
+			if (!found.rowHeader) return found
+			const valid = layout().all.filter((item) => !item.rowHeader)
+			throw new Error(
+				`Column "${id}" holds the numbers of the rows, and its cells have no format. Columns: ${listed(valid.map((item) => item.id))}.`,
+			)
+		}
+
+		/** Checks a change of a format, so that a wrong name is refused with the names that are valid. */
+		function checkedPatch(patch: unknown): CellFormatPatch {
+			const keys: readonly string[] = CELL_FORMAT_KEYS
+			if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
+				throw new Error(
+					`A format is an object with the properties ${keys.join(', ')}. A property with null is taken away.`,
+				)
+			}
+			const given = patch as Record<string, unknown>
+			const unknown = Object.keys(given).find((key) => !keys.includes(key))
+			if (unknown !== undefined) {
+				throw new Error(
+					`A format has no property "${unknown}". Its properties: ${keys.join(', ')}.`,
+				)
+			}
+			if (!keys.some((key) => given[key] !== undefined)) {
+				throw new Error(`A format names one property at least: ${keys.join(', ')}.`)
+			}
+			const oneOf = (key: string, valid: readonly string[], what: string) => {
+				const value = given[key]
+				if (value == null || (typeof value === 'string' && valid.includes(value))) return
+				throw new Error(
+					`No ${what} "${typeof value === 'string' ? value : JSON.stringify(value)}". \`${key}\` of a format is one of: ${valid.join(', ')}; or null to take it away.`,
+				)
+			}
+			oneOf('format', CELL_FORMAT_NAMES, 'format')
+			oneOf('dateStyle', CELL_DATE_STYLES, 'date style')
+			oneOf('align', CELL_ALIGNS, 'side')
+			for (const key of ['color', 'fill']) {
+				if (given[key] == null) continue
+				const colors = options().formatColors ?? NO_IDS
+				if (!colors.length) {
+					throw new Error(
+						`This table has no colours for a format. Set its \`formatColors\` option to the names that \`${key}\` can have.`,
+					)
+				}
+				oneOf(key, colors, 'colour')
+			}
+			for (const key of ['bold', 'italic']) {
+				const value = given[key]
+				if (value != null && typeof value !== 'boolean') {
+					throw new Error(`\`${key}\` of a format is true or false, or null to take it away.`)
+				}
+			}
+			const { decimals, currency } = given
+			if (
+				decimals != null &&
+				(typeof decimals !== 'number' ||
+					!Number.isInteger(decimals) ||
+					decimals < 0 ||
+					decimals > CELL_MAX_DECIMALS)
+			) {
+				throw new Error(
+					`\`decimals\` of a format is a whole number from 0 to ${CELL_MAX_DECIMALS}, or null to take it away.`,
+				)
+			}
+			if (currency != null && (typeof currency !== 'string' || !/^[A-Za-z]{3}$/.test(currency))) {
+				throw new Error(
+					'`currency` of a format is an ISO 4217 code of three letters, such as EUR, or null to take it away.',
+				)
+			}
+			const checked: Record<string, unknown> = {}
+			for (const key of keys) {
+				if (given[key] === undefined) continue
+				checked[key] =
+					key === 'currency' && typeof currency === 'string' ? currency.toUpperCase() : given[key]
+			}
+			return checked as CellFormatPatch
+		}
+
+		/**
+		 * The formats that a change is for. Cells go to the layer of the
+		 * cells. When they are every row that the table has, the change goes
+		 * to the layer of the columns, so it also holds for a row that comes
+		 * later. With pages from a server the table never has every row.
+		 */
+		function formatPlace(target: FormatTarget | undefined): {
+			place: FormatPlace
+			cells: number
+			whole: boolean
+		} {
+			const every = model.source().byId.size
+			if (target !== undefined && (typeof target !== 'object' || target === null)) {
+				throw new Error(
+					'The target of a format is `{ from, to }` with cells as `{ rowId, columnId }`, or `{ columns }` with column ids.',
+				)
+			}
+			if (target && 'columns' in target) {
+				if (!Array.isArray(target.columns) || !target.columns.length) {
+					throw new Error(
+						`\`columns\` of the target of a format is a list of column ids. Columns: ${listed(
+							layout()
+								.all.filter((item) => !item.rowHeader)
+								.map((item) => item.id),
+						)}.`,
+					)
+				}
+				const ids = [...new Set(target.columns.map((id: string) => formatColumn(String(id)).id))]
+				return { place: { columns: ids }, cells: ids.length * every, whole: true }
+			}
+			let bounds: CellBounds | undefined
+			if (target) {
+				const from = requireCell(target.from, 'format')
+				const to = target.to === undefined ? from : requireCell(target.to, 'format')
+				formatColumn(target.from.columnId)
+				if (target.to) formatColumn(target.to.columnId)
+				bounds = {
+					top: Math.min(from.row, to.row),
+					bottom: Math.max(from.row, to.row),
+					left: Math.max(Math.min(from.col, to.col), firstRangeCol()),
+					right: Math.max(from.col, to.col),
+				}
+			} else {
+				bounds = selectedCells()
+				if (!bounds) {
+					throw new Error(
+						'No cell is selected, so there is nothing to format. Select cells first, or pass a target: `{ from, to }` with cells as `{ rowId, columnId }`, or `{ columns }` with column ids.',
+					)
+				}
+			}
+			const rows = dataRowsBetween(bounds.top, bounds.bottom).map((row) => row.id)
+			const columns = layout()
+				.leaves.slice(bounds.left, bounds.right + 1)
+				.filter((leaf) => !leaf.rowHeader)
+				.map((leaf) => leaf.id)
+			if (!rows.length || !columns.length) {
+				throw new Error('These cells hold no value: a group row and a detail row have no format.')
+			}
+			const whole = !(options().manualPage ?? false) && rows.length === every
+			return {
+				place: whole ? { columns } : { rows, columns },
+				cells: rows.length * columns.length,
+				whole,
+			}
+		}
+
+		/**
+		 * Reports new formats through `createChange`, and returns whether they
+		 * were taken, with the source of the change as the listener got it. The
+		 * listener of the owner is called through one of our own for that, as
+		 * `tell` does for an edit.
+		 */
+		let formatSource: ChangeSource = 'programmatic'
+		const changeFormatsThrough = createChange({
+			...context,
+			options: () => ({
+				...options(),
+				onCellFormatsChange(value: CellFormats, details: TableChangeDetails) {
+					formatSource = details.source
+					options().onCellFormatsChange?.(value, details)
+				},
+			}),
+		})
+
+		/** Changes the formats. A change that was taken is one step of the history. */
+		function changeFormats(
+			next: CellFormats,
+			cells: number,
+			reason: 'imperative' | 'shortcut',
+			event?: Event,
+		): boolean {
+			const before = formatsNow.read()
+			if (next === before) return false
+			formatSource = 'programmatic'
+			if (!changeFormatsThrough('cellFormats', next, { reason, event })) return false
+			formatsNow.took(next)
+			if (historyOn()) {
+				history.record({
+					id: ++stepIds,
+					reason,
+					source: formatSource,
+					cells: [],
+					formats: { before, after: next, cells },
+				})
+			}
+			return true
+		}
+
+		function applyFormat(
+			patch: CellFormatPatch,
+			target: FormatTarget | undefined,
+			reason: 'imperative' | 'shortcut',
+			event?: Event,
+		): void {
+			const { place, cells } = formatPlace(target)
+			const next = setFormats(formatsNow.read(), place, patch)
+			if (changeFormats(next, cells, reason, event)) announce(message('cellsFormatted')({ cells }))
+		}
+
+		/**
+		 * The format keys of a sheet on a body cell: bold and italic for the
+		 * selected cells. A key turns the look on, unless every selected cell
+		 * has it; then it turns it off.
+		 */
+		function formatKeydown(event: KeyboardEvent, cell: GridCell): boolean {
+			if (!sheet() || !inBody(cell.row)) return false
+			const key = matchesShortcut(event, 'mod+b')
+				? 'bold'
+				: matchesShortcut(event, 'mod+i')
+					? 'italic'
+					: undefined
+			if (!key) return false
+			const bounds = selectedCells()
+			if (!bounds) return false
+			const rows = dataRowsBetween(bounds.top, bounds.bottom)
+			const columns = layout()
+				.leaves.slice(bounds.left, bounds.right + 1)
+				.filter((leaf) => !leaf.rowHeader)
+			// A group row has no format, and its keys stay the browser's.
+			if (!rows.length || !columns.length) return false
+			event.preventDefault()
+			attempt(() => toggleLook(key, 'shortcut', event))
+			return true
+		}
+
+		/** Turns a look of the selected cells on, unless every one of them has it; then it turns it off. */
+		function toggleLook(
+			key: 'bold' | 'italic',
+			reason: 'imperative' | 'shortcut',
+			event?: Event,
+		): void {
+			const { place, whole } = formatPlace(undefined)
+			const formats = formatsNow.read()
+			const rowIds = 'rows' in place ? place.rows : [undefined]
+			const every = rowIds.every((rowId) =>
+				place.columns.every((id) => ownFormat(formats, rowId, id)?.[key] === true),
+			)
+			// A look that comes from the column is not in the cells, so taking
+			// it away from them changes nothing: these cells say no to it.
+			const fromColumn = !whole && place.columns.some((id) => formats.columns?.[id]?.[key])
+			applyFormat({ [key]: every ? (fromColumn ? false : null) : true }, undefined, reason, event)
+		}
+
 		function requireCellSelection(): void {
 			if (cellSelection()) return
 			throw new Error('This table has no cell selection. Set its `cellSelection` option to true.')
+		}
+
+		/** A column whose cells a range can hold: one in view that is no column of row numbers. */
+		function requireRanged(columnId: string): void {
+			requireVisible(columnId, 'select')
+			if (!column(columnId, 'select').rowHeader) return
+			const valid = layout().leaves.filter((leaf) => !leaf.rowHeader)
+			throw new Error(
+				`Column "${columnId}" holds the numbers of the rows, and no range holds them. Columns with cells to select: ${listed(valid.map((leaf) => leaf.id))}.`,
+			)
 		}
 
 		function requireHistory(): void {
@@ -3462,7 +4397,7 @@ export const table = definePrimitive({
 		 */
 		function selectColumnCells(columnId: string, event?: Event): void {
 			requireCellSelection()
-			requireVisible(columnId, 'select')
+			requireRanged(columnId)
 			const to = layout().index.get(columnId) ?? 0
 			const active = state().active
 			const shift =
@@ -3473,6 +4408,23 @@ export const table = definePrimitive({
 				const bounds = selectedCells()
 				if (bounds) activate({ row: bounds.top, col: to })
 			}
+		}
+
+		/**
+		 * Selects the cells of a row, for a control in its row header. With
+		 * Shift, the rows from the active cell to this one.
+		 */
+		function selectRowCells(rowId: string, event?: Event): void {
+			requireCellSelection()
+			const first = layout().leaves[firstRangeCol()]
+			if (!first) throw new Error('No column with cells to select is in view.')
+			const to = requireCell({ rowId, columnId: first.id }, 'select')
+			const active = state().active
+			const shift =
+				event instanceof MouseEvent || event instanceof KeyboardEvent ? event.shiftKey : false
+			const from = shift && active && inBody(active.row) ? active.row : to.row
+			range.selectRows(from, to.row, { reason: event ? 'item-press' : 'imperative', event })
+			if (!shift) activate(to)
 		}
 
 		/** Changes the width of a column by a number of pixels, as a key on its header does. */
@@ -3497,6 +4449,53 @@ export const table = definePrimitive({
 				const id = cell.header ? undefined : cellIdAt(cell.row, cell.col)
 				return id === undefined ? NO_IDS : [id]
 			},
+			/** The names that a cell hears a change of formats by: its row and its column. The header of a column hears its column. */
+			formatNamesAt: (cell: { row: number; col: number; header?: boolean }): readonly string[] => {
+				if (cell.header) {
+					const header = headerAt(cell.row, cell.col)
+					return header?.leaf && header.column ? formatNames(undefined, header.column.id) : NO_IDS
+				}
+				const flat = bodyRows()[cell.row - headerRowCount()]
+				// The label of a group row says the totals of its group, so it hears every column.
+				if (flat?.node.kind === 'group' && groupCell(cell.row, cell.col) === 'group-label') {
+					return columnFormatNames(layout().all)
+				}
+				const data = flat && flat.node.kind === 'row' && !flat.detail
+				return formatNames(data ? flat.id : undefined, layout().leaves[cell.col]?.id)
+			},
+			/** The formats of the columns, for the label of a group row: they decide the text of the totals that it says. */
+			totalFormatsAt: (
+				current: TableState,
+				cell: { row: number; col: number; header?: boolean },
+			): CellFormats['columns'] =>
+				!cell.header &&
+				current.cellFormats.columns &&
+				groupCell(cell.row, cell.col) === 'group-label'
+					? current.cellFormats.columns
+					: undefined,
+			/**
+			 * The format that a cell shows with, from the formats of a state: for
+			 * the cell of a data row, the format of its column with its own over
+			 * it; for a total in the footer or in a group row, the format of its column.
+			 */
+			formatAt: (
+				current: TableState,
+				cell: { row: number; col: number; header?: boolean; colspan?: number },
+			): CellFormat | undefined => {
+				const formats = current.cellFormats
+				if (cell.header || (cell.colspan ?? 1) > 1 || !hasFormats(formats)) return undefined
+				const column = layout().leaves[cell.col]
+				if (!column || column.rowHeader) return undefined
+				const flat = bodyRows()[cell.row - headerRowCount()]
+				if (flat?.detail) return undefined
+				return ownFormat(formats, flat?.node.kind === 'row' ? flat.id : undefined, column.id)
+			},
+			formatKeydown,
+			/** The name of the format that a column shows its values with, after the formats that a person gave the column. */
+			formatNameOf: (current: TableState, column: ColumnDef, rowId?: string): string | undefined =>
+				hasFormats(current.cellFormats)
+					? resolveFormat(column, current.cellFormats, rowId).name
+					: column.format,
 			inBody,
 			/** Whether a cell can be edited, by its id. */
 			canEditCell: (id: string) => {
@@ -3540,6 +4539,12 @@ export const table = definePrimitive({
 			sheetKeydown,
 			historyKeydown,
 			selectColumnCells,
+			selectRowCells,
+			fillHandle,
+			/** Whether the fill handle sits in a cell: the end corner of the selected cells, in a table that can fill. */
+			fillHandleAt: (cell: GridCell): boolean => fillHandle.holds(cell),
+			isRowHeader,
+			rowNumber,
 			sticky,
 			rowWindow,
 			/** What the body renders of the rows of the list, or `undefined` when it renders them all. */
@@ -3636,6 +4641,20 @@ export const table = definePrimitive({
 			groupPath,
 			/** A total as text. A count is a plain number, whatever the format of its column. */
 			totalText,
+			/** The function of the total of a column: the one chosen at run time, else the `aggregate` of the column. */
+			aggregateOf,
+			chooseAggregate,
+			/** Whether a row of the grid is the footer row. */
+			inFooter: (row: number) => footerRowCount() > 0 && row === headerRowCount() + bodyRowCount(),
+			/** The name of a footer cell whose function a person chose: the function and the total. */
+			footerLabel(column: ColumnDef): string | undefined {
+				const chosen = state().columnAggregates[column.id]
+				if (!chosen) return undefined
+				return message('totalLabel')({
+					label: message('aggregateLabel')(chosen),
+					text: totalText(column, totalsOf()[column.id]),
+				})
+			},
 			/** The text of a group row: the value of the group as its column shows it, and its count. */
 			groupText,
 		}
@@ -3645,7 +4664,11 @@ export const table = definePrimitive({
 			role: (_state, { api }) => (api.isTree() ? 'treegrid' : 'grid'),
 			roles: ['grid', 'treegrid'],
 			keys: { none: 'Focus stays on a cell, and the keydown of the cell handles the keys.' },
-			bind: (el, { api }) => api.grid.bindRoot(el),
+			bind: (el, { api }) => together(api.grid.bindRoot(el), api.fillHandle.bindRoot(el)),
+			// The cursor of a fill is the same over every cell, so the root says that a
+			// fill drag runs. The root hears `filling` for it: a key with an empty
+			// list in `selects` would never reach `live`.
+			live: live((state) => ({ 'data-filling': state.filling ? '' : undefined })),
 			// Selection and cell focus change one row or two cells. The root must not render for them.
 			selects: selects({
 				selected: [],
@@ -3660,6 +4683,7 @@ export const table = definePrimitive({
 				searchDraft: [],
 				searchPending: [],
 				history: [],
+				fillDraft: [],
 			}),
 			// A resize changes the width of the table at each step, and the rows must
 			// not render for it. So the two attributes that follow the widths are
@@ -3864,8 +4888,9 @@ export const table = definePrimitive({
 				colspan: 'number',
 				rowspan: 'number',
 			},
-			role: (_state, { props }) => (props.header ? 'columnheader' : 'gridcell'),
-			roles: ['columnheader', 'gridcell'],
+			role: (_state, { props, api }) =>
+				props.header ? 'columnheader' : api.isRowHeader(props) ? 'rowheader' : 'gridcell',
+			roles: ['columnheader', 'gridcell', 'rowheader'],
 			focus: 'roving',
 			keys: [
 				...GRID_KEYS,
@@ -3891,6 +4916,10 @@ export const table = definePrimitive({
 				'mod+z',
 				'mod+shift+z',
 				'mod+y',
+				'mod+d',
+				'mod+r',
+				'mod+b',
+				'mod+i',
 			],
 			// A cell reads the range and the editor only for its own place and its own id.
 			selects: selects({
@@ -3900,19 +4929,41 @@ export const table = definePrimitive({
 				editing: ({ props, api }) => api.cellIds(props),
 				editChecking: ({ props, api }) => api.cellIds(props),
 				editErrors: ({ props, api }) => api.cellIds(props),
+				// A part hears a live key only when its readers let it. The draft of a
+				// fill wakes the cells of the rows whose marks change.
+				fillDraft: {
+					values: ({ props }) => (props.header ? NO_IDS : [String(props.row)]),
+					moved: byFillDraft.moved,
+				},
+				// A change of formats wakes the cells of its rows and its columns, and no other cell.
+				cellFormats: {
+					values: ({ props, api }) => api.formatNamesAt(props),
+					moved: byCellFormat.moved,
+				},
 				expanded: [],
 			}),
 			state: (state, { props, api }) => {
 				const id = props.header ? undefined : api.cellIdAt(props.row, props.col)
 				return {
+					/** The format that the cell has of its own, from `cellFormats`: the format of its column with the format of the cell over it. */
+					format: api.formatAt(state, props),
+					/** For the label of a group row: the formats of the columns, which decide the text of its totals. */
+					totalFormats: api.totalFormatsAt(state, props),
 					/** Whether the editor of the cell is open. The renderer then shows the editor in the cell. */
 					editing: id !== undefined && state.editing === id,
 					/** Whether the check of a new value runs. The editor then waits for the answer. */
 					checking: id !== undefined && state.editChecking === id,
 					/** Why the text of the editor was refused. */
 					error: id === undefined ? undefined : state.editErrors[id],
+					/** Whether the fill handle sits in this cell. The renderer then shows the `fill-handle` part in it. */
+					fillHandle: id !== undefined && api.fillHandleAt(props),
 				}
 			},
+			// The cells that a drag of the fill handle would fill. It changes with
+			// each move of the pointer, so it is written to the elements and renders nothing.
+			live: live((state, { props, api }) =>
+				props.header ? {} : api.fillHandle.cellAttrs(state, props),
+			),
 			attrs: (state, { props, api }) => {
 				const header = props.header ? api.headerAt(props.row, props.col) : undefined
 				const column = props.header ? header?.column : api.columns()[props.col]
@@ -3946,13 +4997,37 @@ export const table = definePrimitive({
 				const offset = pin && near ? api.pins.offset(near.id) : undefined
 				const id = props.header ? undefined : api.cellIdAt(props.row, props.col)
 				const editable = id !== undefined && api.canEditCell(id)
-				// A group row holds no values, so its cells are never cells of a range.
-				const ranged = !props.header && !inGroup && api.cellSelection() && api.inBody(props.row)
+				const footer = !props.header && !wide && api.inFooter(props.row)
+				const total =
+					column && (footer || inGroup === 'group-total') ? api.aggregateOf(column) : undefined
+				// The header of a row holds the number of the row, and a screen reader says it with each cell of the row.
+				const rowHeader = id !== undefined && column?.rowHeader === true
+				const number = rowHeader ? api.rowNumber(parseCellKey(id)?.rowId ?? '') : undefined
+				// A group row holds no values, so its cells are never cells of a range. Nor is the number of a row.
+				const ranged =
+					!props.header && !inGroup && !rowHeader && api.cellSelection() && api.inBody(props.row)
+				// The looks of a format are data. The style of the app gives each a meaning.
+				const format = id === undefined ? undefined : api.formatAt(state, props)
 				return {
+					'data-align': format?.align,
+					'data-bold': format?.bold ? '' : undefined,
+					'data-italic': format?.italic ? '' : undefined,
+					'data-color': format?.color,
+					'data-fill': format?.fill,
 					...(ranged ? api.rangeAttrs(state, props) : undefined),
 					'data-kind': inGroup,
+					'data-row-header': rowHeader ? '' : undefined,
+					// The function of a total, for a style and for a test: in the footer and in a group row.
+					'data-aggregate': total === undefined ? undefined : aggregateName(total),
+					'aria-label':
+						number === undefined
+							? footer && column
+								? api.footerLabel(column)
+								: undefined
+							: api.message('rowNumber')({ number }),
 					// In a grid, a cell can be edited unless it says that it cannot.
-					'aria-readonly': id !== undefined && api.hasEditing() && !editable ? 'true' : undefined,
+					'aria-readonly':
+						id !== undefined && !rowHeader && api.hasEditing() && !editable ? 'true' : undefined,
 					'data-editable': editable ? '' : undefined,
 					'data-editing': id !== undefined && state.editing === id ? '' : undefined,
 					'data-checking': id !== undefined && state.editChecking === id ? '' : undefined,
@@ -3971,7 +5046,15 @@ export const table = definePrimitive({
 					// The format of the column, so a style can put every number at the end of
 					// its column: in a header, a row, a group row and the footer. A cell
 					// over several columns shows no value of one column.
-					'data-format': wide ? undefined : column?.format,
+					// A format that a person gave the cell or its column wins over the definition.
+					'data-format':
+						wide || !column
+							? undefined
+							: api.formatNameOf(
+									state,
+									column,
+									id === undefined ? undefined : parseCellKey(id)?.rowId,
+								),
 					// A column that leads the table holds a control, not a value, and a style gives it another width.
 					'data-lead': !wide && column?.lead ? '' : undefined,
 					'data-active': api.grid.isActive(state, props) ? '' : undefined,
@@ -4028,6 +5111,7 @@ export const table = definePrimitive({
 					// Enter, F2 or a character opens the editor of a cell that can be
 					// edited. It comes before the move into the cell: the cell holds a
 					// value, and the editor is its control.
+					if (onCell && !props.header && api.formatKeydown(event, props)) return
 					if (onCell && !props.header && api.sheetKeydown(event, props)) return
 					const id = onCell && !props.header ? api.cellIdAt(props.row, props.col) : undefined
 					if (id !== undefined && api.edit.keydown(event, id)) return
@@ -4088,6 +5172,8 @@ export const table = definePrimitive({
 					const target = event.target instanceof Element ? event.target : undefined
 					// A press on the resize handle resizes. It must not move focus or start a column move.
 					if (target?.closest('[data-slot="table-resizer"]')) return
+					// A press on the fill handle starts a fill, and the range under it stays.
+					if (target?.closest('[data-slot="table-fill-handle"]')) return
 					const header = props.header ? api.headerAt(props.row, props.col) : undefined
 					// A press on a control inside the cell must leave focus on that control.
 					const control =
@@ -4108,7 +5194,9 @@ export const table = definePrimitive({
 						// with Shift stretches the range, and focus stays at its start.
 						if (!ranged || !event.shiftKey) el?.focus({ preventScroll: true })
 						// A press on a cell of the body starts a range, and a drag paints it.
-						if (ranged) api.range.pointerdown(event, props)
+						// A press on the number of a row takes the row.
+						if (ranged && api.isRowHeader(props)) api.range.pointerdownRows(event, props)
+						else if (ranged) api.range.pointerdown(event, props)
 						else api.grid.focus(props, { reason: 'item-press', event })
 					}
 					// The whole header cell is the grip of its column. A drag starts only
@@ -4195,6 +5283,17 @@ export const table = definePrimitive({
 				},
 			},
 			bind: (el, { api }) => api.edit.bindInput(el as HTMLInputElement),
+		}),
+		/**
+		 * The fill handle: a small part at the end corner of the selected cells
+		 * that a person drags to fill more cells. Render it inside the cell whose
+		 * `fillHandle` state is true. It is a tool for the pointer and no tab
+		 * stop: the fill keys and `fillCells` do the same work.
+		 */
+		'fill-handle': slot({
+			selects: selects(SILENT),
+			attrs: () => ({ 'aria-hidden': 'true' }),
+			on: { pointerdown: (event, { api }) => api.fillHandle.pointerdown(event) },
 		}),
 		/** The reason why the text of the editor was refused. The editor names it as its error message. */
 		'edit-error': slot<{ value: string }>({
@@ -4287,6 +5386,7 @@ export const table = definePrimitive({
 			'deselectRows',
 			'getFacets',
 			'getTotals',
+			'getSelectionSummary',
 			'setColumnVisibility',
 			'toggleColumnVisibility',
 			'showAllColumns',
@@ -4299,6 +5399,7 @@ export const table = definePrimitive({
 			'setColumnWidth',
 			'resetColumnWidths',
 			'pinColumn',
+			'setColumnAggregate',
 			'pinRow',
 			'scrollToRow',
 			'editCell',
@@ -4309,6 +5410,11 @@ export const table = definePrimitive({
 			'pasteCells',
 			'clearCells',
 			'cutCells',
+			'fillCells',
+			'formatCells',
+			'clearCellFormats',
+			'toggleCellFormat',
+			'getCellFormat',
 			'selectAllCells',
 			'selectCellRows',
 			'selectCellColumns',

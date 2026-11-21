@@ -51,9 +51,6 @@ const used = new Set(Object.values(uses).flat())
  * The names that no tile shows, each with its reason. A new option, method,
  * slot or column key of the library must get a tile or a line here.
  */
-// The data sheet is built in slices, and its page is `?page=sheet`. Its tiles come with the last slice.
-const SHEET = 'Its tile comes with the sheet work; `?page=sheet` shows it.'
-
 const NOT_SHOWN: Record<string, string> = {
 	getRowId: 'Every tile has rows with an `id`, which is the default.',
 	sortChildren: 'A sorted tree; the tree tile is not sorted.',
@@ -87,17 +84,8 @@ const NOT_SHOWN: Record<string, string> = {
 	getTotals: 'The tiles read a total in the `foot` and `group-total` slots.',
 	'slot.editor':
 		'The editor of every column; the tile brings one for one column, with `#edit-{id}`.',
-	sheet: SHEET,
-	history: SHEET,
-	undo: SHEET,
-	redo: SHEET,
-	clearHistory: SHEET,
-	getHistory: SHEET,
-	clearCells: SHEET,
-	cutCells: SHEET,
-	selectAllCells: SHEET,
-	selectCellRows: SHEET,
-	selectCellColumns: SHEET,
+	defaultColumnAggregates: 'The totals tile passes `columnAggregates` itself.',
+	getSelectionSummary: '`useSelectionSummary` calls it for the bar of the sum tile.',
 }
 
 describe('the tiles of the sink page', () => {

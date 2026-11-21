@@ -29,9 +29,9 @@ describe('history of cell values', () => {
 			expect(view.api.getHistory()).toEqual({
 				entries: [
 					// A key that a test dispatches comes from a script. A browser test shows `keyboard` here.
-					{ id: 1, reason: 'enter-key', source: 'programmatic', cells: 1 },
-					{ id: 2, reason: 'paste', source: 'programmatic', cells: 4 },
-					{ id: 3, reason: 'imperative', source: 'programmatic', cells: 1 },
+					{ id: 1, reason: 'enter-key', source: 'programmatic', cells: 1, formats: false },
+					{ id: 2, reason: 'paste', source: 'programmatic', cells: 4, formats: false },
+					{ id: 3, reason: 'imperative', source: 'programmatic', cells: 1, formats: false },
 				],
 				position: 3,
 			})

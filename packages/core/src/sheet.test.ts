@@ -4,12 +4,14 @@ import type { ColumnDef } from './rows'
 import { COLUMN_IDS, priceSchema, sheetTable } from './sheet/harness'
 
 describe('the keys of a sheet', () => {
-	test('`sheet` is a preset: cells can be edited and selected and the history is on, unless one is set to false', () => {
+	test('`sheet` is a preset: cells can be edited and selected, the history and the fill handle are on, unless one is set to false', () => {
 		const { view, cell } = sheetTable({ sheet: true })
 		try {
 			expect(view.root.getAttribute('data-sheet')).toBe('')
 			expect(view.root.getAttribute('data-cell-selection')).toBe('')
 			expect(cell('a', 'name').getAttribute('data-editable')).toBe('')
+			view.api.selectCells({ rowId: 'a', columnId: 'stock' })
+			expect(view.api.fillHandleAt(view.state.active ?? { row: -1, col: -1 })).toBe(true)
 			// A column that says otherwise wins, as before.
 			expect(cell('a', 'kind').getAttribute('aria-readonly')).toBe('true')
 			void view.api.editCell('a', 'stock', 41)
@@ -25,6 +27,19 @@ describe('the keys of a sheet', () => {
 			expect(() => off.view.api.undo()).toThrow('This table has no history.')
 		} finally {
 			off.view.unmount()
+		}
+		// One feature off leaves the others on.
+		const noFill = sheetTable({ sheet: true, fillHandle: false })
+		try {
+			noFill.view.api.selectCells({ rowId: 'a', columnId: 'stock' })
+			expect(noFill.view.api.fillHandleAt(noFill.view.state.active ?? { row: -1, col: -1 })).toBe(
+				false,
+			)
+			expect(noFill.cell('a', 'name').getAttribute('data-editable')).toBe('')
+			void noFill.view.api.editCell('a', 'stock', 41)
+			expect(noFill.view.api.getView().canUndo).toBe(true)
+		} finally {
+			noFill.view.unmount()
 		}
 	})
 

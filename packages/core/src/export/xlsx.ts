@@ -9,6 +9,7 @@ import { dateFormats, toDate } from '../format/date'
 import { getDateTimeFormat } from '../format/intl'
 import { numberPlan, readNumber, type NumericFormatName } from '../format/number'
 import type { ColumnDef } from '../rows'
+import { decidesText } from '../sheet/formats'
 import type { ExportCell, ExportData } from './data'
 import { zip } from './zip'
 
@@ -477,8 +478,15 @@ export async function toXlsx(data: ExportData, options: XlsxOptions = {}): Promi
 			const writer = writers[index]
 			if (!item || !writer) return
 			let typed: Typed
-			if (row.kind === 'row') typed = writer(cell)
-			else {
+			if (row.kind === 'row') {
+				// A cell with a format of its own shows another text than its column
+				// writes. Its text on the screen is what the file must hold.
+				typed = decidesText(cell.format)
+					? cell.text
+						? { kind: 'text', text: cell.text }
+						: EMPTY
+					: writer(cell)
+			} else {
 				// A total has the type of its column when it reads as a cell of the
 				// column reads. A count of texts, for one, does not.
 				const { format, formatOptions } = item.column

@@ -6,7 +6,7 @@ A headless table for Vue, built on [UI SDK](https://ui-sdk.dev) behaviors. Work 
 
 The logic of a data table, and no looks:
 
-- A real `<table>` with the roles, the keyboard and the state of a grid: sort with one or several columns, a search with a pause, column filters with facets, groups with totals under their columns, a footer with totals, tree rows, detail rows, pages, row selection, a row window for large lists, sticky and pinned rows, hidden, moved, resized and pinned columns, cell editing, cell ranges with copy and paste, rows from a server, a CSV and Excel export, and the rules of a data sheet as options (sheet keys, clear and cut, undo and redo).
+- A real `<table>` with the roles, the keyboard and the state of a grid: sort with one or several columns, a search with a pause, column filters with facets, groups with totals under their columns, a footer with totals, tree rows, detail rows, pages, row selection, a row window for large lists, sticky and pinned rows, hidden, moved, resized and pinned columns, cell editing, cell ranges with copy and paste, rows from a server, a CSV and Excel export, and the rules of a data sheet as options (sheet keys, clear and cut, undo and redo, row numbers, a fill handle with series, a summary of the selected cells, totals whose function changes at run time, and formats of cells as data).
 - Every cell is a slot, every state has a `v-model`, and a controller gives each action to code outside the table and to an agent.
 - Plain data for the controls around a table: `getView`, `getFacets`, `getTotals`, `subscribe`.
 

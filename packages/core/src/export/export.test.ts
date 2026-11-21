@@ -1026,6 +1026,81 @@ describe('edges of Excel', () => {
 		for (const cell of seen) expect(cell.file).toBe(cell.screen)
 	})
 
+	test('a cell with a format of its own is text that equals the screen, and a cell that only looks keeps its type', async () => {
+		const { view } = setup({
+			locale: 'en-US',
+			formatColors: ['red'],
+			columns: [
+				{ id: 'name' },
+				{ id: 'price', format: 'decimal', formatOptions: { locale: 'en-US' }, aggregate: 'sum' },
+				{ id: 'share', format: 'percentage', formatOptions: { locale: 'en-US', showUnit: true } },
+			],
+		})
+		try {
+			view.api.formatCells(
+				{ format: 'currency', currency: 'USD' },
+				{ from: { rowId: 'a', columnId: 'price' } },
+			)
+			view.api.formatCells(
+				{ bold: true, fill: 'red', align: 'end' },
+				{ from: { rowId: 'b', columnId: 'price' } },
+			)
+			// A whole column with one decimal more than its definition.
+			view.api.formatCells({ decimals: 1 }, { columns: ['share'] })
+			const data = view.api.exportData({ totals: true })
+			const cells = await readSheet(data)
+			const screen = (row: number, col: number) => data.rows[row]?.cells[col]?.text ?? ''
+
+			// The pattern of the column would write 1,234.50. The screen says dollars, so the file holds that text.
+			expect(screen(0, 1)).toBe('$1,234.50')
+			expect(cells.get('B2')).toMatchObject({ type: 'inlineStr', value: '$1,234.50' })
+			// Looks do not change the text: the cell is a number with the pattern of its column.
+			const looks = cells.get('B3')
+			expect(looks?.type).toBe('n')
+			expect(SSF.format(looks?.pattern ?? '', Number(looks?.value))).toBe(plain(screen(1, 1)))
+			const untouched = cells.get('B4')
+			expect(untouched?.type).toBe('n')
+			expect(SSF.format(untouched?.pattern ?? '', Number(untouched?.value))).toBe(
+				plain(screen(2, 1)),
+			)
+
+			// Every cell of the formatted column is the text of the screen.
+			expect([screen(0, 2), screen(1, 2), screen(2, 2)]).toEqual(['28.1%', '150.0%', '50.0%'])
+			for (const [index, ref] of ['C2', 'C3', 'C4'].entries()) {
+				expect(cells.get(ref)).toMatchObject({ type: 'inlineStr', value: screen(index, 2) })
+			}
+			// The total of a column whose format did not change is a number as before.
+			const total = data.rows.findIndex((row) => row.kind === 'total')
+			const sum = cells.get(`B${total + 2}`)
+			expect(sum?.type).toBe('n')
+			expect(SSF.format(sum?.pattern ?? '', Number(sum?.value))).toBe(plain(screen(total, 1)))
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a total of a column that a person gave another format is the text of the screen', async () => {
+		const { view } = setup({
+			locale: 'en-US',
+			columns: [
+				{ id: 'name' },
+				{ id: 'price', format: 'decimal', formatOptions: { locale: 'en-US' }, aggregate: 'sum' },
+			],
+		})
+		try {
+			view.api.formatCells({ format: 'currency', currency: 'USD' }, { columns: ['price'] })
+			const data = view.api.exportData({ totals: true })
+			const cells = await readSheet(data)
+			const total = data.rows.findIndex((row) => row.kind === 'total')
+			const text = data.rows[total]?.cells[1]?.text
+			expect(text).toBe(view.api.getTotals().price?.text)
+			expect(text?.startsWith('$')).toBe(true)
+			expect(cells.get(`B${total + 2}`)).toMatchObject({ type: 'inlineStr', value: text })
+		} finally {
+			view.unmount()
+		}
+	})
+
 	test('a date after the year 9999 is text, and a text that reads as an escape stays as it is', async () => {
 		const { view } = setup({
 			rows: [{ ...sales()[0], id: 'x', name: 'a_x000D_b', day: '+010000-01-01T00:00:00Z' } as Sale],

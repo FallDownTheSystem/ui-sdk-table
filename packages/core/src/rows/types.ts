@@ -44,6 +44,15 @@ export type ColumnDef<Row = unknown> = {
 	 * a top-level column that holds a control of its row, such as a checkbox.
 	 */
 	lead?: boolean
+	/**
+	 * The column holds the number of each row, and its cells are the row
+	 * headers of the table: a screen reader says the number with each cell
+	 * of the row. Such a column leads the table, as with `lead`, and it is
+	 * outside every range of cells: a number is never copied, emptied or
+	 * filled. A press on a number selects the cells of its row. See
+	 * `rowNumberColumn`.
+	 */
+	rowHeader?: boolean
 	/** Whether the column can be hidden. Defaults to true. */
 	hideable?: boolean
 	/**

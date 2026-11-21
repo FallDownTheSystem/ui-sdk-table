@@ -7,6 +7,7 @@ import { createRowNodes, omitRows, type RowNodeOptions, type RowNodes } from './
 import { clampPage, pageCount, paginate } from './paginate'
 import { sortRows } from './sort'
 import type {
+	AggregateName,
 	ColumnDef,
 	DataRow,
 	FilterState,
@@ -29,6 +30,12 @@ import type {
 export type RowModelOptions<Row> = RowNodeOptions<Row> & {
 	rows: () => readonly Row[]
 	columns: () => readonly ColumnDef<Row>[]
+	/**
+	 * The function of the total of a column where it is not the `aggregate`
+	 * of the column, by column id. `null` takes the total of a column away.
+	 * The totals are counted again when this is another object.
+	 */
+	aggregates?: () => Readonly<Record<string, AggregateName | null>> | undefined
 	locale?: () => string | undefined
 	filter?: () => FilterState | undefined
 	/** The text a person sees in a cell, for the search and the text filters. */
@@ -193,7 +200,7 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 	// object until the grouping stage runs again, so its totals stay too.
 	const totals = new WeakMap<
 		readonly DataRow<Row>[],
-		{ columns: readonly ColumnDef<Row>[]; result: Record<string, unknown> }
+		{ columns: readonly ColumnDef<Row>[]; picked: unknown; result: Record<string, unknown> }
 	>()
 
 	const manual = (stage: keyof ManualStages) => options.manual?.()?.[stage] === true
@@ -336,10 +343,17 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 		aggregate: (group) => {
 			const rows = group ? group.leaves : filtered()
 			const columns = options.columns()
+			const picked = options.aggregates?.()
 			const kept = totals.get(rows)
-			if (kept && kept.columns === columns) return kept.result
-			const result = totalRows(rows, columns)
-			totals.set(rows, { columns, result })
+			if (kept && kept.columns === columns && kept.picked === picked) return kept.result
+			const result = totalRows(
+				rows,
+				columns,
+				picked
+					? (column) => (column.id in picked ? (picked[column.id] ?? undefined) : column.aggregate)
+					: undefined,
+			)
+			totals.set(rows, { columns, picked, result })
 			return result
 		},
 	}

@@ -626,9 +626,19 @@ test('the keys of a sheet do nothing in a table', async ({ page }) => {
 	await name.click()
 	await page.keyboard.press('Shift+ArrowDown')
 	await expect(selected(table)).toHaveCount(2)
-	for (const key of ['Delete', 'Backspace', 'Control+z', 'Control+y', 'Control+Shift+z']) {
+	// The range holds two rows, so a sheet would fill it down, and make it bold and italic.
+	const keys = ['Delete', 'Backspace', 'Control+z', 'Control+y', 'Control+Shift+z']
+	for (const key of [...keys, 'Control+d', 'Control+b', 'Control+i']) {
 		await page.keyboard.press(key)
 	}
+	// No part and no attribute of a sheet is in the page.
+	await expect(table.locator('[data-slot="table-fill-handle"]')).toHaveCount(0)
+	await expect(table.locator('[role="rowheader"]')).toHaveCount(0)
+	await expect(
+		table.locator(
+			'[data-bold], [data-italic], [data-align], [data-color], [data-fill], [data-fill-target], [data-row-header]',
+		),
+	).toHaveCount(0)
 	// A cut without the sheet option is the browser's, and a cell holds no text to cut.
 	await page.keyboard.press('Control+x')
 	expect(await clipboard(page)).toBe('kept')

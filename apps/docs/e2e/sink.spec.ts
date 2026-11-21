@@ -397,6 +397,117 @@ test('a price is edited in its cell, and a price below zero is refused', async (
 	await expect(cell(table, 'Filter roast', 'price')).toBeFocused()
 })
 
+test('a sheet in a tile takes a typed number, goes down, and Control+Z takes it back', async ({
+	page,
+}) => {
+	await open(page, '&only=sheet-type')
+	const table = tableOf(page, 'sheet-type')
+	const food = cell(table, 'Food', 'mar')
+	const total = table.locator('tfoot td[data-column="mar"]')
+	await expect(total).toHaveText('1,271')
+
+	await food.click()
+	await page.keyboard.type('402')
+	await expect(table.locator('[data-slot="table-editor"]')).toHaveValue('402')
+	await page.keyboard.press('Enter')
+	await expect(food).toHaveText('402')
+	await expect(total).toHaveText('1,673')
+	await expect(page.getByTestId('sheet-last')).toHaveText('Food, Mar: 402, by enter-key')
+	// Enter went down, as in a sheet.
+	await expect(cell(table, 'Train', 'mar')).toBeFocused()
+
+	await page.keyboard.press('Control+z')
+	await expect(food).toHaveText('')
+	await expect(total).toHaveText('1,271')
+	await expect(page.getByTestId('sheet-last')).toHaveText('Food, Mar: empty, by undo')
+	// The step shows where it was: focus is on the cell that changed.
+	await expect(food).toBeFocused()
+})
+
+test('the square of a fill tile goes on with a series, and another tile does not move', async ({
+	page,
+}) => {
+	await open(page, '&only=sheet-fill,sheet-numbers')
+	const table = tableOf(page, 'sheet-fill')
+	const week = (row: number) => table.locator(`tbody tr:nth-child(${row}) td[data-column="week"]`)
+	const other = await tableOf(page, 'sheet-numbers').locator('tbody').innerText()
+
+	await week(1).click()
+	await week(2).click({ modifiers: ['Shift'] })
+	const square = table.locator('[data-slot="table-fill-handle"]')
+	await expect(square).toHaveCount(1)
+	const from = await box(square)
+	const to = await box(week(5))
+	await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+	await page.mouse.down()
+	await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 })
+	await expect(table.locator('[data-fill-target]')).toHaveCount(3)
+	await page.mouse.up()
+
+	await expect(week(3)).toHaveText('18')
+	await expect(week(4)).toHaveText('20')
+	await expect(week(5)).toHaveText('22')
+	await expect(week(6)).toHaveText('')
+	expect(await tableOf(page, 'sheet-numbers').locator('tbody').innerText()).toBe(other)
+	expect(await pageOverflow(page)).toBe(0)
+
+	// From code: the first two lines are the pattern, and the days pass the leap day.
+	await tile(page, 'sheet-fill').getByRole('button', { name: 'Fill weeks and days' }).click()
+	await expect(week(14)).toHaveText('40')
+	await expect(table.locator('tbody tr:nth-child(3) td[data-column="due"]')).toHaveText(
+		'Mar 7, 2028',
+	)
+})
+
+test('the tiles of a sheet: a number selects its row, a format is data, a total changes its function', async ({
+	page,
+}) => {
+	await open(page, '&eager&only=sheet-numbers,sheet-formats,sheet-totals,sheet-sum,sheet-cut')
+	const numbers = tableOf(page, 'sheet-numbers')
+	await numbers.locator('tbody tr:nth-child(2) th[data-row-header]').click()
+	await expect(page.getByTestId('numbers-said')).toHaveText('1 by 3 cells')
+	await numbers.locator('tbody tr:nth-child(4) th[data-row-header]').click({ modifiers: ['Shift'] })
+	await expect(page.getByTestId('numbers-said')).toHaveText('3 by 3 cells')
+	await expect(numbers.locator('th[data-row-header][data-selected]')).toHaveCount(0)
+
+	const formats = tableOf(page, 'sheet-formats')
+	const bold = tile(page, 'sheet-formats').getByRole('button', { name: 'Bold', exact: true })
+	await expect(bold).toBeDisabled()
+	const fee = cell(formats, 'Small Caps', 'fee')
+	await fee.click()
+	await bold.click()
+	await expect(fee).toHaveAttribute('data-bold', '')
+	await expect(bold).toHaveAttribute('aria-pressed', 'true')
+	await tile(page, 'sheet-formats').getByRole('button', { name: 'One decimal more' }).click()
+	await expect(fee).toHaveText('1.100')
+	await expect(page.getByTestId('formats-count')).toHaveText('3 rows hold a format of their own')
+	await tile(page, 'sheet-formats').getByRole('button', { name: 'Clear', exact: true }).click()
+	await expect(fee).toHaveText('1.10')
+	await expect(fee).not.toHaveAttribute('data-bold')
+
+	const totals = tableOf(page, 'sheet-totals')
+	const foot = totals.locator('tfoot td[data-column="total"]')
+	const sum = await foot.innerText()
+	await tile(page, 'sheet-totals').getByRole('radio', { name: 'Average' }).click()
+	await expect(page.getByTestId('totals-kind')).toHaveText('Average of each city')
+	await expect(foot).toHaveAttribute('data-aggregate', 'mean')
+	expect(await foot.innerText()).not.toBe(sum)
+
+	await tile(page, 'sheet-sum').getByRole('button', { name: 'Distance', exact: true }).click()
+	await expect(page.getByTestId('sum-bar')).toContainText('Sum 29.80')
+
+	const cut = tableOf(page, 'sheet-cut')
+	await tile(page, 'sheet-cut').getByRole('button', { name: 'Move two days' }).click()
+	await expect(cell(cut, 'Wed', 'early')).toHaveText('Aino')
+	await expect(cell(cut, 'Mon', 'early')).toHaveText('')
+	// A cut and a paste are two steps.
+	const undo = tile(page, 'sheet-cut').getByRole('button', { name: 'Undo', exact: true })
+	await undo.click()
+	await expect(cell(cut, 'Wed', 'early')).toHaveText('')
+	await undo.click()
+	await expect(cell(cut, 'Mon', 'early')).toHaveText('Aino')
+})
+
 test('a row window works in a tile of fixed height', async ({ page }) => {
 	await open(page, '&only=rows-window')
 	const table = tableOf(page, 'rows-window')
@@ -529,6 +640,9 @@ const CONTRAST_TILES = [
 	'edit-price',
 	'edit-switch',
 	'more-marks',
+	'sheet-fill',
+	'sheet-formats',
+	'sheet-saved',
 ]
 
 type Pair = [what: string, part: Locator, kind: ContrastKind, least: number]
@@ -547,6 +661,13 @@ for (const tone of TONES) {
 		const part = (id: string, selector: string) => tile(page, id).locator(selector).first()
 		const TEXT = 4.5
 		const EDGE = 3
+
+		// The looks of a format: a marked cell with a coloured text, selected, is the hardest pair.
+		const year = cell(tableOf(page, 'sheet-formats'), 'Global Bonds', 'year')
+		await year.click()
+		await tile(page, 'sheet-formats').getByRole('button', { name: 'Mark', exact: true }).click()
+		await expect(year).toHaveAttribute('data-fill', 'accent')
+		await cell(tableOf(page, 'sheet-fill'), 'Aino', 'week').click()
 
 		// A state that the pairs below read: a typed text, an open and refused editor, a hovered row.
 		const price = cell(tableOf(page, 'edit-price'), 'Espresso beans', 'price')
@@ -740,6 +861,25 @@ for (const tone of TONES) {
 				TEXT,
 			],
 		]
+
+		pairs.push(
+			['the number of a row', part('sheet-fill', 'tbody th[data-row-header]'), 'text', TEXT],
+			[
+				'the square to fill from',
+				part('sheet-fill', '[data-slot="table-fill-handle"]'),
+				'fill',
+				EDGE,
+			],
+			['a text in an alert colour', part('sheet-saved', 'td[data-color="alert"]'), 'text', TEXT],
+			['a text on a fill', part('sheet-saved', 'td[data-fill="accent"]'), 'text', TEXT],
+			['a coloured text on a fill that is selected', year, 'text', TEXT],
+			[
+				'a pressed button of a format',
+				part('sheet-formats', '[data-slot="button"][aria-pressed="true"]'),
+				'text',
+				TEXT,
+			],
+		)
 
 		const measured: string[] = []
 		const failed: string[] = []

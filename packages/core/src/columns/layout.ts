@@ -44,7 +44,8 @@ export type ColumnLayout<Row = unknown> = {
 type Leaf<Row> = { column: ColumnDef<Row>; path: ColumnDef<Row>[]; position: number }
 
 /** Whether a top-level column leads the table: see `lead` of a column. */
-export const isLead = (column: ColumnDef<any>) => column.lead === true && !column.columns?.length
+export const isLead = (column: ColumnDef<any>) =>
+	(column.lead === true || column.rowHeader === true) && !column.columns?.length
 
 /**
  * Works out which columns show, in which order, and how the header rows

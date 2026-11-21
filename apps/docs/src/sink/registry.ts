@@ -7,6 +7,7 @@ import { tiles as group } from './tiles/group'
 import { tiles as more } from './tiles/more'
 import { tiles as rows } from './tiles/rows'
 import { tiles as server } from './tiles/server'
+import { tiles as sheet } from './tiles/sheet'
 import { tiles as sort } from './tiles/sort'
 import type { Tile, TileCopy } from './types'
 
@@ -18,6 +19,7 @@ export const groups: Record<string, TileCopy[]> = {
 	rows,
 	columns,
 	edit,
+	sheet,
 	server,
 	more,
 }

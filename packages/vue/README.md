@@ -121,7 +121,7 @@ const view = useTableView(controller)
 </template>
 ```
 
-`sheet` is the table with the rules of a data sheet, and a preset: `editable`, `cell-selection` and `history` are on unless one is set to false. Each of them also works alone, so `<Table editable history>` is a table with undo. Without them, a table behaves as before.
+`sheet` is the table with the rules of a data sheet, and a preset: `editable`, `cell-selection`, `history` and `fill-handle` are on unless one is set to false. Each of them also works alone, so `<Table editable history>` is a table with undo. Without them, a table behaves as before.
 
 | Key | With `sheet` |
 | --- | --- |
@@ -134,10 +134,12 @@ const view = useTableView(controller)
 | Control or Command with X | Cuts: the text of a copy, then a clear (reason `cut`) |
 | Control or Command with V | Pastes. A block repeats over a range that it fits a whole number of times |
 | Control or Command with Z; with Y or Shift+Z | Undo and redo, with `history` |
+| Control or Command with D; with R | Fills the selected cells down from their first row; forward from their first column, with `fill-handle`. With one line selected the keys stay the browser's |
+| Control or Command with B; with I | Makes the selected cells bold; italic. On, unless every selected cell has it, and then off |
 
 - **The owner applies every change.** An undo is a report through `cell-edit` with the reason `undo` (a redo: `redo`), with the old values as `value`. An owner that puts edits into its rows with `applyEdits` needs no code for undo. `details.cancel()` refuses an undo as it refuses an edit, and the step stays.
 - **`applyEdits(rows, edits, getRowId?)`** finds the row of an edit by its object, and by its id when the object was replaced already, as at the second of two reports in one turn. Pass the `getRowId` of the table when it has one.
-- **A step** is one report that no listener refused: one edit, one paste, one cut, one clear, one `editCell`. Typing in an open editor is no step; there, Control+Z is the text field's. Sort, filter, column moves and selection are not in the history.
+- **A step** is one report that no listener refused: one edit, one paste, one cut, one clear, one fill, one `editCell`, and one change of formats. Typing in an open editor is no step; there, Control+Z is the text field's. Sort, filter, column moves and selection are not in the history.
 - **An undo runs no `parse` and no schema.** It puts back what the data held. A cell whose row or column left the table is skipped and counted in the announcement; a step with no cell left is dropped. Rows need stable ids.
 - **Limits:** `:history="{ limit: 100, maxCells: 100000 }"` are the defaults. A step with more cells than `maxCells` empties the history, and the table says so.
 - **Other data:** call `controller.clearHistory()` when the rows become another document. With `manual-page`, another page, sort or filter empties the history.
@@ -148,4 +150,84 @@ const view = useTableView(controller)
 - **Attributes:** `data-sheet` on the table.
 - **Messages:** `cellsCleared`, `cellsCut`, `clearRefused`, `clearNowhere`, `undone`, `redone`, `undoRefused`, `nothingToUndo`, `nothingToRedo`, `historyBusy`, `historyTooLarge`.
 
-Not built yet: row numbers, the fill handle, the summary of a selection, the function of the sum row at run time, and formats of cells.
+### Row numbers
+
+```ts
+const columns = [rowNumberColumn<Row>(), { id: 'name' }, { id: 'price' }]
+```
+
+`rowNumberColumn(options?)` is a column with `lead: true` and `rowHeader: true`: it stays first, sticks with the start pins, and is outside every range, copy, paste, fill, format and export. Its cells are `th` elements with the role `rowheader` and `data-row-header`, with the name "Row 3" (message `rowNumber`), so a screen reader says the number with each cell of the row. The number is the place of the row among the data rows, counted over the pages; group rows have none. A press on a number selects the cells of its row, with Shift the rows from the active cell on, and a drag over numbers selects those rows. The `#row-header` slot gets `{ row, node, column, number, selectRow }`. Give the cell `position: sticky; inset-inline-start: 0` and an opaque background to keep it in view without a pinned column.
+
+### Fill
+
+The fill handle is the part `[data-slot='table-fill-handle']`, an empty `span` inside the cell at the end corner of the selected cells. Place it with `position: absolute` at `inset-block-end` and `inset-inline-end` of its cell, which needs `position: relative`; the logical sides put it at the left corner from right to left. Give it `touch-action: none`.
+
+- **A drag** fills along the rows or along the columns, whichever the pointer went further on. While it runs, the table has `data-filling` and each cell that would be filled has `data-fill-target` and `data-fill-edge` (`top`, `right`, `bottom`, `left`, as `data-range-edge`), so a line around the target is the same CSS as the line around a range. Near an edge of the scroll frame the table scrolls, also with a row window. Escape ends the drag and changes nothing.
+- **What it writes:** a source of one line repeats. A source of two or more lines goes on when it is numbers with one step (also negative, a fraction, upward and backward) or days with one step (`2028-02-22`, `2028-02-29` goes on with `2028-03-07`); everything else repeats in its order. The step of a series is counted without the noise of floats.
+- **All or nothing, one step.** Each value passes the schema of its column. One refusal stops the fill before any cell changes, and the table says which column refused which text. A fill is one report through `cell-edit` with the reason `fill` and one step of the history; its undo puts back exactly the values of before, also for rows that were sorted, filtered or removed since.
+- **`fill-handle="vertical"`** or `"horizontal"` keeps the handle and the keys on one axis. `:fill-handle="false"` with `sheet` takes both away.
+- **Controller:** `fillCells('down' | 'up' | 'forward' | 'back', source = 1)` fills the selected cells from their first `source` lines. It works without the `fill-handle` option, which is about the handle and the keys. It throws for one selected line, for a wrong direction (with the valid ones), and with the reason of a refusal.
+- A cell that cannot be edited keeps its value and its place in the line. A fill from pinned rows into the rows of the list is refused: they are no neighbours in the data.
+
+### A summary of the selected cells
+
+```vue
+<script setup lang="ts">
+const summary = useSelectionSummary(controller)
+</script>
+
+<template>
+	<p v-if="summary && summary.numbers > 1">Sum {{ summary.texts.sum }}, average {{ summary.texts.mean }}</p>
+</template>
+```
+
+`useSelectionSummary(controller, { debounce = 100 })` is a ref with `{ cells, count, numbers, sum, mean, min, max, texts }` or `null`: how many cells of data rows are selected, how many hold a value, how many hold a number, and what the numbers add up to. It counts after the selection rests, so a drag over 50,000 rows counts one time, and it follows an edit inside the selection. `texts` are in the format of the column when the selection is inside one column of numbers, else plain numbers of the locale. Show it in a plain element and not in a live region. `controller.getSelectionSummary()` is the same answer on request, kept for the same selection and rows.
+
+### The function of a total at run time
+
+```vue
+<Table v-model:column-aggregates="aggregates" :rows="rows" :columns="columns">
+	<template #foot="{ column, text, aggregate, setAggregate }">
+		<MyPicker :value="aggregate" @change="(name) => setAggregate(name)" />
+		{{ text }}
+	</template>
+</Table>
+```
+
+`columnAggregates` is a record by column id: `'sum' | 'mean' | 'min' | 'max' | 'count' | 'uniqueCount' | 'first'`, or `null` for no total. An entry wins over the `aggregate` of the column definition, and a column without an entry keeps its definition. The footer, the group rows, `getTotals` and an export follow; the footer row goes away with its last total. `setAggregate(name | null | undefined, event?)` of the `#foot` slot and `controller.setColumnAggregate(columnId, name)` change it (`undefined` gives the definition back). `#foot` and `#group-total` get `aggregate` (a name, `custom` for a function of the column, or `undefined`). A footer cell has `data-aggregate`, and a cell whose function a person chose has the name "Average: 12.40" (messages `aggregateLabel`, `totalLabel`). A change of the function is no step of the history.
+
+### Formats of cells
+
+```vue
+<Table v-model:cell-formats="formats" :format-colors="['red', 'green']" sheet ... />
+```
+
+```ts
+controller.formatCells({ bold: true, fill: 'green' })                  // the selected cells
+controller.formatCells({ format: 'percentage', decimals: 1 }, { columns: ['share'] })
+controller.formatCells({ fill: null }, { from: { rowId: 'a', columnId: 'price' } })
+controller.clearCellFormats()
+controller.toggleCellFormat('bold')                                    // for a toolbar button
+controller.getCellFormat(rowId, columnId)                              // for the pressed state
+```
+
+- **The value** is `CellFormats`: `{ columns?: { [columnId]: CellFormat }, cells?: { [rowId]: { [columnId]: CellFormat } } }`. A property of a cell wins over the same property of its column, and both win over the `format` and `formatOptions` of the column definition. A format follows its row through a sort, a filter and a page. It is plain data that an app saves with its document: pass it back as `cell-formats` or `default-cell-formats`.
+- **`CellFormat`:** `format` (`text`, `integer`, `decimal`, `currency`, `percentage`, `date`, `datetime`), `decimals` (0 to 10), `currency` (an ISO code), `dateStyle` (`short`, `medium`, `long`, `full`), `align` (`start`, `center`, `end`), `bold`, `italic`, `color` and `fill`. A patch with `null` for a key takes that property away. A wrong property, name or colour throws with the valid ones.
+- **Looks are attributes.** A cell has `data-align`, `data-bold`, `data-italic`, `data-color`, `data-fill`, and `data-format` with the name that decides its text. The table writes no class and no style. A colour is a name of `format-colors` and nothing of CSS: the style of the app gives each name its colours for light and dark, and holds the contrast. Give a fill an opaque background, so a pinned cell with a fill hides what scrolls under it, and decide what a selected cell with a fill looks like. `cellAttrs` of the caller cannot overwrite these attributes.
+- **The text** of a cell with a format is made by the format: 0.342 with `{ format: 'percentage', decimals: 1 }` reads `34.2%`. The footer and the totals of a group follow the column layer. A copy, a CSV and an Excel file hold the text of the screen; in an Excel file a cell whose own format decides its text is written as text. The `#cell` and `#col-{id}` slots get `format`, the format that the cell has of its own, and `text`.
+- **The editor shows the plain value.** A cell that shows `25%` opens with `0.25`, as a `percentage` column does. A search and the label of a group read the column definition and do not follow a format of a cell.
+- **Whole columns.** When the selected cells are every row that the table has, `formatCells` formats the columns, so the format holds for rows that come later and the value stays small. Never with `manual-page`, where the table does not have every row. Format a column, not 50,000 cells, when the value is saved as JSON: cells that share a format share one object in memory, but JSON writes one entry for each row.
+- **History.** A change of formats is one step (`getHistory()` entries have `formats: true` and `cells: 0`). An undo reports the formats of before through `update:cell-formats` and `cell-formats-change` with the reason `undo`, property by property, so a format that the owner gave another cell meanwhile stays. `details.cancel()` in `cell-formats-change` refuses a change.
+- **Rows that left.** The table keeps the format of a row that is gone, because the row can come back with the next page. `pruneFormats(formats, rowIds, columnIds)` drops them when the owner knows better. `setFormats(formats, place, patch)` and `revertFormats` are the pure functions behind the controller.
+- **With `v-model:cell-formats` the table renders whole at a change**, as for every prop that the owner holds. With `default-cell-formats` the table keeps the value and only the changed cells render. For a large sheet with a row window either is fast; without a window, prefer `default-cell-formats` and listen to `cell-formats-change`.
+
+### New names of the sheet, in one list
+
+- **Options:** `fill-handle`, `column-aggregates` and `default-column-aggregates` (`v-model:column-aggregates`), `cell-formats` and `default-cell-formats` (`v-model:cell-formats`), `format-colors`; column key `rowHeader`.
+- **Events:** `column-aggregates-change`, `cell-formats-change`.
+- **Controller and agent actions:** `fillCells`, `setColumnAggregate`, `formatCells`, `clearCellFormats`, `toggleCellFormat`, `getCellFormat`, `getSelectionSummary`.
+- **View:** `columnAggregates`, `cellFormats`.
+- **Slots:** `#row-header`; `aggregate` and `setAggregate` in `#foot`, `aggregate` in `#group-total`, `format` in `#cell`.
+- **Attributes:** `data-row-header`, `data-filling`, `data-fill-target`, `data-fill-edge`, `data-aggregate`, `data-align`, `data-bold`, `data-italic`, `data-color`, `data-fill`; the part `table-fill-handle`.
+- **Messages:** `rowNumber`, `cellsFilled`, `fillRefused`, `fillNowhere`, `fillOverPinned`, `cellsFormatted`, `aggregateLabel`, `totalLabel`.
+- **Exports:** `rowNumberColumn`, `columnLetter`, `useSelectionSummary`, `summarize`, `fillValues`, `fillLine`, `setFormats`, `revertFormats`, `pruneFormats`, `resolveFormat`, `aggregateName`, `CELL_FORMAT_NAMES`, `CELL_ALIGNS`, `CELL_DATE_STYLES`, `TableFillHandle`, and the types `CellFormat`, `CellFormats`, `CellFormatPatch`, `CellFormatName`, `FormatPlace`, `FormatTarget`, `ColumnAggregates`, `AggregateName`, `RangeSummary`, `FillWay`, `FillDirection`, `FillDraft`, `RowHeaderSlotProps`, `TableStepReason`.

@@ -1,4 +1,4 @@
-export { aggregateRows, aggregates, totalRows } from './aggregate'
+export { aggregateRows, aggregates, totalRows, type AggregatePick } from './aggregate'
 export {
 	cellValue,
 	dayEnd,

@@ -52,7 +52,7 @@ test('P3: a cut event reaches a cell that has focus, and a table without `sheet`
 	await page.goto('/?page=sheet')
 	const sheet = page.locator('[data-slot="table"]')
 	let seen = await record(page)
-	await sheet.locator('tr[aria-rowindex="2"] > [aria-colindex="1"]').click()
+	await sheet.locator('tr[aria-rowindex="2"] > [aria-colindex="2"]').click()
 	await page.keyboard.press('Control+x')
 	const cut = (await seen()).find((event) => event.type === 'cut')
 	// A `td` with a tab index is the target of the event, as it is for a copy.
@@ -75,12 +75,13 @@ test('P3: the keys of a sheet that a browser also uses reach the page and can be
 }) => {
 	await page.goto('/?page=sheet')
 	const seen = await record(page)
-	await page.locator('[data-slot="table"] tr[aria-rowindex="2"] > [aria-colindex="1"]').click()
+	await page.locator('[data-slot="table"] tr[aria-rowindex="2"] > [aria-colindex="2"]').click()
 	// Control+Y is the history of the browser, Control+D a bookmark, Control+R a reload.
 	await page.keyboard.press('Control+y')
 	await page.keyboard.press('Control+d')
 	const keys = (await seen()).filter((event) => event.type === 'keydown' && event.key !== 'Control')
-	// The table takes the redo key, also with no step. The fill key is not built yet, and is one that a page can take.
+	// The table takes the redo key, also with no step. The fill key is one that a page can take; with
+	// one cell selected there is nothing to fill, so the table leaves it to the browser.
 	expect(keys).toEqual([
 		{ type: 'keydown', key: 'y', tag: 'TD', prevented: true, cancelable: true },
 		{ type: 'keydown', key: 'd', tag: 'TD', prevented: false, cancelable: true },

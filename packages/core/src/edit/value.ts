@@ -83,12 +83,13 @@ export function parseText(
 	column: ColumnDef,
 	texts: ParseTexts,
 	locale?: string,
+	/** The name of the format that the cell shows with, when it is another than the `format` of the column. */
+	format: string | undefined = column.format,
 ): Checked {
 	if (column.parse) return { value: column.parse(text, row) }
 	const current = cellValue(row, column)
 	const numeric =
-		typeof current === 'number' ||
-		(current == null && !!column.format && NUMBER_FORMATS.includes(column.format))
+		typeof current === 'number' || (current == null && !!format && NUMBER_FORMATS.includes(format))
 	if (numeric) {
 		if (text.trim() === '') return { value: null }
 		const value = readNumberText(text, column.formatOptions?.locale ?? locale)
@@ -155,8 +156,9 @@ export function resolveValue(
 	column: ColumnDef,
 	texts: ParseTexts,
 	locale?: string,
+	format?: string,
 ): Checked | Promise<Checked> {
-	const parsed = 'text' in input ? parseText(input.text, row, column, texts, locale) : input
+	const parsed = 'text' in input ? parseText(input.text, row, column, texts, locale, format) : input
 	if ('issues' in parsed) return parsed
 	return checkValue(column.schema, parsed.value)
 }

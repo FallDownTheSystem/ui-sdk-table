@@ -375,3 +375,183 @@ body {
 	font: inherit;
 	cursor: pointer;
 }
+
+/*
+ * The sheet page. A sheet has a line around each cell, numbers of the rows
+ * at the start, and a square at the corner of the selected cells to fill from.
+ */
+.sheet [data-slot='table'] :is(th, td) {
+	border-inline-end: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.sheet [data-slot='table-cell'][data-row-header] {
+	position: sticky;
+	z-index: 1;
+	inset-inline-start: 0;
+	background: color-mix(in srgb, currentColor 6%, Canvas);
+	color: color-mix(in srgb, currentColor 75%, Canvas);
+	font-weight: 400;
+	text-align: end;
+	font-variant-numeric: tabular-nums;
+	cursor: default;
+	user-select: none;
+}
+
+.sheet [data-slot='table'] tr[data-sticky] > [data-lead] {
+	inset-inline-start: 0;
+	z-index: 3;
+}
+
+/* The fill handle sits in the cell at the end corner of the selected cells. */
+.sheet [data-slot='table'] tbody td {
+	position: relative;
+}
+
+.sheet [data-slot='table'] tbody td[data-pinned] {
+	position: sticky;
+}
+
+[data-slot='table-fill-handle'] {
+	position: absolute;
+	z-index: 2;
+	inset-block-end: -1px;
+	inset-inline-end: -1px;
+	inline-size: 9px;
+	block-size: 9px;
+	box-sizing: border-box;
+	border: 1px solid Canvas;
+	background: color-mix(in srgb, Highlight 80%, CanvasText);
+	cursor: crosshair;
+	touch-action: none;
+}
+
+/* While the handle is dragged, the whole table shows the cross, and no text is selected. */
+[data-slot='table'][data-filling] {
+	cursor: crosshair;
+	user-select: none;
+}
+
+/* The cells that the drag would fill: a tint, and a line around them all from the edges that each cell names. */
+[data-slot='table-cell'][data-fill-target] {
+	--fill-line: color-mix(in srgb, Highlight 55%, CanvasText);
+	background-image: linear-gradient(
+		color-mix(in srgb, Highlight 10%, transparent),
+		color-mix(in srgb, Highlight 10%, transparent)
+	);
+	box-shadow:
+		var(--fill-top, 0 0), var(--fill-right, 0 0), var(--fill-bottom, 0 0), var(--fill-left, 0 0);
+}
+
+[data-slot='table-cell'][data-fill-edge~='top'] {
+	--fill-top: inset 0 2px 0 var(--fill-line);
+}
+
+[data-slot='table-cell'][data-fill-edge~='right'] {
+	--fill-right: inset -2px 0 0 var(--fill-line);
+}
+
+[data-slot='table-cell'][data-fill-edge~='bottom'] {
+	--fill-bottom: inset 0 -2px 0 var(--fill-line);
+}
+
+[data-slot='table-cell'][data-fill-edge~='left'] {
+	--fill-left: inset 2px 0 0 var(--fill-line);
+}
+
+/* The looks of a cell format. A name of `formatColors` gets its colours here, for light and for dark. */
+[data-slot='table-cell'][data-align='start'] {
+	text-align: start;
+}
+
+[data-slot='table-cell'][data-align='center'] {
+	text-align: center;
+}
+
+[data-slot='table-cell'][data-align='end'] {
+	text-align: end;
+}
+
+[data-slot='table-cell'][data-bold] {
+	font-weight: 700;
+}
+
+[data-slot='table-cell'][data-italic] {
+	font-style: italic;
+}
+
+[data-slot='table-cell'][data-color='red'] {
+	color: light-dark(#b3261e, #ffb4ab);
+}
+
+[data-slot='table-cell'][data-color='amber'] {
+	color: light-dark(#8a5300, #ffcf70);
+}
+
+[data-slot='table-cell'][data-color='green'] {
+	color: light-dark(#1b6e2c, #8bd89a);
+}
+
+[data-slot='table-cell'][data-color='blue'] {
+	color: light-dark(#0b57d0, #a8c7fa);
+}
+
+/* A fill is opaque, so a pinned cell with a fill hides the cells that scroll under it. */
+[data-slot='table-cell'][data-fill='red'] {
+	background-color: light-dark(#fde7e5, #5c1a16);
+}
+
+[data-slot='table-cell'][data-fill='amber'] {
+	background-color: light-dark(#fff1cf, #4d3800);
+}
+
+[data-slot='table-cell'][data-fill='green'] {
+	background-color: light-dark(#dff5e3, #123f1d);
+}
+
+[data-slot='table-cell'][data-fill='blue'] {
+	background-color: light-dark(#dfeaff, #0f3166);
+}
+
+/* A selected cell with a fill keeps its fill, under the tint of the selection. */
+[data-slot='table-cell'][data-selected][data-fill] {
+	background-image: linear-gradient(
+		color-mix(in srgb, Highlight 22%, transparent),
+		color-mix(in srgb, Highlight 22%, transparent)
+	);
+}
+
+/* A number stands at the end of its column, whatever gave the cell its format. */
+.sheet
+	[data-slot='table-cell']:is(
+		[data-format='integer'],
+		[data-format='decimal'],
+		[data-format='currency'],
+		[data-format='percentage']
+	):not([data-align]) {
+	text-align: end;
+	font-variant-numeric: tabular-nums;
+}
+
+.look {
+	min-inline-size: 2rem;
+}
+
+.look[aria-pressed='true'] {
+	background: color-mix(in srgb, Highlight 30%, Canvas);
+}
+
+/* The picker of a total stands over its number, so a narrow column shows both. */
+.total-pick {
+	display: block;
+	margin-inline-start: auto;
+	margin-block-end: 0.125rem;
+	max-inline-size: 100%;
+	font: inherit;
+	font-size: 0.85em;
+	font-weight: 400;
+}
+
+.summary {
+	margin-block: 0.5rem;
+	font-variant-numeric: tabular-nums;
+}

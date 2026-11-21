@@ -1,6 +1,7 @@
 import { mount } from '@ui-sdk/core/testing'
 import { parseCellKey, type CellEdit, type StandardSchemaV1 } from '../edit'
 import type { ColumnDef } from '../rows'
+import { rowNumberColumn } from './chrome'
 import { table, type TableEditDetails, type TableOptions } from '../table'
 
 // For the tests of the sheet behaviors of this package, and no part of it.
@@ -42,12 +43,14 @@ export const priceSchema = (later = false, seen?: unknown[]): StandardSchemaV1 =
 })
 
 /** Grid row 0 is the header row. Each body row has one cell for each column. */
-function markup(ids: readonly string[]): string {
+function markup(ids: readonly string[], columnIds: readonly string[]): string {
 	const cells = (id: string, row: number, header = false) =>
-		COLUMN_IDS.map(
-			(column, col) =>
-				`<cell value="${id}|${column}" row="${row}" col="${col}"${header ? ' header' : ''}>x</cell>`,
-		).join('')
+		columnIds
+			.map(
+				(column, col) =>
+					`<cell value="${id}|${column}" row="${row}" col="${col}"${header ? ' header' : ''}>x</cell>`,
+			)
+			.join('')
 	const rows = ids.map(
 		(id, index) => `<row value="${id}" index="${index + 1}">${cells(id, index + 1)}</row>`,
 	)
@@ -60,6 +63,10 @@ export function sheetTable(
 		/** What the owner does with a report. Without it, the owner puts the values into its store. */
 		owner?: (report: Report, apply: () => void) => void
 		schema?: StandardSchemaV1
+		/** A column of row numbers before the others. Every column number is then one higher. */
+		numbers?: boolean
+		/** The rows whose stock cannot be edited. */
+		locked?: readonly string[]
 	} = {},
 ) {
 	const values = items()
@@ -68,10 +75,16 @@ export function sheetTable(
 	const reports: Report[] = []
 	const read = (key: keyof Item) => (row: ItemRow) => values[row.id]?.[key]
 	const columns: ColumnDef<ItemRow>[] = [
+		...(given.numbers ? [rowNumberColumn<ItemRow>()] : []),
 		{ id: 'name', header: 'Name', value: read('name') },
 		{ id: 'kind', header: 'Kind', value: read('kind'), editable: false },
 		{ id: 'price', header: 'Price', value: read('price'), schema: given.schema },
-		{ id: 'stock', header: 'Stock', value: read('stock') },
+		{
+			id: 'stock',
+			header: 'Stock',
+			value: read('stock'),
+			editable: given.locked ? (row) => !given.locked?.includes(row.id) : undefined,
+		},
 	]
 	const view = mount(
 		table,
@@ -92,7 +105,10 @@ export function sheetTable(
 			},
 			...options,
 		} as TableOptions,
-		markup(ids),
+		markup(
+			ids,
+			columns.map((column) => column.id),
+		),
 	)
 	const cell = (rowId: string, columnId: string) =>
 		view.part('cell', `${rowId}|${columnId}`) as HTMLElement
