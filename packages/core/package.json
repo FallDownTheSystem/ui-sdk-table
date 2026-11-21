@@ -11,10 +11,11 @@
 	"sideEffects": false,
 	"exports": {
 		".": "./src/index.ts",
-		"./export": "./src/export/index.ts"
+		"./export": "./src/export/index.ts",
+		"./formulas": "./src/formulas/index.ts"
 	},
 	"scripts": {
-		"build": "vp pack src/index.ts src/export/index.ts --platform neutral"
+		"build": "vp pack src/index.ts src/export/index.ts src/formulas/index.ts --platform neutral"
 	},
 	"devDependencies": {
 		"@types/jsdom": "catalog:",

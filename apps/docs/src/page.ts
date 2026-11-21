@@ -33,6 +33,7 @@ export const pages: Record<string, Page> = {
 	window: { title: 'Row window', load: () => import('./pages/WindowPage.vue'), styles: plain },
 	editing: { title: 'Editing', load: () => import('./pages/EditingPage.vue'), styles: plain },
 	sheet: { title: 'Sheet', load: () => import('./pages/SheetPage.vue'), styles: plain },
+	formulas: { title: 'Formulas', load: () => import('./pages/FormulasPage.vue'), styles: plain },
 	server: { title: 'Server', load: () => import('./pages/ServerPage.vue'), styles: plain },
 	proofs: {
 		title: 'Proofs',
