@@ -40,6 +40,12 @@ export const pages: Record<string, Page> = {
 		styles: plain,
 		hidden: true,
 	},
+	'formula-proofs': {
+		title: 'Formula proofs',
+		load: () => import('./pages/FormulaProofPage.vue'),
+		styles: plain,
+		hidden: true,
+	},
 }
 
 const requested = query.get('page') ?? 'sink'

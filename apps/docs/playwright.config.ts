@@ -10,7 +10,17 @@ export default defineConfig({
 		baseURL: 'http://localhost:5180',
 		trace: 'on-first-retry',
 	},
-	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+	projects: [
+		{ name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+		// The proofs of the formulas in two more browsers, on request: they need
+		// `playwright install firefox webkit`, which the setup does not run.
+		...(process.env.PROOF_BROWSERS
+			? [
+					{ name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+					{ name: 'webkit', use: { ...devices['Desktop Safari'] } },
+				].map((project) => ({ ...project, testMatch: 'formula-proofs.spec.ts' }))
+			: []),
+	],
 	webServer: {
 		command: 'pnpm dev',
 		port: 5180,
