@@ -1,3 +1,4 @@
+import type { StandardSchemaV1 } from '../edit/schema'
 import type { FormatName, FormatOptions } from '../format'
 
 export type FilterKind = 'text' | 'select' | 'range' | 'dateRange'
@@ -38,6 +39,19 @@ export type ColumnDef<Row = unknown> = {
 	reorderable?: boolean
 	/** Whether the column can be hidden. Defaults to true. */
 	hideable?: boolean
+	/**
+	 * Whether a person can edit the cells of the column, or which rows have a
+	 * cell that can be edited. Without it, the `editable` option of the table decides.
+	 */
+	editable?: boolean | ((row: Row) => boolean)
+	/**
+	 * Checks a new value before the table reports the edit. Any Standard Schema
+	 * works: Zod, Valibot, ArkType. A value that the schema refuses keeps the
+	 * editor open, with the message of the schema.
+	 */
+	schema?: StandardSchemaV1
+	/** Makes the value of a cell from the text of the editor or of a paste. Without it, see `parseText`. */
+	parse?: (text: string, row: Row) => unknown
 	meta?: unknown
 }
 

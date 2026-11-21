@@ -14,6 +14,24 @@ export type TableMessages = {
 	columnResized: (details: { column: string; width: number }) => string
 	/** What a screen reader says while a column moves. */
 	columnMoved: (details: ColumnReorderMessage) => string
+	/** The name of the text field that edits a cell. */
+	editCell: (details: { column: string }) => string
+	/** Why a text is refused in a column of numbers. */
+	notNumber: (text: string) => string
+	/** Why a value is refused when its schema gives no message. */
+	invalidValue: () => string
+	/** Why an edit is refused when a listener of `onCellEdit` cancels it. */
+	editRefused: () => string
+	/** What a screen reader says after the range of cells changed from the keyboard. */
+	cellsSelected: (details: { rows: number; columns: number }) => string
+	/** What a screen reader says after a copy. */
+	cellsCopied: (details: { cells: number }) => string
+	/** What a screen reader says after a paste. */
+	cellsPasted: (details: { cells: number }) => string
+	/** Why a paste did nothing: one of its values was refused. */
+	pasteRefused: (details: { column: string; text: string; message: string }) => string
+	/** Why a paste did nothing: no cell under it can be edited. */
+	pasteNowhere: () => string
 }
 
 export const defaultMessages: TableMessages = {
@@ -26,4 +44,17 @@ export const defaultMessages: TableMessages = {
 		if (type === 'cancel') return `${label} is back at column ${position} of ${total}.`
 		return `${label}, column ${position} of ${total}.`
 	},
+	editCell: ({ column }) => `Edit ${column}`,
+	notNumber: (text) => `"${text}" is not a number.`,
+	invalidValue: () => 'This value is not valid.',
+	editRefused: () => 'The change was not saved.',
+	cellsSelected: ({ rows, columns }) =>
+		rows * columns === 1
+			? '1 cell selected.'
+			: `${rows} ${rows === 1 ? 'row' : 'rows'} by ${columns} ${columns === 1 ? 'column' : 'columns'} selected.`,
+	cellsCopied: ({ cells }) => (cells === 1 ? '1 cell copied.' : `${cells} cells copied.`),
+	cellsPasted: ({ cells }) => (cells === 1 ? '1 cell changed.' : `${cells} cells changed.`),
+	pasteRefused: ({ column, text, message }) =>
+		`Nothing was pasted. ${column} refuses "${text}": ${message}`,
+	pasteNowhere: () => 'Nothing was pasted. No cell here can be edited.',
 }

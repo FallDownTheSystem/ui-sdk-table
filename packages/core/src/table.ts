@@ -1,18 +1,28 @@
 import {
+	announce,
 	byCell,
 	createChange,
 	createCommit,
 	createSelection,
 	definePrimitive,
 	direct,
+	dispatch,
 	isRTL,
 	live,
 	selects,
 	type ChangeDetails,
 	type CommitDetails,
 } from '@ui-sdk/core'
+import { createCellEdit, type SaveResult } from './behaviors/edit'
 import { createTableGrid, GRID_KEYS, type GridArea, type GridCell } from './behaviors/grid'
 import { createColumnPins } from './behaviors/pin'
+import {
+	byCellRange,
+	createTableRange,
+	textToCells,
+	type CellBounds,
+	type CellRange,
+} from './behaviors/range'
 import { createColumnReorder, type ReorderDraft } from './behaviors/reorder'
 import { createColumnResize, type ResizeDraft } from './behaviors/resize'
 import { createStickyRows } from './behaviors/sticky'
@@ -32,6 +42,15 @@ import {
 	type ColumnPinning,
 	type HeaderCell,
 } from './columns/layout'
+import {
+	cellKey,
+	editText,
+	parseCellKey,
+	resolveValue,
+	sameValue,
+	type CellEdit,
+	type Checked,
+} from './edit'
 import { formatValue } from './format'
 import { defaultMessages, type TableMessages } from './messages'
 import {
@@ -66,6 +85,13 @@ export type TableReason =
 
 export type TableChangeDetails = ChangeDetails<TableReason>
 export type TableCommitDetails = CommitDetails<TableReason>
+
+/** Why cells got new values: a key or a loss of focus in the editor, a paste, or a call from code. */
+export type TableEditReason = 'enter-key' | 'tab-key' | 'focus-out' | 'paste' | 'imperative'
+export type TableEditDetails = ChangeDetails<TableEditReason>
+
+/** A cell of the data, by the id of its row and of its column. */
+export type CellRef = { rowId: string; columnId: string }
 
 export type ColumnVisibility = Readonly<Record<string, boolean>>
 export type ColumnWidths = Readonly<Record<string, number>>
@@ -115,7 +141,38 @@ export type TableController = {
 	pinRow(rowId: string, edge: RowPin | null): void
 	/** Scrolls a row into view, in one step, also when the row is not rendered yet. */
 	scrollToRow(rowId: string, align?: RowAlign): void
+	/**
+	 * Gives a cell a new value, with the check of its column, and reports it
+	 * through `onCellEdit`. A text is read as the editor reads it. It throws
+	 * with the reason when the value is refused; when the schema of the column
+	 * answers with a promise, the result is a promise that rejects.
+	 */
+	editCell(rowId: string, columnId: string, value: unknown): void | Promise<void>
+	/** Opens the editor of a cell that is in view. */
+	startEdit(rowId: string, columnId: string): void
+	/** Closes the editor without a save. */
+	cancelEdit(): void
+	/** Selects the cells from one cell to another, or one cell. Needs the `cellSelection` option. */
+	selectCells(from: CellRef, to?: CellRef): void
+	clearCellSelection(): void
+	/** The text of the selected cells, with tabs between cells and line breaks between rows. */
+	copyCells(): string
+	/**
+	 * Puts tab-separated text into the cells from the first selected cell on,
+	 * as a paste does. It throws with the reason when a value is refused, and
+	 * then no cell changes.
+	 */
+	pasteCells(text: string): void | Promise<void>
 }
+
+type CellActions =
+	| 'editCell'
+	| 'startEdit'
+	| 'cancelEdit'
+	| 'selectCells'
+	| 'clearCellSelection'
+	| 'copyCells'
+	| 'pasteCells'
 
 export type TableOptions<Row = unknown> = {
 	rows?: readonly Row[]
@@ -229,6 +286,31 @@ export type TableOptions<Row = unknown> = {
 	rowPinning?: RowPinning
 	defaultRowPinning?: RowPinning
 	onRowPinningChange?: (value: RowPinning, details: TableChangeDetails) => void
+
+	/** Whether a person can edit cells. A column can say otherwise. Defaults to false. */
+	editable?: boolean
+	/**
+	 * Runs when cells got new values: one cell from the editor or from
+	 * `editCell`, many cells from a paste. The table does not change the rows.
+	 * Put the values into your rows and pass the new rows; `applyEdits` does
+	 * that for plain rows. `details.cancel()` refuses the edit.
+	 */
+	onCellEdit?: (edits: readonly CellEdit<Row>[], details: TableEditDetails) => void
+
+	/** Whether a person can select a range of cells, to copy it or to paste into it. Defaults to false. */
+	cellSelection?: boolean
+	/**
+	 * The selected range of cells, from the cell where it started to the cell
+	 * it reaches, or `null`. A cell is a place in the grid: `row` counts the
+	 * header rows first, as `aria-rowindex` does, from 0. A range holds body
+	 * rows only. It goes away when other rows or columns come to its places.
+	 */
+	cellRange?: CellRange | null
+	defaultCellRange?: CellRange | null
+	/** Runs for each step of a drag, and for each other change of the range. */
+	onCellRangeChange?: (value: CellRange | null, details: TableChangeDetails) => void
+	/** Runs once when a drag that changed the range ends. */
+	onCellRangeCommit?: (value: CellRange | null, details: TableCommitDetails) => void
 }
 
 type TableState = {
@@ -243,6 +325,11 @@ type TableState = {
 	columnWidths: ColumnWidths
 	columnPinning: ColumnPinning
 	rowPinning: RowPinning
+	cellRange: CellRange | null
+	/** The id of the cell that is edited (`cellKey`), or `null`. */
+	editing: string | null
+	/** Why the text of the editor was refused, by cell id. One entry at most. */
+	editErrors: Readonly<Record<string, string>>
 	/** The rows of the list that the row window renders. */
 	rowWindow: RowWindowState
 	/**
@@ -272,6 +359,7 @@ const NO_VISIBILITY: ColumnVisibility = {}
 const NO_WIDTHS: ColumnWidths = {}
 const NO_PINNING: ColumnPinning = {}
 const NO_ROW_PINNING: RowPinning = {}
+const NO_ERRORS: Readonly<Record<string, string>> = {}
 const NO_FLAT: FlatRow<unknown>[] = []
 
 const DEFAULT_ROW_HEIGHT = 36
@@ -296,6 +384,9 @@ const QUIET = {
 	columnTrack: [],
 	columnResize: [],
 	rowWindow: [],
+	cellRange: [],
+	editing: [],
+	editErrors: [],
 } as const
 
 /** For a part that reads no state at all. */
@@ -387,6 +478,13 @@ export const table = definePrimitive({
 		rowPinning: 'value',
 		defaultRowPinning: 'value',
 		onRowPinningChange: 'callback',
+		editable: 'boolean',
+		onCellEdit: 'callback',
+		cellSelection: 'boolean',
+		cellRange: 'value',
+		defaultCellRange: 'value',
+		onCellRangeChange: 'callback',
+		onCellRangeCommit: 'callback',
 	},
 	controlled: [
 		'sort',
@@ -400,8 +498,9 @@ export const table = definePrimitive({
 		'columnWidths',
 		'columnPinning',
 		'rowPinning',
+		'cellRange',
 	],
-	commits: ['columnWidths'],
+	commits: ['columnWidths', 'cellRange'],
 	live: ['columnResize'],
 	state: (options: TableOptions): TableState => {
 		const columnVisibility =
@@ -433,6 +532,9 @@ export const table = definePrimitive({
 			),
 			columnDrag: null,
 			columnResize: null,
+			cellRange: options.cellRange ?? options.defaultCellRange ?? null,
+			editing: null,
+			editErrors: NO_ERRORS,
 			active: null,
 			revision: 0,
 		}
@@ -450,6 +552,7 @@ export const table = definePrimitive({
 		if (options.columnWidths !== undefined) synced.columnWidths = options.columnWidths
 		if (options.columnPinning !== undefined) synced.columnPinning = options.columnPinning
 		if (options.rowPinning !== undefined) synced.rowPinning = options.rowPinning
+		if (options.cellRange !== undefined) synced.cellRange = options.cellRange
 		return synced
 	},
 	api: (context) => {
@@ -841,6 +944,290 @@ export const table = definePrimitive({
 			width: widthOf,
 		})
 
+		const hasEditing = memo(
+			(columns: readonly ColumnDef[], all: boolean) =>
+				all || columns.some((column) => column.editable !== undefined && column.editable !== false),
+		)
+		/** Whether some cell of the table can be edited. */
+		const editing = () => hasEditing(layout().all, options().editable ?? false)
+
+		function canEdit(node: DataRow<unknown>, column: ColumnDef): boolean {
+			const rule = column.editable ?? options().editable ?? false
+			return typeof rule === 'function' ? rule(node.row) : rule
+		}
+
+		/** The data row and the column of a cell id, when both exist. */
+		function cellOf(id: string): { node: DataRow<unknown>; column: ColumnDef } | undefined {
+			const ref = parseCellKey(id)
+			const node = ref && model.rowById(ref.rowId)
+			const column = ref && layout().byId.get(ref.columnId)
+			return node && column ? { node, column } : undefined
+		}
+
+		/** The place of a cell in the grid, when its row and its column are in view. */
+		function placeOf(id: string): GridCell | undefined {
+			const ref = parseCellKey(id)
+			if (!ref) return undefined
+			const row = flatIndex(bodyRows()).get(ref.rowId)
+			const col = layout().index.get(ref.columnId)
+			if (row === undefined || col === undefined) return undefined
+			return { row: headerRowCount() + row, col }
+		}
+
+		/** The id of the cell of a data row at a place of the grid. */
+		function cellIdAt(row: number, col: number): string | undefined {
+			const flat = bodyRows()[row - headerRowCount()]
+			const column = layout().leaves[col]
+			if (!flat || !column || flat.node.kind !== 'row' || flat.detail) return undefined
+			return cellKey(flat.id, column.id)
+		}
+
+		const inBody = (row: number) =>
+			row >= headerRowCount() && row < headerRowCount() + bodyRows().length
+
+		const editReason = (reason: string): TableEditReason =>
+			reason === 'enter-key' || reason === 'tab-key' || reason === 'focus-out' || reason === 'paste'
+				? reason
+				: 'imperative'
+
+		/** Tells the caller about new values. Returns whether a listener refused them. */
+		function report(edits: CellEdit[], reason: string, event?: Event): boolean {
+			return dispatch(context, 'onCellEdit', edits, { reason: editReason(reason), event })
+		}
+
+		/**
+		 * Checks a new value of a cell and reports it. The answer is `true`, or
+		 * the reason why the value is refused. The table never writes the value
+		 * into the row: the caller does, when `onCellEdit` runs.
+		 */
+		function saveCell(
+			node: DataRow<unknown>,
+			column: ColumnDef,
+			input: { text: string } | { value: unknown },
+			reason: string,
+			event?: Event,
+		): SaveResult | Promise<SaveResult> {
+			const finish = (checked: Checked): SaveResult => {
+				if ('issues' in checked) return checked.issues[0] ?? message('invalidValue')()
+				const previous = cellValue(node.row, column)
+				if (sameValue(previous, checked.value)) return true
+				const edits = [
+					{
+						rowId: node.id,
+						columnId: column.id,
+						row: node.row,
+						column,
+						value: checked.value,
+						previous,
+					},
+				]
+				return report(edits, reason, event) ? message('editRefused')() : true
+			}
+			const failed = (error: unknown) => (error instanceof Error ? error.message : String(error))
+			try {
+				const checked = resolveValue(input, node.row, column, message('notNumber'))
+				return checked instanceof Promise ? checked.then(finish).catch(failed) : finish(checked)
+			} catch (error) {
+				// A `parse` or a schema that throws refuses the value with its own words.
+				return failed(error)
+			}
+		}
+
+		/** The cell after or before a cell, in reading order, inside the rows of the body. */
+		function nextCell(from: GridCell, back: boolean): GridCell | undefined {
+			const last = layout().leaves.length - 1
+			let row = from.row
+			let col = from.col + (back ? -1 : 1)
+			if (col < 0 || col > last) {
+				row += back ? -1 : 1
+				col = back ? last : 0
+			}
+			if (!inBody(row)) return undefined
+			const spot = area({ row, col })
+			return { row: spot.row, col: spot.col }
+		}
+
+		const edit = createCellEdit(context, {
+			key: 'editing',
+			errors: 'editErrors',
+			text: (id) => {
+				const cell = cellOf(id)
+				return cell ? editText(cell.node.row, cell.column) : ''
+			},
+			canEdit: (id) => {
+				const cell = cellOf(id)
+				return !!cell && canEdit(cell.node, cell.column)
+			},
+			save: (id, text, details) => {
+				const cell = cellOf(id)
+				// The row or the column went away while the editor was open, so there is nothing to save.
+				if (!cell) return true
+				return saveCell(cell.node, cell.column, { text }, details.reason, details.event)
+			},
+			// The person looks at the field, so a refusal is said at once.
+			refused: (_id, reason) => announce(reason, { priority: 'assertive' }),
+			// The input goes away with the edit, so focus goes to a cell: the one
+			// that was edited, or after Tab the next one, as in a spreadsheet.
+			done: (id, details) => {
+				const at = placeOf(id)
+				if (!at) return
+				const back = details.event instanceof KeyboardEvent && details.event.shiftKey
+				const tab = details.saved && details.reason === 'tab-key'
+				const to = tab ? (nextCell(at, back) ?? at) : at
+				grid.focus(to, { reason: tab ? 'list-navigation' : 'imperative', event: details.event })
+			},
+		})
+
+		const cellSelection = () => options().cellSelection ?? false
+		const range = createTableRange(context, {
+			key: 'cellRange',
+			grid,
+			rows: rowCount,
+			cols: () => layout().leaves.length,
+			body: () => {
+				const count = bodyRows().length
+				const first = headerRowCount()
+				return count ? { first, last: first + count - 1 } : undefined
+			},
+			set: (next, details) => change('cellRange', next, details),
+			commit: (next, details) => commit('cellRange', next, details),
+			reveal: (cell) => {
+				const row = bodyRows()[cell.row - headerRowCount()]
+				if (row && !row.pinned && (options().rowWindow ?? false)) rowWindow.scrollTo(row.id)
+			},
+			message: ({ top, left, bottom, right }) =>
+				message('cellsSelected')({ rows: bottom - top + 1, columns: right - left + 1 }),
+		})
+
+		/** The selected cells: the range, or the active cell alone. `undefined` outside the rows of the body. */
+		function selectedCells(): CellBounds | undefined {
+			const bounds = range.bounds(state())
+			if (!bounds || !inBody(bounds.top) || !inBody(bounds.bottom)) return undefined
+			return bounds
+		}
+
+		/**
+		 * The text of the selected cells. Each value is the text that its editor
+		 * shows, without the format of the column, so a paste of the text into
+		 * the same columns gives the same values.
+		 */
+		function copyText(): string {
+			if (!selectedCells()) return ''
+			const head = headerRowCount()
+			const rows = bodyRows()
+			const leaves = layout().leaves
+			return range.text(state(), ({ row, col }) => {
+				const flat = rows[row - head]
+				const column = leaves[col]
+				if (!flat || !column || flat.node.kind !== 'row' || flat.detail) return ''
+				return editText(flat.node.row, column)
+			})
+		}
+
+		/**
+		 * Puts text into cells, from the first selected cell on. One value fills
+		 * every selected cell. Each value goes through the check of its column,
+		 * and one refusal stops the paste before any cell changes: half of a
+		 * paste is worse than none. Cells that cannot be edited are skipped.
+		 */
+		function pasteText(text: string, event?: Event): void | Promise<void> {
+			const bounds = selectedCells()
+			if (!bounds) throw new Error(message('pasteNowhere')())
+			const block = textToCells(text)
+			const width = Math.max(0, ...block.map((line) => line.length))
+			const single = block.length === 1 && width === 1
+			const head = headerRowCount()
+			const rows = bodyRows()
+			const leaves = layout().leaves
+			const bottom = single
+				? bounds.bottom
+				: Math.min(head + rows.length - 1, bounds.top + block.length - 1)
+			const right = single ? bounds.right : Math.min(leaves.length - 1, bounds.left + width - 1)
+			const targets: { node: DataRow<unknown>; column: ColumnDef; text: string }[] = []
+			for (let row = bounds.top; row <= bottom; row++) {
+				const flat = rows[row - head]
+				if (!flat || flat.node.kind !== 'row' || flat.detail) continue
+				for (let col = bounds.left; col <= right; col++) {
+					const column = leaves[col]
+					const value = single ? block[0]?.[0] : block[row - bounds.top]?.[col - bounds.left]
+					if (!column || value === undefined || !canEdit(flat.node, column)) continue
+					targets.push({ node: flat.node, column, text: value })
+				}
+			}
+			if (!targets.length) throw new Error(message('pasteNowhere')())
+			const finish = (checked: readonly Checked[]): void => {
+				const edits: CellEdit[] = []
+				checked.forEach((result, index) => {
+					const target = targets[index]
+					if (!target) return
+					if ('issues' in result) {
+						throw new Error(
+							message('pasteRefused')({
+								column: label(target.column.id),
+								text: target.text,
+								message: result.issues[0] ?? message('invalidValue')(),
+							}),
+						)
+					}
+					const previous = cellValue(target.node.row, target.column)
+					if (sameValue(previous, result.value)) return
+					edits.push({
+						rowId: target.node.id,
+						columnId: target.column.id,
+						row: target.node.row,
+						column: target.column,
+						value: result.value,
+						previous,
+					})
+				})
+				if (edits.length && report(edits, 'paste', event)) {
+					throw new Error(message('editRefused')())
+				}
+				if (cellSelection()) {
+					const pasted = {
+						anchor: { row: bounds.top, col: bounds.left },
+						end: { row: bottom, col: right },
+					}
+					// Without the event: the range changes because of the paste, and a
+					// paste is not a reason that a change of state knows.
+					range.select(pasted, { reason: 'imperative' })
+				}
+				announce(message('cellsPasted')({ cells: edits.length }))
+			}
+			const checks = targets.map((target) =>
+				resolveValue({ text: target.text }, target.node.row, target.column, message('notNumber')),
+			)
+			return checks.some((check) => check instanceof Promise)
+				? Promise.all(checks.map((check) => Promise.resolve(check))).then(finish)
+				: finish(checks as Checked[])
+		}
+
+		function onCopy(event: ClipboardEvent): void {
+			const bounds = selectedCells()
+			if (!bounds) return
+			// Without a range, a person who selected text with the pointer copies that text.
+			const page = event.target instanceof Node ? event.target.ownerDocument : null
+			if (!state().cellRange && page?.getSelection()?.isCollapsed === false) return
+			event.clipboardData?.setData('text/plain', copyText())
+			event.preventDefault()
+			const cells = (bounds.bottom - bounds.top + 1) * (bounds.right - bounds.left + 1)
+			announce(message('cellsCopied')({ cells }))
+		}
+
+		function onPaste(event: ClipboardEvent): void {
+			const text = event.clipboardData?.getData('text/plain')
+			if (!text || !editing()) return
+			event.preventDefault()
+			const failed = (error: unknown) =>
+				announce(error instanceof Error ? error.message : String(error), { priority: 'assertive' })
+			try {
+				const later = pasteText(text, event)
+				if (later) void later.catch(failed)
+			} catch (error) {
+				failed(error)
+			}
+		}
+
 		function requireSelection(): void {
 			if (options().selection) return
 			throw new Error(
@@ -893,6 +1280,7 @@ export const table = definePrimitive({
 				// again inside itself, and that run must not see a new list a second time.
 				followColumns()
 				followRows()
+				followCells()
 				const page = state().page
 				// Fewer rows can mean fewer pages: new data, or a row that is pinned and leaves the list.
 				const fewer = changed.includes('revision') || changed.includes('rowPinning')
@@ -950,10 +1338,44 @@ export const table = definePrimitive({
 			const now = state().active
 			activeRowId = now ? rows[now.row - head]?.id : undefined
 		}
+		// A range is places in the grid. When other rows or columns come to those
+		// places, the range is no longer what the person selected, so it goes. A
+		// new array with the same rows at the corners keeps the range: that is
+		// what the caller passes after an edit.
+		type Corners = { range: CellRange; ids: readonly (string | undefined)[] }
+		let corners: Corners | undefined
+
+		function followCells(): void {
+			// An editor whose row or column left the table has no cell to be in.
+			const edited = state().editing
+			if (edited !== null && !placeOf(edited)) edit.drop()
+			const current = state().cellRange
+			if (!current) {
+				corners = undefined
+				return
+			}
+			const head = headerRowCount()
+			const rows = bodyRows()
+			const leaves = layout().leaves
+			const ids = [
+				rows[current.anchor.row - head]?.id,
+				rows[current.end.row - head]?.id,
+				leaves[current.anchor.col]?.id,
+				leaves[current.end.col]?.id,
+				String(rows.length),
+				String(leaves.length),
+			]
+			const before = corners
+			corners = { range: current, ids }
+			if (before?.range !== current || sameContent(before.ids, ids)) return
+			corners = undefined
+			change('cellRange', null, { reason: 'reset' })
+		}
 		context.onOptions(() => {
 			// The options are not in place yet when this runs, so the check waits one turn.
 			queueMicrotask(followColumns)
 			queueMicrotask(followRows)
+			queueMicrotask(followCells)
 			// Whether the header and the footer stick is an option, and so is the row window.
 			sticky.refresh()
 			queueMicrotask(() => rowWindow.refresh())
@@ -1039,7 +1461,7 @@ export const table = definePrimitive({
 			change('page', { ...current, page: clamped }, { reason })
 		}
 
-		const controller: Omit<TableController, 'pinRow' | 'scrollToRow'> = {
+		const controller: Omit<TableController, 'pinRow' | 'scrollToRow' | CellActions> = {
 			sortBy(columnId, direction = 'asc', { append = false } = {}) {
 				column(columnId, 'sort by')
 				if (direction !== null && direction !== 'asc' && direction !== 'desc') {
@@ -1296,6 +1718,80 @@ export const table = definePrimitive({
 			},
 		}
 
+		function requireEditable(rowId: string, columnId: string) {
+			const node = requireRow(rowId, 'edit')
+			const found = column(columnId, 'edit')
+			if (canEdit(node, found)) return { node, column: found }
+			const open = layout().all.filter(
+				(item) => (item.editable ?? options().editable ?? false) !== false,
+			)
+			throw new Error(
+				`The cell of row "${rowId}" in column "${columnId}" cannot be edited. Columns with cells that can be edited: ${listed(open.map((item) => item.id))}.`,
+			)
+		}
+
+		function requireCell(ref: CellRef, purpose: string): GridCell {
+			if (typeof ref?.rowId !== 'string' || typeof ref.columnId !== 'string') {
+				throw new Error('A cell is `{ rowId, columnId }`, with the id of a row and of a column.')
+			}
+			requireRow(ref.rowId, purpose)
+			requireVisible(ref.columnId, purpose)
+			const at = placeOf(cellKey(ref.rowId, ref.columnId))
+			if (at) return at
+			throw new Error(
+				`Row "${ref.rowId}" is not in the list now: a filter, a page or a closed parent row hides it.`,
+			)
+		}
+
+		const cellActions: Pick<TableController, CellActions> = {
+			editCell(rowId, columnId, value) {
+				const cell = requireEditable(rowId, columnId)
+				const input = typeof value === 'string' ? { text: value } : { value }
+				const finish = (result: SaveResult): void => {
+					if (result === true) return
+					throw new Error(
+						`Column "${columnId}" refuses ${String(JSON.stringify(value))} for row "${rowId}": ${result}`,
+					)
+				}
+				const result = saveCell(cell.node, cell.column, input, 'imperative')
+				return result instanceof Promise ? result.then(finish) : finish(result)
+			},
+			startEdit(rowId, columnId) {
+				requireEditable(rowId, columnId)
+				const at = requireCell({ rowId, columnId }, 'edit')
+				// The row must be in the page for its editor, and focus is on a cell before an edit.
+				grid.focus(at, { reason: 'imperative' })
+				edit.start(cellKey(rowId, columnId), { reason: 'imperative' })
+			},
+			cancelEdit() {
+				edit.cancel()
+			},
+			selectCells(from, to = from) {
+				if (!cellSelection()) {
+					throw new Error(
+						'This table has no cell selection. Set its `cellSelection` option to true.',
+					)
+				}
+				const anchor = requireCell(from, 'select')
+				const end = requireCell(to, 'select')
+				// The active cell is the start of a range. Focus stays where it is: a
+				// call from code must not take it from the person.
+				const active = state().active
+				if (active?.row !== anchor.row || active.col !== anchor.col) {
+					context.store.set({ active: anchor })
+				}
+				range.select({ anchor, end }, { reason: 'imperative' })
+			},
+			clearCellSelection() {
+				range.select(null, { reason: 'imperative' })
+			},
+			copyCells: () => copyText(),
+			pasteCells(text) {
+				if (typeof text !== 'string') throw new Error('`pasteCells` takes a text.')
+				return pasteText(text)
+			},
+		}
+
 		/** Changes the width of a column by a number of pixels, as a key on its header does. */
 		function resizeColumnBy(columnId: string, delta: number, event?: Event): boolean {
 			requireVisible(columnId, 'resize')
@@ -1308,6 +1804,39 @@ export const table = definePrimitive({
 		return {
 			...controller,
 			...rowActions,
+			...cellActions,
+			edit,
+			range,
+			cellIdAt,
+			/** The id of a body cell as a list, for `selects`: one id for the cell of a data row, else none. */
+			cellIds: (cell: { row: number; col: number; header?: boolean }): readonly string[] => {
+				const id = cell.header ? undefined : cellIdAt(cell.row, cell.col)
+				return id === undefined ? NO_IDS : [id]
+			},
+			inBody,
+			/** Whether a cell can be edited, by its id. */
+			canEditCell: (id: string) => {
+				const cell = cellOf(id)
+				return !!cell && canEdit(cell.node, cell.column)
+			},
+			hasEditing: editing,
+			cellSelection,
+			/**
+			 * Saves a value for the cell that is edited, with the check of its
+			 * column, and closes the editor. For an editor that is not the text
+			 * field of the table, such as a list of choices.
+			 */
+			saveEdit(value: unknown, event?: Event): void {
+				const id = state().editing
+				const cell = id === null ? undefined : cellOf(id)
+				if (!cell) return
+				edit.settle(saveCell(cell.node, cell.column, { value }, 'imperative', event), {
+					reason: 'imperative',
+					event,
+				})
+			},
+			onCopy,
+			onPaste,
 			sticky,
 			rowWindow,
 			/** What the body renders of the rows of the list, or `undefined` when it renders them all. */
@@ -1398,6 +1927,9 @@ export const table = definePrimitive({
 				columnTrack: [],
 				columnResize: [],
 				rowWindow: [],
+				cellRange: [],
+				editing: [],
+				editErrors: [],
 			}),
 			// A resize changes the width of the table at each step, and the rows must
 			// not render for it. So the two attributes that follow the widths are
@@ -1418,7 +1950,9 @@ export const table = definePrimitive({
 				return {
 					'aria-rowcount': String(api.gridRowCount()),
 					'aria-colcount': String(columns.length),
-					'aria-multiselectable': api.selectionMode() === 'multiple' ? 'true' : undefined,
+					'aria-multiselectable':
+						api.selectionMode() === 'multiple' || api.cellSelection() ? 'true' : undefined,
+					'data-cell-selection': api.cellSelection() ? '' : undefined,
 					'data-sized': sized ? '' : undefined,
 					'data-row-window': api.windowed() ? '' : undefined,
 					style: variables.length ? variables.join(';') : undefined,
@@ -1600,10 +2134,42 @@ export const table = definePrimitive({
 			role: (_state, { props }) => (props.header ? 'columnheader' : 'gridcell'),
 			roles: ['columnheader', 'gridcell'],
 			focus: 'roving',
-			keys: [...GRID_KEYS, 'Enter', 'F2', 'Escape', ' ', 'alt+ArrowLeft', 'alt+ArrowRight'],
-			selects: selects({ ...QUIET, active: byCell, expanded: [] }),
-			// A move of focus changes these two on the cell it leaves and on the cell
-			// it reaches. Neither cell has to render its content again for that.
+			keys: [
+				...GRID_KEYS,
+				'Enter',
+				'F2',
+				'Escape',
+				' ',
+				'alt+ArrowLeft',
+				'alt+ArrowRight',
+				'shift+ArrowUp',
+				'shift+ArrowDown',
+				'shift+ArrowLeft',
+				'shift+ArrowRight',
+				'shift+Home',
+				'shift+End',
+				'shift+ ',
+				'mod+ ',
+				'mod+a',
+			],
+			// A cell reads the range and the editor only for its own place and its own id.
+			selects: selects({
+				...QUIET,
+				active: byCell,
+				cellRange: byCellRange,
+				editing: ({ props, api }) => api.cellIds(props),
+				editErrors: ({ props, api }) => api.cellIds(props),
+				expanded: [],
+			}),
+			state: (state, { props, api }) => {
+				const id = props.header ? undefined : api.cellIdAt(props.row, props.col)
+				return {
+					/** Whether the editor of the cell is open. The renderer then shows the editor in the cell. */
+					editing: id !== undefined && state.editing === id,
+					/** Why the text of the editor was refused. */
+					error: id === undefined ? undefined : state.editErrors[id],
+				}
+			},
 			attrs: (state, { props, api }) => {
 				const header = props.header ? api.headerAt(props.row, props.col) : undefined
 				const column = props.header ? header?.column : api.columns()[props.col]
@@ -1622,7 +2188,15 @@ export const table = definePrimitive({
 				const near = pin === 'end' ? last : first
 				const far = pin === 'end' ? first : last
 				const offset = pin && near ? api.pins.offset(near.id) : undefined
+				const id = props.header ? undefined : api.cellIdAt(props.row, props.col)
+				const editable = id !== undefined && api.canEditCell(id)
+				const ranged = !props.header && api.cellSelection() && api.inBody(props.row)
 				return {
+					...(ranged ? api.range.cellAttrs(state, props) : undefined),
+					// In a grid, a cell can be edited unless it says that it cannot.
+					'aria-readonly': id !== undefined && api.hasEditing() && !editable ? 'true' : undefined,
+					'data-editable': editable ? '' : undefined,
+					'data-editing': id !== undefined && state.editing === id ? '' : undefined,
 					tabindex: api.grid.tabIndex(state, props),
 					colspan: wide ? String(props.colspan) : undefined,
 					rowspan: (props.rowspan ?? 1) > 1 ? String(props.rowspan) : undefined,
@@ -1680,6 +2254,27 @@ export const table = definePrimitive({
 						api.toggleExpanded(row.id, event)
 						return
 					}
+					// Enter, F2 or a character opens the editor of a cell that can be
+					// edited. It comes before the move into the cell: the cell holds a
+					// value, and the editor is its control.
+					const id = onCell && !props.header ? api.cellIdAt(props.row, props.col) : undefined
+					if (id !== undefined && api.edit.keydown(event, id)) return
+					if (
+						onCell &&
+						api.cellSelection() &&
+						api.inBody(props.row) &&
+						event.key !== 'Enter' &&
+						event.key !== 'F2'
+					) {
+						// Space selects the row when rows can be selected, with Shift too.
+						const forRow =
+							event.key === ' ' &&
+							!event.ctrlKey &&
+							!event.metaKey &&
+							row?.node.kind === 'row' &&
+							api.canSelect(row.id)
+						if (!forRow && api.range.keydown(event)) return
+					}
 					if (api.grid.cellKeydown(event, el)) return
 					// Keys from a control inside the cell belong to that control.
 					if (!onCell || !row) return
@@ -1710,11 +2305,16 @@ export const table = definePrimitive({
 					const control =
 						target && target !== el && target.closest('a[href], button, input, select, textarea')
 					if (!control || !el?.contains(control)) {
+						const ranged =
+							!props.header && event.button === 0 && api.cellSelection() && api.inBody(props.row)
 						// The cell is under the pointer, so focus must not scroll it: a row
 						// that the header cuts would move away from the pointer. Focus
-						// that is here already is not moved again by the grid.
-						el?.focus({ preventScroll: true })
-						api.grid.focus(props, { reason: 'item-press', event })
+						// that is here already is not moved again by the grid. A press
+						// with Shift stretches the range, and focus stays at its start.
+						if (!ranged || !event.shiftKey) el?.focus({ preventScroll: true })
+						// A press on a cell of the body starts a range, and a drag paints it.
+						if (ranged) api.range.pointerdown(event, props)
+						else api.grid.focus(props, { reason: 'item-press', event })
 					}
 					// The whole header cell is the grip of its column. A drag starts only
 					// after the pointer moves, so a press on a sort button stays a press.
@@ -1722,9 +2322,31 @@ export const table = definePrimitive({
 					const field = target?.closest('input, select, textarea, [contenteditable]')
 					if (header?.leaf && !field) api.reorder.pointerdown(event, header.column.id)
 				},
+				dblclick: (event, { api, props, el }) => {
+					if (props.header) return
+					const target = event.target instanceof Element ? event.target : undefined
+					// A double press on a control inside the cell belongs to that control.
+					if (
+						target &&
+						target !== el &&
+						target.closest('a[href], button, input, select, textarea')
+					) {
+						return
+					}
+					const id = api.cellIdAt(props.row, props.col)
+					if (id !== undefined) api.edit.dblclick(event, id)
+				},
+				// Copy and paste act on the cells when focus is on a cell, and not in a field inside one.
+				copy: (event, { api, props, el }) => {
+					if (event.target === el && !props.header) api.onCopy(event)
+				},
+				paste: (event, { api, props, el }) => {
+					if (event.target === el && !props.header) api.onPaste(event)
+				},
 			},
 			bind: (el, { api, props }) => {
-				const cleanups = [api.grid.bind(el, props)]
+				// The range joins the cell to the grid too, and finds it under a pointer that drags.
+				const cleanups = [api.range.bind(el, props)]
 				const header = props.header ? api.headerAt(props.row, props.col) : undefined
 				if (header?.leaf) {
 					const columnId = header.column.id
@@ -1732,6 +2354,45 @@ export const table = definePrimitive({
 				}
 				return () => cleanups.forEach((cleanup) => cleanup())
 			},
+		}),
+		/**
+		 * The text field that edits a cell. Render it inside the cell while the
+		 * `editing` state of the cell part is true. `value` is the id of the cell,
+		 * from `cellKey`.
+		 */
+		editor: slot<{ value: string }>({
+			props: { value: 'string' },
+			selects: selects({ ...SILENT, editErrors: ({ key }) => [key] }),
+			attrs: (state, { id, key, api }) => {
+				const cell = parseCellKey(key)
+				const error = api.edit.error(state, key)
+				return {
+					'aria-label': api.message('editCell')({
+						column: cell ? api.columnLabel(cell.columnId) : '',
+					}),
+					'aria-invalid': error === undefined ? undefined : 'true',
+					'aria-errormessage': error === undefined ? undefined : `${id}-edit-error`,
+					'data-invalid': error === undefined ? undefined : '',
+					autocomplete: 'off',
+				}
+			},
+			on: {
+				keydown: (event, { api }) => {
+					api.edit.inputKeydown(event)
+					// A key in the field is text or a command of the editor, and never a move in the grid.
+					event.stopPropagation()
+				},
+				focusout: (event, { api, el }) => {
+					api.edit.focusout(event, el?.closest<HTMLElement>('[data-slot="table"]'))
+				},
+			},
+			bind: (el, { api }) => api.edit.bindInput(el as HTMLInputElement),
+		}),
+		/** The reason why the text of the editor was refused. The editor names it as its error message. */
+		'edit-error': slot<{ value: string }>({
+			props: { value: 'string' },
+			selects: selects(SILENT),
+			attrs: (_state, { id }) => ({ id: `${id}-edit-error` }),
 		}),
 		/** The handle at the edge of a header cell that resizes its column. `value` is the column id. */
 		resizer: slot<{ value: string }>({
@@ -1822,6 +2483,11 @@ export const table = definePrimitive({
 			'pinColumn',
 			'pinRow',
 			'scrollToRow',
+			'editCell',
+			'selectCells',
+			'clearCellSelection',
+			'copyCells',
+			'pasteCells',
 		],
 	},
 })

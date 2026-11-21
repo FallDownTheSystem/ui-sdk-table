@@ -1,3 +1,4 @@
+export * from './edit'
 export * from './format'
 export * from './rows'
 export type { GridCell } from './behaviors/grid'
@@ -13,8 +14,10 @@ export {
 } from './columns/layout'
 export { defaultMessages, type TableMessages } from './messages'
 export type { RowAlign } from './behaviors/window'
+export type { CellBounds, CellRange } from './behaviors/range'
 export {
 	table,
+	type CellRef,
 	type ColumnVisibility,
 	type ColumnWidths,
 	type RowPin,
@@ -23,6 +26,8 @@ export {
 	type TableChangeDetails,
 	type TableCommitDetails,
 	type TableController,
+	type TableEditDetails,
+	type TableEditReason,
 	type TableOptions,
 	type TableReason,
 } from './table'

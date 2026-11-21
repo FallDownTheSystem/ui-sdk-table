@@ -1,8 +1,12 @@
 import { usePart, usePrimitive, type PrimitiveHandle } from '@ui-sdk/vue/primitive'
 import {
+	cellKey,
 	cellValue,
+	editText,
 	table as tablePrimitive,
 	toText,
+	type CellEdit,
+	type CellRange,
 	type ColumnDef,
 	type ColumnPinning,
 	type ColumnVisibility,
@@ -19,6 +23,7 @@ import {
 	type TableChangeDetails,
 	type TableCommitDetails,
 	type TableController,
+	type TableEditDetails,
 	type TableOptions,
 } from 'ui-sdk-table-core'
 import {
@@ -37,6 +42,8 @@ import {
 	TableBody,
 	TableCell,
 	TableCol,
+	TableEditError,
+	TableEditor,
 	TableFoot,
 	TableHead,
 	TableHeaderCell,
@@ -61,6 +68,7 @@ const MODELS = [
 	'columnWidths',
 	'columnPinning',
 	'rowPinning',
+	'cellRange',
 ] as const
 type Model = (typeof MODELS)[number]
 
@@ -105,6 +113,8 @@ const OPTIONS = [
 	'stickyHeader',
 	'stickyFooter',
 	'hasDetail',
+	'editable',
+	'cellSelection',
 	...MODELS,
 	'defaultSort',
 	'defaultFilter',
@@ -117,6 +127,7 @@ const OPTIONS = [
 	'defaultColumnWidths',
 	'defaultColumnPinning',
 	'defaultRowPinning',
+	'defaultCellRange',
 ] as const
 
 // Vue must know which options are booleans, or the short form `<Table
@@ -128,6 +139,8 @@ const BOOLEANS: readonly string[] = [
 	'rowWindow',
 	'stickyHeader',
 	'stickyFooter',
+	'editable',
+	'cellSelection',
 ]
 
 export type TableProps<Row> = Omit<TableOptions<Row>, `on${string}`>
@@ -151,6 +164,7 @@ export type TableEmits = {
 	'update:columnWidths': (value: ColumnWidths) => void
 	'update:columnPinning': (value: ColumnPinning) => void
 	'update:rowPinning': (value: RowPinning) => void
+	'update:cellRange': (value: CellRange | null) => void
 	sortChange: (value: readonly SortRule[], details: TableChangeDetails) => void
 	filterChange: (value: FilterState, details: TableChangeDetails) => void
 	groupByChange: (value: readonly string[], details: TableChangeDetails) => void
@@ -163,6 +177,10 @@ export type TableEmits = {
 	columnWidthsCommit: (value: ColumnWidths, details: TableCommitDetails) => void
 	columnPinningChange: (value: ColumnPinning, details: TableChangeDetails) => void
 	rowPinningChange: (value: RowPinning, details: TableChangeDetails) => void
+	cellRangeChange: (value: CellRange | null, details: TableChangeDetails) => void
+	cellRangeCommit: (value: CellRange | null, details: TableCommitDetails) => void
+	/** Cells got new values. Put them into the rows; `details.cancel()` refuses them. */
+	cellEdit: (edits: readonly CellEdit<any>[], details: TableEditDetails) => void
 }
 
 export type HeaderSlotProps<Row> = {
@@ -192,6 +210,24 @@ export type CellSlotProps<Row> = {
 	pinned: RowPin | undefined
 	toggleSelected: (event?: Event) => void
 	toggleExpanded: (event?: Event) => void
+}
+
+export type EditorSlotProps<Row> = {
+	row: Row
+	node: DataRow<Row>
+	column: ColumnDef<Row>
+	value: unknown
+	/** The value as plain text, as the text field of the table shows it. */
+	text: string
+	/** Why the last value was refused. */
+	error: string | undefined
+	/**
+	 * Saves a value, with the check of the column, and closes the editor. A
+	 * value that is refused keeps the editor open, and `error` says why.
+	 */
+	save: (value: unknown, event?: Event) => void
+	/** Closes the editor without a save. Focus goes back to the cell. */
+	cancel: () => void
 }
 
 export type DetailSlotProps<Row> = {
@@ -226,7 +262,13 @@ export type TableSlots<Row> = {
 	[name: `col-${string}`]: (props: CellSlotProps<Row>) => VNodeChild
 	/** One total in the footer. `foot-{column id}` wins over `foot`. */
 	[name: `foot-${string}`]: (props: FootSlotProps<Row>) => VNodeChild
+	/**
+	 * The editor of one cell, in place of the text field of the table.
+	 * `edit-{column id}` wins over `editor`. The control must take focus itself.
+	 */
+	[name: `edit-${string}`]: (props: EditorSlotProps<Row>) => VNodeChild
 } & {
+	editor?: (props: EditorSlotProps<Row>) => VNodeChild
 	header?: (props: HeaderSlotProps<Row>) => VNodeChild
 	cell?: (props: CellSlotProps<Row>) => VNodeChild
 	foot?: (props: FootSlotProps<Row>) => VNodeChild
@@ -271,6 +313,11 @@ const TableImpl = defineComponent(
 			onColumnWidthsChange: report('columnWidths'),
 			onColumnPinningChange: report('columnPinning'),
 			onRowPinningChange: report('rowPinning'),
+			onCellRangeChange: report('cellRange'),
+			onCellRangeCommit: (value: CellRange | null, details: TableCommitDetails) =>
+				(emit as (name: string, ...args: unknown[]) => void)('cellRangeCommit', value, details),
+			onCellEdit: (edits: readonly CellEdit[], details: TableEditDetails) =>
+				(emit as (name: string, ...args: unknown[]) => void)('cellEdit', edits, details),
 			onColumnWidthsCommit: (value: ColumnWidths, details: TableCommitDetails) =>
 				(emit as (name: string, ...args: unknown[]) => void)('columnWidthsCommit', value, details),
 		}
@@ -377,53 +424,81 @@ const TableImpl = defineComponent(
 		) {
 			const toggleSelected = (event?: Event) => api.toggleSelected(flat.id, event)
 			const toggleExpanded = (event?: Event) => api.toggleExpanded(flat.id, event)
+			type RowState = { selected: boolean; expanded: boolean }
+
+			function content(column: ColumnDef, col: number, state: RowState) {
+				const text = api.text(node.row, column)
+				const slot = slots[`col-${column.id}`] ?? slots.cell
+				if (slot) {
+					return slot({
+						row: node.row,
+						node,
+						column,
+						value: cellValue(node.row, column),
+						text,
+						selected: state.selected,
+						expanded: state.expanded,
+						expandable: flat.expandable,
+						level: flat.level,
+						pinned: flat.pinned,
+						toggleSelected,
+						toggleExpanded,
+					})
+				}
+				// Without a slot, the first cell of a tree row still needs a way to open it.
+				return col === 0 && flat.expandable
+					? [
+							h('button', { type: 'button', onClick: toggleExpanded }, state.expanded ? '−' : '+'),
+							' ',
+							text,
+						]
+					: text
+			}
+
 			return h(
 				TableRow,
 				{ key: flat.id, value: flat.id, index },
 				{
 					// The state of the row part is the only thing here that follows the
 					// selection, so a new selection renders this row and no other.
-					default: ({ state }: { state: { selected: boolean; expanded: boolean } }) =>
+					default: ({ state }: { state: RowState }) =>
 						columns.map((column, col) =>
 							h(
 								TableCell,
 								{ key: column.id, value: cellId(flat.id, column.id), row: index, col },
-								() => {
-									const text = api.text(node.row, column)
-									const slot = slots[`col-${column.id}`] ?? slots.cell
-									if (slot) {
-										return slot({
-											row: node.row,
-											node,
-											column,
-											value: cellValue(node.row, column),
-											text,
-											selected: state.selected,
-											expanded: state.expanded,
-											expandable: flat.expandable,
-											level: flat.level,
-											pinned: flat.pinned,
-											toggleSelected,
-											toggleExpanded,
-										})
-									}
-									// Without a slot, the first cell of a tree row still needs a way to open it.
-									return col === 0 && flat.expandable
-										? [
-												h(
-													'button',
-													{ type: 'button', onClick: toggleExpanded },
-													state.expanded ? '−' : '+',
-												),
-												' ',
-												text,
-											]
-										: text
+								{
+									// The state of the cell part says whether its editor is open,
+									// so the start and the end of an edit render one cell.
+									default: (cell: { state: { editing: boolean; error?: string } }) =>
+										cell.state.editing
+											? editor(node, column, cell.state.error)
+											: content(column, col, state),
 								},
 							),
 						),
 				},
 			)
+		}
+
+		function editor(node: DataRow<unknown>, column: ColumnDef, error: string | undefined) {
+			const id = cellKey(node.id, column.id)
+			const slot = slots[`edit-${column.id}`] ?? slots.editor
+			if (slot) {
+				return slot({
+					row: node.row,
+					node,
+					column,
+					value: cellValue(node.row, column),
+					text: editText(node.row, column),
+					error,
+					save: (value: unknown, event?: Event) => api.saveEdit(value, event),
+					cancel: () => api.cancelEdit(),
+				})
+			}
+			return [
+				h(TableEditor, { key: 'editor', value: id }),
+				error === undefined ? null : h(TableEditError, { key: 'error', value: id }, () => error),
+			]
 		}
 
 		function detailRow(

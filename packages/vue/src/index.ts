@@ -2,6 +2,8 @@ export {
 	TableBody,
 	TableCell,
 	TableCol,
+	TableEditError,
+	TableEditor,
 	TableFoot,
 	TableHead,
 	TableHeaderCell,
@@ -16,6 +18,7 @@ export {
 	Table,
 	type CellSlotProps,
 	type DetailSlotProps,
+	type EditorSlotProps,
 	type FootSlotProps,
 	type GroupSlotProps,
 	type HeaderSlotProps,
@@ -24,7 +27,13 @@ export {
 	type TableSlots,
 } from './table'
 export { createTableController } from './controller'
+export { applyEdits, cellKey } from 'ui-sdk-table-core'
 export type {
+	CellEdit,
+	CellRange,
+	CellRef,
+	StandardSchemaV1,
+	TableEditDetails,
 	ColumnDef,
 	ColumnPin,
 	ColumnPinning,
