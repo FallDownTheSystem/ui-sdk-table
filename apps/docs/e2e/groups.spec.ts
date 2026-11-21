@@ -367,7 +367,10 @@ test('the search field shows each letter at once, and the table filters once aft
 	// One announcement for the four letters, after the pause.
 	expect(await said()).toBe(1)
 	await page.getByRole('button', { name: 'Open all groups' }).click()
-	for (const name of await dataRows(table).locator('td[data-column="name"]').allInnerTexts()) {
+	const names = await dataRows(table).locator('td[data-column="name"]').allInnerTexts()
+	// A search that finds nobody would pass the loop below.
+	expect(names.length).toBeGreaterThan(0)
+	for (const name of names) {
 		expect(name).toContain('Jack')
 	}
 
