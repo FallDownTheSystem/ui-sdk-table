@@ -36,6 +36,7 @@ import {
 import {
 	fullColumnOrder,
 	headerCellMap,
+	isLead,
 	layoutColumns,
 	mergeColumnTrack,
 	type ColumnLayout,
@@ -61,16 +62,21 @@ import {
 	cellValue,
 	createRowModel,
 	dateRange,
+	dayOf,
+	dayRange,
+	isDay,
+	isEmptyFilter,
 	memo,
 	numberRange,
 	sameContent,
 	stabilize,
+	timeZoneOf,
 	toText,
+	toTime,
 	uniqueValues,
 	walkRows,
 	type ColumnDef,
 	type DataRow,
-	type FacetValue,
 	type FilterKind,
 	type FilterState,
 	type FlatRow,
@@ -122,7 +128,8 @@ export type TableController = {
 	clearColumnFilters(): void
 	setGroupBy(columnIds: readonly string[]): void
 	setPage(page: number): void
-	setPageSize(pageSize: number): void
+	/** Gives the table pages of a size, from its first page. `null` takes the pages away: every row shows. */
+	setPageSize(pageSize: number | null): void
 	nextPage(): void
 	previousPage(): void
 	firstPage(): void
@@ -193,13 +200,14 @@ export type TableController = {
 	/**
 	 * What a filter control of a column offers: its kind, and the values, the
 	 * numbers or the dates that the column holds. They come from every row of
-	 * the table, so a filter does not take away its own choices.
+	 * the table, so a filter does not take away its own choices. A column
+	 * that the `facets` option names has the facets of the owner.
 	 */
 	getFacets(columnId: string): ColumnFacets
 	/**
 	 * Runs the listener after each change of the state, of the rows or of the
 	 * columns, with the keys of the state that changed. Returns the function
-	 * that stops it.
+	 * that stops it. A table that is destroyed stops every listener itself.
 	 */
 	subscribe(listener: (changed: readonly string[]) => void): () => void
 }
@@ -216,8 +224,16 @@ export type TableView = {
 	/** How many rows a page holds, or `undefined` for a table without pages. */
 	pageSize: number | undefined
 	pageCount: number
-	/** How many rows or groups the pages divide: the rows that pass the filters. */
+	/** How many entries the pages divide: what `pageUnit` names. With pages from a server, its `rowCount`. */
 	rowCount: number
+	/**
+	 * What the pages count. `rows`: each row. `groups`: each group, with its
+	 * rows on the page of the group. `parents`: each top-level row, with its
+	 * child rows on the same page. `mixed`: groups, and rows outside every group.
+	 */
+	pageUnit: PageUnit
+	/** How many data rows pass the filters, child rows too. With `rows`, it is `rowCount`. */
+	dataRowCount: number
 	/** Whether the last page is known. It is not for pages from a server that gave no count. */
 	lastPageKnown: boolean
 	/** Every column that holds cells, hidden ones too, in definition order. */
@@ -228,11 +244,31 @@ export type TableView = {
 	selectable: readonly string[]
 	/** Whether the table has a group or a row with child rows: what `expandAll` opens. */
 	hasExpandable: boolean
+	/** Whether one of them is open now. An id in `expanded` that no group or row has any more does not count. */
+	hasExpanded: boolean
 	loading: boolean
 }
 
-/** One value of a column, with its text as a cell shows it and the number of rows that hold it. */
-export type ColumnFacetValue = FacetValue & { text: string }
+export type PageUnit = 'rows' | 'groups' | 'parents' | 'mixed'
+
+/**
+ * One value of a column, with its text as a cell shows it and the number of
+ * rows that hold it. Facets of the owner have a count only when the owner gave one.
+ */
+export type ColumnFacetValue = { value: unknown; text: string; count?: number }
+
+/**
+ * The facets of one column as the owner of the rows knows them, for the
+ * `facets` option. Give the part that fits the filter of the column.
+ */
+export type ColumnFacetsSource = {
+	/** The values of a `select` filter, in the order of the list. `text` defaults to the value in the format of the column. */
+	values?: readonly { value: unknown; text?: string; count?: number }[]
+	/** The lowest and the highest number of a `range` filter. */
+	range?: { min: number; max: number }
+	/** The first and the last date of a `dateRange` filter: a `Date`, a time in milliseconds or a text that `Date` reads. */
+	dates?: { from: unknown; to: unknown }
+}
 
 export type ColumnFacets = {
 	/** The filter of the column: its `filter` option, or what its format says. A column of dates filters by a range of dates, a column of numbers by a range, any other column by text. */
@@ -243,6 +279,12 @@ export type ColumnFacets = {
 	range: { min: number; max: number } | null
 	/** The earliest and the latest date. Filled for the kind `dateRange`. */
 	dates: { from: Date; to: Date } | null
+	/**
+	 * The days of `dates` as `YYYY-MM-DD`, in the zone of the column (the
+	 * `timeZone` of its format options) or in local time: the days that a
+	 * range of dates on this column is matched by.
+	 */
+	days: { from: string; to: string } | null
 }
 
 type ReadActions = 'getView' | 'getFacets' | 'subscribe'
@@ -406,9 +448,16 @@ export type TableOptions<Row = unknown> = {
 	/**
 	 * The rows come from a server with the search and the column filters
 	 * applied. The table does not filter them. Facets and totals are of the
-	 * rows that the table has.
+	 * rows that the table has; give `facets` for the choices of every row.
 	 */
 	manualFilter?: boolean
+	/**
+	 * The facets of columns as the owner of the rows knows them, by column
+	 * id. `getFacets` answers with them in place of what the rows of the
+	 * table hold. A server that filters knows every value of a column; the
+	 * rows that it sends hold only the values that pass.
+	 */
+	facets?: Readonly<Record<string, ColumnFacetsSource>>
 	/**
 	 * The rows are one page from a server. The table shows them all, and the
 	 * pages come from `rowCount`. Every other feature works on the rows that
@@ -487,9 +536,11 @@ const DEFAULT_COLUMN_MIN_WIDTH = 48
 const RESIZE_STEP = 10
 const RESIZE_LARGE_STEP = 50
 
-/** The ids of the columns that a person can move: the visible ones that are not pinned. */
+/** The ids of the columns that a person can move: the visible ones that are not pinned and do not lead the table. */
 function columnTrack(layout: ColumnLayout): string[] {
-	return layout.leaves.filter((column) => !layout.pins.has(column.id)).map((column) => column.id)
+	return layout.leaves
+		.filter((column) => !layout.pins.has(column.id) && !isLead(column))
+		.map((column) => column.id)
 }
 
 /** Every state key that a part reads only through its own entry or not at all. */
@@ -604,6 +655,7 @@ export const table = definePrimitive({
 		onCellRangeCommit: 'callback',
 		manualSort: 'boolean',
 		manualFilter: 'boolean',
+		facets: 'value',
 		manualPage: 'boolean',
 		rowCount: 'number',
 		loading: 'boolean',
@@ -1738,10 +1790,11 @@ export const table = definePrimitive({
 			},
 			setColumnFilter(columnId, value) {
 				column(columnId, 'filter')
-				setFilter(
-					{ ...state().filter, columns: { ...state().filter.columns, [columnId]: value } },
-					'imperative',
-				)
+				// A filter that asks for nothing leaves no key: the state says which columns filter.
+				const { [columnId]: _gone, ...others } = state().filter.columns ?? {}
+				const columns = isEmptyFilter(value) ? others : { ...others, [columnId]: value }
+				const { columns: _columns, ...rest } = state().filter
+				setFilter(Object.keys(columns).length ? { ...rest, columns } : rest, 'imperative')
 			},
 			clearFilters() {
 				setFilter(NO_FILTER, 'imperative')
@@ -1757,10 +1810,16 @@ export const table = definePrimitive({
 			},
 			setPage: (page) => goToPage(page, 'imperative'),
 			setPageSize(pageSize) {
-				if (!Number.isInteger(pageSize) || pageSize < 1) {
-					throw new Error('A page size must be a whole number above 0.')
-				}
 				const current = state().page
+				if (pageSize === null) {
+					if (current) change('page', undefined, { reason: 'imperative' })
+					return
+				}
+				if (!Number.isInteger(pageSize) || pageSize < 1) {
+					throw new Error(
+						'A page size must be a whole number above 0, or null for a table without pages.',
+					)
+				}
 				// The size that the table has, on its first page: a listener that loads rows must not load them again.
 				if (current?.page === 1 && current.pageSize === pageSize) return
 				change('page', { page: 1, pageSize }, { reason: 'imperative' })
@@ -1821,6 +1880,8 @@ export const table = definePrimitive({
 			},
 			selectRows(rowIds) {
 				const ids = rowIdList(rowIds, 'selectRows')
+				// No row is no choice. With a single selection, the lines below would clear it.
+				if (!ids.length) return
 				for (const id of ids) requireSelectable(id)
 				if (options().selection !== 'multiple' && ids.length > 1) {
 					throw new Error(
@@ -1886,6 +1947,9 @@ export const table = definePrimitive({
 			moveColumn(columnId, index) {
 				requireVisible(columnId, 'move')
 				const track = state().columnTrack
+				if (isLead(column(columnId, 'move'))) {
+					throw new Error(`Column "${columnId}" leads the table, and keeps its place.`)
+				}
 				if (!track.includes(columnId)) {
 					throw new Error(
 						`Column "${columnId}" is pinned, and a pinned column keeps its place. Free it with \`pinColumn\` first.`,
@@ -1932,7 +1996,11 @@ export const table = definePrimitive({
 				}
 			},
 			pinColumn(columnId, side) {
-				column(columnId, 'pin')
+				if (isLead(column(columnId, 'pin'))) {
+					throw new Error(
+						`Column "${columnId}" leads the table: it keeps its place, and sticks to the start with the first column that is pinned there.`,
+					)
+				}
 				if (side !== null && side !== 'start' && side !== 'end') {
 					throw new Error(
 						`A column is pinned to "start" or "end", or freed with null, not "${String(side)}".`,
@@ -1968,17 +2036,85 @@ export const table = definePrimitive({
 			return isNumericFormat(found.format) ? 'range' : 'text'
 		}
 
-		// The facets of a column are kept while the rows, the column and the
-		// locale are the same: a filter control asks for them at each render.
+		// The facets of a column are kept while the rows, the column, the locale
+		// and the facets of the owner are the same: a filter control asks for
+		// them at each render.
 		const facetCache = new Map<
 			string,
-			{ rows: unknown; column: ColumnDef; locale: string | undefined; result: ColumnFacets }
+			{
+				rows: unknown
+				column: ColumnDef
+				locale: string | undefined
+				given: unknown
+				result: ColumnFacets
+			}
 		>()
+
+		/** The facets of the owner for a column, checked, or `undefined` for a column without them. */
+		function givenFacets(found: ColumnDef): ColumnFacetsSource | undefined {
+			const all = options().facets
+			if (!all) return undefined
+			for (const id of Object.keys(all)) column(id, 'give facets to')
+			const given = all[found.id]
+			if (given === undefined) return undefined
+			const wrong = (part: string) => new Error(`The facets of column "${found.id}" need ${part}.`)
+			if (typeof given !== 'object' || given === null) {
+				throw wrong('an object with `values`, `range` or `dates`')
+			}
+			const { values, range, dates } = given
+			if (
+				values !== undefined &&
+				!(
+					Array.isArray(values) &&
+					values.every((entry) => typeof entry === 'object' && entry !== null && 'value' in entry)
+				)
+			) {
+				throw wrong('`values` as a list of { value, count? } entries')
+			}
+			if (range !== undefined && !(Number.isFinite(range?.min) && Number.isFinite(range?.max))) {
+				throw wrong('`range` as { min, max } with two numbers')
+			}
+			if (
+				dates !== undefined &&
+				(toTime(dates?.from) === undefined || toTime(dates?.to) === undefined)
+			) {
+				throw wrong('`dates` as { from, to } with two dates')
+			}
+			return given
+		}
+
+		// What the pages count, and how many data rows pass the filters.
+		const pageUnit = memo((rows: readonly TableRow<unknown>[]): PageUnit => {
+			let groups = 0
+			let parents = 0
+			for (const row of rows) {
+				if (row.kind === 'group') groups++
+				else if (row.children?.length) parents++
+			}
+			if (groups) return groups === rows.length ? 'groups' : 'mixed'
+			return parents ? 'parents' : 'rows'
+		})
+		const dataRowCount = memo((rows: readonly DataRow<unknown>[]) => {
+			let count = 0
+			const walk = (list: readonly DataRow<unknown>[]) => {
+				count += list.length
+				for (const row of list) if (row.children) walk(row.children)
+			}
+			walk(rows)
+			return count
+		})
+
+		const subscriptions = new Set<() => void>()
+		context.onDestroy(() => {
+			for (const stop of subscriptions) stop()
+		})
 
 		const readActions: Pick<TableController, ReadActions> = {
 			getView() {
 				const current = state()
 				const columns = layout()
+				const open = expandable(model.grouped())
+				const unit = pageUnit(model.grouped())
 				return {
 					sort: current.sort,
 					filter: current.filter,
@@ -1989,13 +2125,17 @@ export const table = definePrimitive({
 					pageSize: current.page?.pageSize,
 					pageCount: model.pageCount(),
 					rowCount: model.rowCount(),
+					pageUnit: unit,
+					// Rows that are counted one by one need no second count, and pages from a server have their own.
+					dataRowCount: unit === 'rows' ? model.rowCount() : dataRowCount(model.filtered()),
 					lastPageKnown: !openEnded(),
 					columns: columns.all,
 					visibleColumns: columns.leaves,
 					selectable: options().selection
 						? selectableNow(selectableOrder(), options().canSelect, model.source())
 						: NO_IDS,
-					hasExpandable: expandable(model.grouped()).size > 0,
+					hasExpandable: open.size > 0,
+					hasExpanded: current.expanded.some((id) => open.has(id)),
 					loading: options().loading ?? false,
 				}
 			},
@@ -2003,40 +2143,74 @@ export const table = definePrimitive({
 				const found = column(String(columnId), 'read the facets of')
 				const rows = model.source().rows
 				const locale = options().locale
+				const all = options().facets
 				const kept = facetCache.get(found.id)
-				if (kept && kept.rows === rows && kept.column === found && kept.locale === locale) {
+				if (
+					kept &&
+					kept.rows === rows &&
+					kept.column === found &&
+					kept.locale === locale &&
+					kept.given === all
+				) {
 					return kept.result
 				}
+				const given = givenFacets(found)
 				const kind = filterKind(found)
 				const valueText = (value: unknown) =>
 					found.format
 						? formatValue(value, found.format, found.formatOptions, { locale })
 						: toText(value)
+				const zone = timeZoneOf(found)
+				const dayOn = (value: unknown, time: number) => (isDay(value) ? value : dayOf(time, zone))
+				let values: readonly ColumnFacetValue[] = []
+				if (kind === 'select') {
+					values = given?.values
+						? given.values.map(({ value, text, count }) => ({
+								value,
+								text: text ?? valueText(value),
+								...(count === undefined ? undefined : { count }),
+							}))
+						: uniqueValues(rows, found, locale).map((facet) => ({
+								...facet,
+								text: valueText(facet.value),
+							}))
+				}
+				let dates: ColumnFacets['dates'] = null
+				let days: ColumnFacets['days'] = null
+				if (kind === 'dateRange') {
+					const from = toTime(given?.dates?.from)
+					const to = toTime(given?.dates?.to)
+					if (given?.dates && from !== undefined && to !== undefined) {
+						dates = { from: new Date(from), to: new Date(to) }
+						days = { from: dayOn(given.dates.from, from), to: dayOn(given.dates.to, to) }
+					} else {
+						dates = dateRange(rows, found)
+						days = dayRange(rows, found)
+					}
+				}
 				const result: ColumnFacets = {
 					kind,
-					values:
-						kind === 'select'
-							? uniqueValues(rows, found, locale).map((facet) => ({
-									...facet,
-									text: valueText(facet.value),
-								}))
-							: [],
-					range: kind === 'range' ? numberRange(rows, found) : null,
-					dates: kind === 'dateRange' ? dateRange(rows, found) : null,
+					values,
+					range: kind === 'range' ? (given?.range ?? numberRange(rows, found)) : null,
+					dates,
+					days,
 				}
-				facetCache.set(found.id, { rows, column: found, locale, result })
+				facetCache.set(found.id, { rows, column: found, locale, given: all, result })
 				return result
 			},
 			subscribe(listener) {
 				if (typeof listener !== 'function') throw new Error('`subscribe` takes a function.')
 				let active = true
-				const stop = context.store.subscribe((liveOnly, _delivered, changed) => {
+				const leave = context.store.subscribe((liveOnly, _delivered, changed) => {
 					if (active && !liveOnly) listener(changed)
 				})
-				return () => {
+				const stop = () => {
 					active = false
-					stop()
+					subscriptions.delete(stop)
+					leave()
 				}
+				subscriptions.add(stop)
+				return stop
 			},
 		}
 
@@ -2325,6 +2499,22 @@ export const table = definePrimitive({
 			isExpanded: (id: string) => idSet(state().expanded).has(id),
 			canSelect: (id: string) => !!options().selection && canSelect(id),
 			selectionMode: () => options().selection,
+			/**
+			 * Selects the rows of a group that can be selected, or takes them out
+			 * of the selection when every one of them is in it. The rows of other
+			 * groups stay as they are.
+			 */
+			toggleGroupSelected(group: GroupRow<unknown>, event?: Event) {
+				const ids = group.leaves.map((leaf) => leaf.id).filter(canSelect)
+				if (!ids.length) return
+				const selected = idSet(state().selected)
+				const all = ids.every((id) => selected.has(id))
+				const inGroup = new Set(ids)
+				const next = all
+					? state().selected.filter((id) => !inGroup.has(id))
+					: [...state().selected, ...ids.filter((id) => !selected.has(id))]
+				change('selected', next, { reason: 'list-navigation', event })
+			},
 			sortOf: (columnId: string): SortDirection | undefined => {
 				const rule = state().sort.find((item) => item.id === columnId)
 				return rule ? (rule.desc ? 'desc' : 'asc') : undefined
@@ -2697,13 +2887,15 @@ export const table = definePrimitive({
 						event.key !== 'Enter' &&
 						event.key !== 'F2'
 					) {
-						// Space selects the row when rows can be selected, with Shift too.
+						// Space selects the row when rows can be selected, with Shift too,
+						// and the rows of a group on a group row.
 						const forRow =
 							event.key === ' ' &&
 							!event.ctrlKey &&
 							!event.metaKey &&
-							row?.node.kind === 'row' &&
-							api.canSelect(row.id)
+							(row?.node.kind === 'group'
+								? api.selectionMode() === 'multiple'
+								: !!row && api.canSelect(row.id))
 						if (!forRow && api.range.keydown(event)) return
 					}
 					if (api.grid.cellKeydown(event, el)) return
@@ -2717,6 +2909,15 @@ export const table = definePrimitive({
 						const why = { reason: 'list-navigation' as const, event }
 						if (event.shiftKey) api.selection.extend(row.id, why)
 						else api.selection.toggle(row.id, why)
+					} else if (
+						event.key === ' ' &&
+						row.node.kind === 'group' &&
+						api.selectionMode() === 'multiple'
+					) {
+						// A group row holds no row of its own to select. Space on it is the
+						// choice of its rows, as Space on a row is the choice of that row.
+						event.preventDefault()
+						api.toggleGroupSelected(row.node, event)
 					}
 				},
 				// Focus can arrive without a key or a pointer: from a script, or from a

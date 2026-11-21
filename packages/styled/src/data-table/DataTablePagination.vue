@@ -40,12 +40,18 @@ const sizes = computed(() => {
 		.map((size) => ({ value: String(size), label: messages.value.pageSize({ size }) }))
 })
 
+/** Which entries the page holds, counted as the pages count them: rows, or groups. */
 const shown = computed(() => {
 	const current = view.value
 	const size = current?.pageSize
 	if (!current || size === undefined) return undefined
-	const from = (current.page - 1) * size + 1
-	return { from, to: Math.min(current.page * size, current.rowCount), total: current.rowCount }
+	return {
+		from: (current.page - 1) * size + 1,
+		to: Math.min(current.page * size, current.rowCount),
+		total: current.rowCount,
+		unit: current.pageUnit,
+		rows: current.dataRowCount,
+	}
 })
 
 const step = buttonClass('outline', 'icon-sm')
@@ -56,8 +62,13 @@ const link = cn(
 </script>
 
 <template>
+	<!--
+		The pages stay while the table has a page size, also without rows: a page
+		from a server is empty while it loads, and a control that goes away
+		under the focus of the keyboard leaves the person nowhere.
+	-->
 	<div
-		v-if="view && view.pageSize !== undefined && view.rowCount > 0"
+		v-if="view && view.pageSize !== undefined"
 		data-slot="data-table-pagination"
 		class="flex flex-wrap items-center justify-between gap-3 text-sm"
 	>
@@ -92,12 +103,12 @@ const link = cn(
 		>
 			<PaginationList v-slot="{ state }" class="flex items-center gap-1">
 				<PaginationItem>
-					<PaginationFirst :aria-label="messages.firstPage()" :class="step">
+					<PaginationFirst :aria-label="messages.firstPage({ table: label })" :class="step">
 						<ChevronsLeftIcon aria-hidden="true" class="rtl:rotate-180" />
 					</PaginationFirst>
 				</PaginationItem>
 				<PaginationItem>
-					<PaginationPrevious :aria-label="messages.previousPage()" :class="step">
+					<PaginationPrevious :aria-label="messages.previousPage({ table: label })" :class="step">
 						<ChevronLeftIcon aria-hidden="true" class="rtl:rotate-180" />
 					</PaginationPrevious>
 				</PaginationItem>
@@ -105,7 +116,7 @@ const link = cn(
 					<PaginationLink
 						v-if="typeof item === 'number'"
 						:page="item"
-						:aria-label="messages.pageNumber({ page: item })"
+						:aria-label="messages.pageLink({ page: item, table: label })"
 						:class="link"
 					/>
 					<PaginationEllipsis v-else class="flex size-8 items-center justify-center">
@@ -113,12 +124,12 @@ const link = cn(
 					</PaginationEllipsis>
 				</PaginationItem>
 				<PaginationItem>
-					<PaginationNext :aria-label="messages.nextPage()" :class="step">
+					<PaginationNext :aria-label="messages.nextPage({ table: label })" :class="step">
 						<ChevronRightIcon aria-hidden="true" class="rtl:rotate-180" />
 					</PaginationNext>
 				</PaginationItem>
 				<PaginationItem v-if="view.lastPageKnown">
-					<PaginationLast :aria-label="messages.lastPage()" :class="step">
+					<PaginationLast :aria-label="messages.lastPage({ table: label })" :class="step">
 						<ChevronsRightIcon aria-hidden="true" class="rtl:rotate-180" />
 					</PaginationLast>
 				</PaginationItem>

@@ -1,4 +1,4 @@
-import { cellValue, leafColumns, requireColumns, toText } from './columns'
+import { cellValue, leafColumns, requireColumns, valueKey } from './columns'
 import type { ColumnDef, DataRow, GroupRow, TableRow } from './types'
 
 export type GroupOptions<Row> = {
@@ -41,7 +41,7 @@ export function groupRows<Row>(
 				continue
 			}
 			const value = cellValue(node.row, column)
-			const key = toText(value)
+			const key = valueKey(value)
 			let bucket = buckets.get(key)
 			if (!bucket) {
 				bucket = { value, rows: [] }

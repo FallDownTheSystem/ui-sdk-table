@@ -3,40 +3,55 @@ import {
 	ArrowDownIcon,
 	ArrowUpIcon,
 	CheckIcon,
-	ChevronDownIcon,
-	ChevronRightIcon,
 	ChevronsUpDownIcon,
 	MinusIcon,
+	XIcon,
 } from '@lucide/vue'
 import { Button } from '@ui-sdk/vue/button'
 import {
 	cellValue,
 	createTableController,
+	isEmptyFilter,
 	isNumericFormat,
-	linkOf,
 	Table,
 	toText,
 	type CellAttrsContext,
-	type CellSlotProps,
 	type ColumnDef,
 	type GroupSlotProps,
 	type RowAttrsContext,
 	type TableInstance,
 	type TableView,
 } from 'ui-sdk-table-vue'
-import { computed, onBeforeUnmount, onMounted, provide, shallowRef, watch } from 'vue'
+import {
+	computed,
+	onBeforeUnmount,
+	onMounted,
+	provide,
+	shallowRef,
+	useTemplateRef,
+	watch,
+} from 'vue'
 import { cn } from '@/lib/utils'
 import DataTableCheckbox from './DataTableCheckbox.vue'
-import { buttonClass, skeletonClass } from './DataTableClasses'
+import DataTableChevron from './DataTableChevron.vue'
+import {
+	buttonClass,
+	focusInsetClass,
+	indentClass,
+	MAX_INDENT,
+	skeletonClass,
+} from './DataTableClasses'
 import DataTableEmpty from './DataTableEmpty.vue'
 import DataTableExpandAll from './DataTableExpandAll.vue'
+import DataTableLink from './DataTableLink.vue'
 import DataTablePagination from './DataTablePagination.vue'
 import DataTableSelectAll from './DataTableSelectAll.vue'
 import DataTableToolbar from './DataTableToolbar.vue'
-import { resolveMessages } from './messages'
+import { resolveMessages, type DataTableExportFormat } from './messages'
 import {
 	DATA_TABLE_CONTEXT,
 	EXPAND_COLUMN,
+	isOwnColumn,
 	SELECT_COLUMN,
 	VIEW_KEYS,
 	type DataTableColumn,
@@ -68,7 +83,7 @@ const props = withDefaults(defineProps<DataTableProps<Row>>(), {
 	loading: undefined,
 })
 
-const emit = defineEmits<DataTableEmits>()
+const emit = defineEmits<DataTableEmits<Row>>()
 const slots = defineSlots<DataTableSlots<Row>>()
 
 const controller = props.controller ?? createTableController()
@@ -81,25 +96,109 @@ const view = shallowRef<TableView>()
 const refresh = () => {
 	view.value = controller.getView()
 }
+
+// A search, a filter, a sort and a page change what the table shows, and a
+// person who does not see the table hears of it here. The text comes after a
+// pause, once, so a fast typist hears the count of the last letter only.
+const status = shallowRef('')
+const ANNOUNCED: readonly string[] = ['filter', 'groupBy', 'sort', 'page']
+const PAUSE = 500
+const unsaid = new Set<string>()
+let pause: ReturnType<typeof setTimeout> | undefined
+
+function note(changed: readonly string[]) {
+	for (const key of changed) if (ANNOUNCED.includes(key)) unsaid.add(key)
+	if (!unsaid.size) return
+	// An empty region first: the same text as the last time is said again.
+	status.value = ''
+	clearTimeout(pause)
+	pause = setTimeout(announce, PAUSE)
+}
+
+function announce() {
+	const now = view.value
+	// Rows that are on their way have no count yet. Their arrival is a change, and that starts the pause again.
+	if (!now || now.loading) return
+	const texts = messages.value
+	if (unsaid.has('filter') || unsaid.has('groupBy')) {
+		status.value = texts.rowsFound({
+			total: now.rowCount,
+			unit: now.pageUnit,
+			rows: now.dataRowCount,
+		})
+	} else if (unsaid.has('sort')) {
+		const name = (id: string) => now.columns.find((column) => column.id === id)?.header ?? id
+		status.value = texts.sortedBy({
+			sort: now.sort.map((rule) => ({ column: name(rule.id), desc: rule.desc ?? false })),
+		})
+	} else {
+		status.value = now.lastPageKnown
+			? texts.pageOf({ page: now.page, pageCount: now.pageCount })
+			: texts.pageNumber({ page: now.page })
+	}
+	unsaid.clear()
+}
+
 let stop: (() => void) | undefined
 onMounted(() => {
+	if (import.meta.env.DEV && !props.label) {
+		console.warn(
+			'[DataTable] The table has no accessible name. Pass `label`: assistive technology and an agent find the table by it, and tell its controls from those of another table.',
+		)
+	}
 	// The ids of groups come from the rows, so the table opens them itself.
 	// It happens before the first paint: nobody sees the closed groups.
 	if (props.defaultExpanded === 'all' && !props.expanded) controller.expandAll()
 	refresh()
 	stop = controller.subscribe((changed) => {
-		if (changed.some((key) => VIEW_KEYS.includes(key))) refresh()
+		if (!changed.some((key) => VIEW_KEYS.includes(key))) return
+		refresh()
+		note(changed)
 	})
 })
-onBeforeUnmount(() => stop?.())
+onBeforeUnmount(() => {
+	stop?.()
+	clearTimeout(pause)
+})
 // An option can change what a control shows without a change of state.
+watch(() => [props.selection, props.canSelect, props.locale], refresh, { flush: 'post' })
+
+// `pagination` can come and go while the table is on the page. The pages are
+// state of the table, so the table gets them, or loses them, here.
 watch(
-	() => [props.loading, props.selection, props.canSelect, props.locale, props.rowCount],
-	refresh,
-	{ flush: 'post' },
+	() => props.pagination,
+	(on) => {
+		const size = view.value?.pageSize
+		if (!view.value) return
+		if (on && size === undefined) controller.setPageSize(props.pageSizes[0] ?? 10)
+		else if (!on && size !== undefined) controller.setPageSize(null)
+	},
 )
 
-provide(DATA_TABLE_CONTEXT, { controller, view, messages, label })
+const selected = computed<ReadonlySet<string>>(() => new Set(view.value?.selected))
+const filterCount = computed(
+	() =>
+		Object.values(view.value?.filter.columns ?? {}).filter((value) => !isEmptyFilter(value)).length,
+)
+
+/** The kind of file of an export that failed, while its message shows. */
+const failedExport = shallowRef<DataTableExportFormat>()
+
+provide(DATA_TABLE_CONTEXT, {
+	controller,
+	view,
+	messages,
+	label,
+	selected,
+	filterCount,
+	exportStarted: () => {
+		failedExport.value = undefined
+	},
+	exportFailed: (error, format) => {
+		failedExport.value = format
+		emit('exportError', error, { format })
+	},
+})
 
 const exportOptions = computed(() =>
 	props.export === true ? {} : props.export ? props.export : undefined,
@@ -116,9 +215,12 @@ const hasToolbar = computed(
 const hasExpandColumn = computed(() => !!props.hasDetail || !!props.getChildren)
 
 // The two columns of the styled table hold a control and no value: they take
-// no part in the search, a filter, an export or the list of columns.
+// no part in the search, a filter, an export or the list of columns. They
+// lead the table: first under any column order, and at the start edge beside
+// a column that is pinned there. No order and no pin of the caller holds them.
 const own = (id: string, width: number): ColumnDef<Row> => ({
 	id,
+	lead: true,
 	header: '',
 	value: () => undefined,
 	width,
@@ -132,11 +234,18 @@ const own = (id: string, width: number): ColumnDef<Row> => ({
 	exportable: false,
 })
 
+const ownIds = computed(() => [
+	...(props.selection ? [SELECT_COLUMN] : []),
+	...(hasExpandColumn.value ? [EXPAND_COLUMN] : []),
+])
+
 const columns = computed<readonly ColumnDef<Row>[]>(() => [
-	...(props.selection ? [own(SELECT_COLUMN, 40)] : []),
-	...(hasExpandColumn.value ? [own(EXPAND_COLUMN, 40)] : []),
+	...ownIds.value.map((id) => own(id, 40)),
 	...(props.columns ?? []),
 ])
+
+/** The columns in view. A part that reads the whole view renders for each change; this changes with the columns only. */
+const visibleColumns = computed(() => view.value?.visibleColumns ?? [])
 
 /** The first column of the caller that holds cells. Its text names a row for a checkbox or a button. */
 const nameColumn = computed(() => {
@@ -148,8 +257,6 @@ const rowName = (row: Row) => {
 	const column = nameColumn.value
 	return column ? toText(cellValue(row, column)) : ''
 }
-
-const tableMessages = computed(() => messages.value)
 
 /** The options and the state of the caller, as the table takes them. */
 const tableProps = computed<TableInstance<Row>['$props']>(() => ({
@@ -168,7 +275,7 @@ const tableProps = computed<TableInstance<Row>['$props']>(() => ({
 	reorderable: props.reorderable,
 	columnMinWidth: props.columnMinWidth,
 	columnMaxWidth: props.columnMaxWidth,
-	messages: tableMessages.value,
+	messages: messages.value,
 	controller,
 	rowWindow: props.rowWindow,
 	rowHeight: props.rowHeight,
@@ -181,6 +288,7 @@ const tableProps = computed<TableInstance<Row>['$props']>(() => ({
 	cellSelection: props.cellSelection,
 	manualSort: props.manualSort,
 	manualFilter: props.manualFilter,
+	facets: props.facets,
 	manualPage: props.manualPage,
 	rowCount: props.rowCount,
 	loading: props.loading,
@@ -261,40 +369,51 @@ function alignOf(column: ColumnDef<Row>, leaf = true) {
 // cannot. Such a cell is opaque: the rows under it must not show through.
 const stuck =
 	'in-data-sticky:sticky in-data-sticky:z-20 in-data-sticky:bg-background in-data-[sticky=top]:top-(--table-sticky-offset) in-data-[sticky=bottom]:bottom-(--table-sticky-offset)'
-// A pinned cell is opaque too, so it takes the fill of a selected row itself.
+// A pinned cell is opaque too.
 const pinned =
-	'data-pinned:sticky data-pinned:z-10 data-pinned:bg-background data-[pinned=start]:start-(--table-pin-offset) data-[pinned=end]:end-(--table-pin-offset) in-data-sticky:data-pinned:z-30 in-aria-selected:data-pinned:bg-muted'
+	'data-pinned:sticky data-pinned:z-10 data-pinned:bg-background data-[pinned=start]:start-(--table-pin-offset) data-[pinned=end]:end-(--table-pin-offset) in-data-sticky:data-pinned:z-30'
+// An opaque cell hides the fill of its row, so it paints the tint of the row
+// itself, as a layer of one colour over its own fill. The colour is the
+// `from` stop of a gradient that ends where it starts. The table sets the
+// stop for a hovered and for a selected row; a caller sets it for a tint of
+// its own with a class for the cells of the row, such as `*:from-warning/15`.
+const tinted =
+	'from-100% in-data-sticky:bg-linear-to-b data-pinned:bg-linear-to-b group-hover/row:from-muted/50 group-aria-selected/row:from-muted'
 const sized = 'in-data-sized:overflow-hidden in-data-sized:text-ellipsis'
 // A cell that gets focus scrolls into view, and it must stop beside the sticky rows and the pinned columns, not under them.
 const beside =
 	'scroll-mt-(--table-sticky-top-size) scroll-mb-(--table-sticky-bottom-size) scroll-ms-(--table-pin-start-size) scroll-me-(--table-pin-end-size) in-data-sticky:scroll-my-0 data-pinned:scroll-mx-0'
-// The cell that the arrow keys are on. The line sits inside the cell, so the frame does not cut it.
-const active =
-	'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring'
 
 const headClass = cn(
 	'relative h-10 border-b border-border px-2 align-middle font-medium whitespace-nowrap text-foreground',
 	'data-moving:bg-accent data-grabbed:z-40 data-grabbed:translate-x-(--drag-x)',
 	// The handle that resizes a column is a thin bar at the end edge of its header.
-	'[&_[data-slot=table-resizer]]:absolute [&_[data-slot=table-resizer]]:inset-y-0 [&_[data-slot=table-resizer]]:end-0 [&_[data-slot=table-resizer]]:w-1.5 [&_[data-slot=table-resizer]]:cursor-col-resize [&_[data-slot=table-resizer]]:touch-none [&_[data-slot=table-resizer]]:outline-none [&_[data-slot=table-resizer]:is(:hover,:focus-visible,[data-dragging])]:bg-ring',
+	// UI SDK gives it its cursor and its touch action.
+	'[&_[data-slot=table-resizer]]:absolute [&_[data-slot=table-resizer]]:inset-y-0 [&_[data-slot=table-resizer]]:end-0 [&_[data-slot=table-resizer]]:w-1.5 [&_[data-slot=table-resizer]]:outline-none [&_[data-slot=table-resizer]:is(:hover,:focus-visible,[data-dragging])]:bg-ring',
 	stuck,
 	pinned,
 	sized,
 	beside,
-	active,
+	focusInsetClass,
 )
 
 const cellClass = cn(
 	'border-b border-border p-2 align-middle whitespace-nowrap',
-	// A range of cells has a tint. The editor of a cell takes the place of its text.
-	'data-selected:bg-primary/10 data-editing:relative data-editing:overflow-visible data-editing:p-0',
-	'[&_[data-slot=table-editor]]:h-9 [&_[data-slot=table-editor]]:w-full [&_[data-slot=table-editor]]:bg-background [&_[data-slot=table-editor]]:px-2 [&_[data-slot=table-editor]]:text-sm [&_[data-slot=table-editor]]:outline-2 [&_[data-slot=table-editor]]:-outline-offset-2 [&_[data-slot=table-editor]]:outline-ring [&_[data-slot=table-editor][aria-invalid=true]]:outline-destructive',
+	// A range of cells has a tint, as a layer like the tint of a row, so a pinned cell stays opaque under it.
+	'data-selected:bg-linear-to-b data-selected:from-primary/10',
+	// The editor of a cell takes the place of its text.
+	'data-editing:relative data-editing:overflow-visible data-editing:p-0',
+	// The editor fills its cell and asks for no width of its own: with a width
+	// of its own, a column of a table without fixed widths would grow while a
+	// cell of it is open.
+	'[&_[data-slot=table-editor]]:h-9 [&_[data-slot=table-editor]]:w-0 [&_[data-slot=table-editor]]:min-w-full [&_[data-slot=table-editor]]:bg-background [&_[data-slot=table-editor]]:px-2 [&_[data-slot=table-editor]]:text-sm [&_[data-slot=table-editor]]:outline-2 [&_[data-slot=table-editor]]:-outline-offset-2 [&_[data-slot=table-editor]]:outline-ring [&_[data-slot=table-editor][aria-invalid=true]]:outline-destructive',
 	'[&_[data-slot=table-edit-error]]:absolute [&_[data-slot=table-edit-error]]:start-0 [&_[data-slot=table-edit-error]]:top-full [&_[data-slot=table-edit-error]]:z-40 [&_[data-slot=table-edit-error]]:rounded-sm [&_[data-slot=table-edit-error]]:bg-destructive [&_[data-slot=table-edit-error]]:px-2 [&_[data-slot=table-edit-error]]:py-1 [&_[data-slot=table-edit-error]]:text-xs [&_[data-slot=table-edit-error]]:text-destructive-foreground',
 	stuck,
 	pinned,
+	tinted,
 	sized,
 	beside,
-	active,
+	focusInsetClass,
 )
 
 const footClass = cn(
@@ -303,11 +422,10 @@ const footClass = cn(
 	pinned,
 	sized,
 	beside,
-	active,
+	focusInsetClass,
 )
 
 const control = 'w-10 px-2 text-start'
-const isOwn = (id: string) => id === SELECT_COLUMN || id === EXPAND_COLUMN
 
 // These two functions stay the same for the life of the table: a new
 // function would render every row again. They read the props when the table
@@ -320,7 +438,8 @@ function rowAttrs(context: RowAttrsContext<Row>) {
 				: props.rowClass
 		return {
 			class: cn(
-				'transition-colors hover:bg-muted/50 data-selected:bg-muted in-data-row-window:h-(--table-row-height)',
+				// `group/row` lets a cell that is opaque follow the hover and the selection of its row.
+				'group/row transition-colors hover:bg-muted/50 data-selected:bg-muted in-data-row-window:h-(--table-row-height)',
 				custom,
 			),
 		}
@@ -340,11 +459,11 @@ function rowAttrs(context: RowAttrsContext<Row>) {
 function cellAttrs(context: CellAttrsContext<Row>) {
 	if (context.kind === 'header') {
 		const column = context.column
-		if (isOwn(column.id)) return { class: cn(headClass, control) }
+		if (isOwnColumn(column.id)) return { class: cn(headClass, control) }
 		return {
 			class: cn(
 				headClass,
-				context.leaf ? alignOf(column) : alignOf(column, false),
+				alignOf(column, context.leaf),
 				props.headerClass,
 				metaOf(column).headerClass,
 			),
@@ -352,7 +471,7 @@ function cellAttrs(context: CellAttrsContext<Row>) {
 	}
 	if (context.kind === 'cell') {
 		const column = context.column
-		if (isOwn(column.id)) return { class: cn(cellClass, control) }
+		if (isOwnColumn(column.id)) return { class: cn(cellClass, control) }
 		const meta = metaOf(column)
 		return {
 			class: cn(
@@ -365,7 +484,9 @@ function cellAttrs(context: CellAttrsContext<Row>) {
 		}
 	}
 	if (context.kind === 'foot') {
-		return { class: cn(footClass, isOwn(context.column.id) ? control : alignOf(context.column)) }
+		return {
+			class: cn(footClass, isOwnColumn(context.column.id) ? control : alignOf(context.column)),
+		}
 	}
 	if (context.kind === 'detail') return { class: cn(cellClass, 'whitespace-normal') }
 	if (context.kind === 'empty') {
@@ -380,8 +501,15 @@ const sectionAttrs = { body: { class: '[&>tr:last-child>td]:border-b-0' } }
 const frameClass = computed(() =>
 	cn(
 		'relative rounded-md border border-border',
-		props.scroll === 'page' ? '' : 'overflow-auto',
-		props.width === 'auto' ? 'w-fit max-w-full' : 'w-full',
+		// A frame that scrolls is as wide as its place, and the table scrolls
+		// inside it. A frame that never scrolls grows with a table that is wider
+		// than its place, and the page scrolls: a frame that cut the table off
+		// would have to scroll, and then no row could stick to the page.
+		props.scroll === 'page'
+			? props.width === 'auto'
+				? 'w-fit'
+				: 'w-fit min-w-full'
+			: ['overflow-auto', props.width === 'auto' ? 'w-fit max-w-full' : 'w-full'],
 		props.wrapperClass,
 	),
 )
@@ -396,18 +524,11 @@ const tableClass = computed(() =>
 		'[&_[data-slot=table-col]]:w-(--table-column-width) data-sized:w-(--table-width) data-sized:table-fixed',
 		// A spacer stands in for the rows that the row window does not render.
 		'[&_[data-slot=table-spacer]]:h-(--table-spacer-size)',
-		// Rows that wait for newer ones stay in view, dimmed.
-		'data-loading:[&>tbody]:opacity-60 data-cell-selection:[&>tbody]:select-none',
+		// Rows that wait for newer ones stay in view and readable; the cursor says that the table is busy.
+		'data-loading:[&>tbody]:cursor-progress data-cell-selection:[&>tbody]:select-none',
 		props.tableClass,
 	),
 )
-
-/** The link of a cell whose column has the format `url` or `email`. */
-function linkFor(cell: CellSlotProps<Row>) {
-	const format = cell.column.format
-	if (format !== 'url' && format !== 'email') return null
-	return linkOf(cell.value, format, cell.column.formatOptions, { row: cell.row })
-}
 
 /** The ids of the rows of a group that can be selected. */
 function groupIds(group: GroupSlotProps<Row>['group']) {
@@ -416,9 +537,9 @@ function groupIds(group: GroupSlotProps<Row>['group']) {
 }
 
 const totalColumns = (group: GroupSlotProps<Row>) =>
-	(view.value?.visibleColumns ?? []).filter((column) => column.id in group.totalTexts)
+	visibleColumns.value.filter((column) => column.id in group.totalTexts)
 
-const skeletonColumns = computed(() => view.value?.visibleColumns.length ?? columns.value.length)
+const skeletonColumns = computed(() => visibleColumns.value.length || columns.value.length)
 
 /** The editor slots of the caller. The table has its own text field for a column without one. */
 const editorSlots = computed(() =>
@@ -427,6 +548,16 @@ const editorSlots = computed(() =>
 	),
 )
 
+const root = useTemplateRef<HTMLElement>('root')
+
+// The button of the message leaves the page with the message. Focus goes to
+// the control that the message is about, or the keyboard would start again
+// from the top of the page.
+function dismissExportError() {
+	failedExport.value = undefined
+	root.value?.querySelector<HTMLElement>('[data-export-trigger]')?.focus()
+}
+
 defineExpose({
 	/** The methods of the table: `sortBy`, `setSearch`, `select` and the others. */
 	controller,
@@ -434,7 +565,7 @@ defineExpose({
 </script>
 
 <template>
-	<div data-slot="data-table" class="flex min-w-0 flex-col gap-3">
+	<div ref="root" data-slot="data-table" class="flex min-w-0 flex-col gap-3">
 		<DataTableToolbar
 			v-if="hasToolbar"
 			:search="search"
@@ -446,6 +577,24 @@ defineExpose({
 				<slot name="toolbar" v-bind="toolbar" />
 			</template>
 		</DataTableToolbar>
+		<div
+			v-if="failedExport"
+			role="alert"
+			data-slot="data-table-alert"
+			class="flex items-center justify-between gap-2 rounded-md border border-destructive px-3 py-2 text-sm text-foreground"
+		>
+			<span>{{ messages.exportFailed({ format: failedExport }) }}</span>
+			<Button
+				:aria-label="messages.dismiss()"
+				:class="buttonClass('ghost', 'icon-xs')"
+				@click="dismissExportError"
+			>
+				<XIcon aria-hidden="true" />
+			</Button>
+		</div>
+		<div data-slot="data-table-status" role="status" aria-live="polite" class="sr-only">
+			{{ status }}
+		</div>
 		<div data-slot="data-table-frame" :class="frameClass">
 			<Table
 				v-bind="{ ...tableProps, ...listeners }"
@@ -457,7 +606,7 @@ defineExpose({
 			>
 				<template #header="header">
 					<template v-if="header.column.id === SELECT_COLUMN">
-						<DataTableSelectAll v-if="selection === 'multiple'" :label="messages.selectAllRows()" />
+						<DataTableSelectAll v-if="selection === 'multiple'" />
 						<span v-else class="sr-only">{{ messages.selectionColumn() }}</span>
 					</template>
 					<DataTableExpandAll v-else-if="header.column.id === EXPAND_COLUMN" />
@@ -491,8 +640,8 @@ defineExpose({
 					/>
 					<template v-else-if="cell.column.id === EXPAND_COLUMN">
 						<span
-							:data-level="Math.min(cell.node.depth, 5)"
-							class="flex data-[level=1]:ps-4 data-[level=2]:ps-8 data-[level=3]:ps-12 data-[level=4]:ps-16 data-[level=5]:ps-20"
+							:data-level="Math.min(cell.node.depth, MAX_INDENT)"
+							:class="['flex', indentClass]"
 						>
 							<Button
 								v-if="cell.expandable"
@@ -505,8 +654,7 @@ defineExpose({
 								:class="buttonClass('ghost', 'icon-xs')"
 								@click="(event: Event) => cell.toggleExpanded(event)"
 							>
-								<ChevronDownIcon v-if="cell.expanded" aria-hidden="true" />
-								<ChevronRightIcon v-else aria-hidden="true" class="rtl:rotate-180" />
+								<DataTableChevron :expanded="cell.expanded" />
 							</Button>
 						</span>
 					</template>
@@ -521,21 +669,12 @@ defineExpose({
 							<MinusIcon v-else aria-hidden="true" class="inline size-4 text-muted-foreground" />
 							<span class="sr-only">{{ cell.text }}</span>
 						</template>
-						<a
-							v-else-if="linkFor(cell)"
-							:href="linkFor(cell)?.href"
-							:target="linkFor(cell)?.newTab ? '_blank' : undefined"
-							:rel="linkFor(cell)?.newTab ? 'noopener noreferrer' : undefined"
-							class="rounded-sm underline underline-offset-4 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
-						>
-							{{ linkFor(cell)?.text }}
-						</a>
-						<template v-else>{{ cell.text }}</template>
+						<DataTableLink v-else :cell="cell" />
 					</slot>
 				</template>
 
 				<template #foot="foot">
-					<template v-if="isOwn(foot.column.id)" />
+					<template v-if="isOwnColumn(foot.column.id)" />
 					<slot
 						v-else-if="slots[`foot-${foot.column.id}`]"
 						:name="`foot-${foot.column.id}`"
@@ -547,8 +686,8 @@ defineExpose({
 				<template #group="group">
 					<slot name="group" v-bind="group">
 						<div
-							:data-level="Math.min(group.level, 5)"
-							class="flex items-center gap-2 data-[level=1]:ps-4 data-[level=2]:ps-8 data-[level=3]:ps-12 data-[level=4]:ps-16 data-[level=5]:ps-20"
+							:data-level="Math.min(group.level, MAX_INDENT)"
+							:class="['flex items-center gap-2', indentClass]"
 						>
 							<DataTableSelectAll
 								v-if="selection === 'multiple'"
@@ -560,8 +699,7 @@ defineExpose({
 								:class="cn(buttonClass('ghost', 'sm'), '-ms-1')"
 								@click="(event: Event) => group.toggleExpanded(event)"
 							>
-								<ChevronDownIcon v-if="group.expanded" aria-hidden="true" />
-								<ChevronRightIcon v-else aria-hidden="true" class="rtl:rotate-180" />
+								<DataTableChevron :expanded="group.expanded" />
 								{{ messages.groupRow({ text: group.text, count: group.group.leaves.length }) }}
 							</Button>
 							<dl

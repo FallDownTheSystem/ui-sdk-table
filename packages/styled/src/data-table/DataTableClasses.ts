@@ -8,8 +8,29 @@
  * what shows where a field or a checkbox is, so it needs 3 to 1.
  */
 
-const focus =
-	'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring'
+/**
+ * The ring of a control that has the focus of the keyboard. `outline-none`
+ * takes the style of the outline away, so the ring needs `outline-solid`.
+ */
+const ring =
+	'outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring'
+
+/** The ring around a control, a little away from it. */
+export const focusRingClass = `${ring} focus-visible:outline-offset-2`
+
+/** The ring inside an element whose edge a frame would cut: a cell of the table. */
+export const focusInsetClass = `${ring} focus-visible:-outline-offset-2`
+
+/**
+ * The indent of a row at a level of a tree or of nested groups, read from
+ * the `data-level` of the element: a class for each level, because the level
+ * is state and a class holds no number.
+ */
+export const indentClass =
+	'data-[level=1]:ps-4 data-[level=2]:ps-8 data-[level=3]:ps-12 data-[level=4]:ps-16 data-[level=5]:ps-20'
+
+/** The deepest level that `indentClass` knows. A deeper row has the indent of this one. */
+export const MAX_INDENT = 5
 
 const button =
 	'inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors data-disabled:pointer-events-none data-disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0'
@@ -37,14 +58,16 @@ export function buttonClass(
 	variant: DataTableButtonVariant = 'outline',
 	size: DataTableButtonSize = 'default',
 ): string {
-	return `${button} ${focus} ${variants[variant]} ${sizes[size]}`
+	return `${button} ${focusRingClass} ${variants[variant]} ${sizes[size]}`
 }
 
 export const inputClass =
-	'h-9 w-full min-w-0 rounded-md border border-foreground/50 bg-transparent px-3 py-1 text-sm text-foreground shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:bg-input/30'
+	'h-9 w-full min-w-0 rounded-md border border-foreground/50 bg-transparent px-3 py-1 text-sm text-foreground shadow-xs transition-[color,box-shadow] placeholder:text-muted-foreground data-disabled:cursor-not-allowed data-disabled:opacity-50 dark:bg-input/30 ' +
+	ring
 
 export const selectTriggerClass =
-	'flex w-fit cursor-pointer items-center justify-between gap-1.5 rounded-md border border-foreground/50 bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap text-foreground shadow-xs transition-[color,box-shadow] outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring data-disabled:cursor-not-allowed data-disabled:opacity-50 data-placeholder:text-muted-foreground dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0'
+	'flex w-fit cursor-pointer items-center justify-between gap-1.5 rounded-md border border-foreground/50 bg-transparent py-2 ps-2.5 pe-2 text-sm whitespace-nowrap text-foreground shadow-xs transition-[color,box-shadow] data-disabled:cursor-not-allowed data-disabled:opacity-50 data-placeholder:text-muted-foreground dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 ' +
+	ring
 
 /** A popup opens and closes with a short fade from the point of its trigger. */
 const popup =
@@ -53,15 +76,16 @@ const popup =
 export const listContentClass = `${popup} max-h-(--available-height) min-w-36 overflow-x-hidden overflow-y-auto rounded-md border border-border p-1 outline-hidden`
 
 export const listItemClass =
-	'relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 data-highlighted:bg-accent data-highlighted:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0'
+	'relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-hidden select-none data-disabled:pointer-events-none data-disabled:opacity-50 data-highlighted:bg-accent data-highlighted:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0'
 
 /** The place of the check mark of a list item, at its end. */
-export const listIndicatorClass = 'absolute right-2 flex size-4 items-center justify-center'
+export const listIndicatorClass = 'absolute end-2 flex size-4 items-center justify-center'
 
 export const popoverContentClass = `${popup} flex max-h-(--available-height) w-105 max-w-(--available-width) flex-col gap-4 overflow-y-auto rounded-md p-4 text-sm ring-1 ring-foreground/10 outline-hidden`
 
 export const checkboxClass =
-	'peer inline-flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm border border-foreground/50 text-primary-foreground shadow-xs transition-shadow outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring data-checked:border-primary data-checked:bg-primary data-disabled:cursor-not-allowed data-disabled:opacity-50 data-indeterminate:border-primary data-indeterminate:bg-primary [&_svg]:size-3'
+	'peer inline-flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm border border-foreground/50 text-primary-foreground shadow-xs transition-shadow data-checked:border-primary data-checked:bg-primary data-disabled:cursor-not-allowed data-disabled:opacity-50 data-indeterminate:border-primary data-indeterminate:bg-primary [&_svg]:size-3 ' +
+	focusRingClass
 
 /** A grey bar that stands in for content on its way. */
 export const skeletonClass = 'h-4 animate-pulse rounded-md bg-foreground/10'

@@ -18,7 +18,7 @@ import {
 } from './DataTableClasses'
 import { isOwnColumn, useDataTable } from './types'
 
-const { controller, view, messages } = useDataTable()
+const { controller, view, messages, label } = useDataTable()
 
 /** The columns that a person can hide, in the order of their definition. */
 const columns = computed(() =>
@@ -31,7 +31,10 @@ const visible = computed(() => new Set(view.value?.visibleColumns.map((column) =
 
 <template>
 	<Menu>
-		<MenuTrigger :class="buttonClass('outline')">
+		<MenuTrigger
+			:aria-label="messages.columnsLabel({ table: label })"
+			:class="buttonClass('outline')"
+		>
 			<Columns3Icon aria-hidden="true" />
 			{{ messages.columns() }}
 			<ChevronDownIcon aria-hidden="true" class="text-muted-foreground" />

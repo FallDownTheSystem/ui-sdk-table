@@ -74,18 +74,23 @@ Follow the `ui-sdk` skill. Read `node_modules/@ui-sdk/vue/docs/llms.txt`; search
 
 An app installs `src/data-table/` as owned source through `registry/data-table.json`, so each file must work after a copy to `src/components/DataTable/`.
 
-- Every file name starts with `DataTable`. The app registers components by file name.
-- A shipped file imports only its neighbours (`./`), `vue`, `@/lib/utils`, `ui-sdk-table-vue`, `@ui-sdk/vue`, `@ui-sdk/core` and `@lucide/vue`. The registry build refuses anything else. `src/lib/utils.ts` and `src/tests/` are not shipped.
+- Every `.vue` file name starts with `DataTable`: the app registers components by file name. The modules `index.ts`, `messages.ts`, `types.ts` and `DataTableClasses.ts` are not components.
+- A shipped file imports only its neighbours (`./`), `vue`, `@/lib/utils`, `ui-sdk-table-vue`, `@ui-sdk/vue`, `@ui-sdk/core` and `@lucide/vue`. The registry build refuses anything else, and a file in `src/data-table/` that is neither `.vue` nor `.ts`. `src/lib/utils.ts` and `src/tests/` are not shipped.
 - Every control is a UI SDK component. No raw `<button>`, `<input>` or `<select>`, no reka-ui, no shadcn-vue.
-- Looks are Tailwind CSS 4 utilities with the token names of the app. No colour literal, no arbitrary value with `px`, `rem`, `em`, `ms` or `s`, no `<style>` block, no inline style, no `@apply`. State goes through `data-*` and `aria-*` variants.
-- The looks of the controls live in `DataTableClasses.ts`. The line around a control is `border-foreground/50`, because `border-input` is under 3 to 1.
+- Looks are Tailwind CSS 4 utilities with the token names of the app. No colour literal, no arbitrary value with `px`, `rem`, `em`, `ms` or `s`, no `<style>` block, no inline style, no `@apply`. State goes through `data-*` and `aria-*` variants. Sides are logical (`ps-`, `pe-`, `start-`, `end-`), never `pl-`, `pr-`, `left-`, `right-`.
+- The looks of the controls live in `DataTableClasses.ts`, the focus ring too (`focusRingClass`, `focusInsetClass`). The line around a control is `border-foreground/50`, because `border-input` is under 3 to 1.
 - `outline-none` sets the outline style to none in Tailwind 4. A focus ring needs `focus-visible:outline-solid` next to `focus-visible:outline-2`.
 - A `dark:` class wins over an `aria-*` or `data-*` class of the same property. Give the state its own `dark:` class (see the current page in `DataTablePagination.vue`).
-- A sticky header, footer or pinned cell is opaque. Lines sit on the cells (`border-separate`), so sticky cells keep them.
+- A sticky header, footer or pinned cell is opaque. Lines sit on the cells (`border-separate`), so sticky cells keep them. An opaque cell paints the tint of its row as a gradient layer (`tinted` in `DataTable.vue`): a new row state with a fill needs its `group-…/row:from-…` class there, or pinned cells do not show it.
+- A control that a page can hold once for each table has the name of its table in its accessible name (`messages.ts`: `named`, `namesOf`). A new control of the toolbar, the header or the pages follows this, and the agent test with two tables covers it.
+- The checkbox column and the expand column are `lead` columns of core: always first, never in `columnOrder` or `columnPinning`. Do not order or pin them in the styled table.
+- An app with a fixed header offsets the sticky rows through `--table-sticky-top` and `--table-sticky-bottom`, which `packages/core/src/behaviors/sticky.ts` adds to each offset. Do not make the caller override `top` with a class.
 - Texts go through `messages.ts` and the `messages` prop. No text in a template.
+- A change that a person can see only (rows found, sort, page, a failed export) is also said: the polite live region of `DataTable.vue`, after a pause, or `role="alert"`. A control that leaves the page gives focus to the control it belongs to.
 - The export writers load with `import('ui-sdk-table-vue/export')` on the first export. No static import of them, also not in a docs page that the styled page shares a chunk with.
-- After a change in `src/data-table/`, run `pnpm --filter ui-sdk-table-styled build` and commit `registry/data-table.json`. `scripts/build-registry.test.ts` fails when it is stale.
-- A new control gets a unit test in `src/tests/data-table.test.ts`, a step in `src/tests/agent.test.ts`, a Playwright test in `apps/docs/e2e/styled.spec.ts` for its keyboard and focus rules, and its colour pairs in `apps/docs/e2e/styled-contrast.spec.ts` (WCAG AA in light and dark). Never change a token to pass; change the class that picks the pair.
+- After a change in `src/data-table/`, run `pnpm --filter ui-sdk-table-styled build` and commit `registry/data-table.json`. `scripts/build-registry.test.ts` fails when it is stale. The UI SDK version of the item comes from the `catalog`; the test holds the `peerDependencies` of the packages to it.
+- `scripts/install-data-table.mjs <app root> [--check]` is how an app copies the item. Keep it free of dependencies: an app runs it with plain `node`.
+- A new control gets a unit test in `src/tests/data-table.test.ts`, a step in `src/tests/agent.test.ts`, a Playwright test in `apps/docs/e2e/styled.spec.ts` or `styled-grid.spec.ts` for its keyboard and focus rules, and its colour pairs in `apps/docs/e2e/styled-contrast.spec.ts` (WCAG AA in light and dark; a line against both of its sides). Never change a token to pass; change the class that picks the pair.
 - `apps/docs` loads one stylesheet per page: `styled.css` (Tailwind and the tokens) for `?page=styled`, `style.css` for the others. Pages load lazily (`src/page.ts`).
 
 ## Commands

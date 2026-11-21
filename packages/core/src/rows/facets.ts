@@ -1,4 +1,4 @@
-import { cellValue, toTime, valueKey } from './columns'
+import { cellValue, dayOf, isDay, timeZoneOf, toTime, valueKey } from './columns'
 import { walkRows } from './nodes'
 import { compareValues } from './sort'
 import type { ColumnDef, DataRow } from './types'
@@ -11,10 +11,11 @@ export function uniqueValues<Row>(
 	column: ColumnDef<Row>,
 	locale?: string,
 ): FacetValue[] {
-	const counts = new Map<unknown, FacetValue>()
+	const counts = new Map<string, FacetValue>()
 	const add = (value: unknown) => {
-		if (value === null || value === undefined || value === '') return
+		// A value without a text is no choice: its rows are the rows without a value.
 		const key = valueKey(value)
+		if (key === '') return
 		const facet = counts.get(key)
 		if (facet) facet.count++
 		else counts.set(key, { value, count: 1 })
@@ -59,4 +60,33 @@ export function dateRange<Row>(
 		if (time > max) max = time
 	})
 	return min <= max ? { from: new Date(min), to: new Date(max) } : null
+}
+
+/**
+ * The first and the last day of a column of dates, as `YYYY-MM-DD`, or `null`
+ * when it holds no date. A moment falls on a day in the zone of the column,
+ * or in local time for a column without one; a value that is a calendar day
+ * is that day in every zone. A range of dates is matched the same way.
+ */
+export function dayRange<Row>(
+	rows: readonly DataRow<Row>[],
+	column: ColumnDef<Row>,
+): { from: string; to: string } | null {
+	const zone = timeZoneOf(column)
+	let from = ''
+	let to = ''
+	walkRows(rows, (node) => {
+		const value = cellValue(node.row, column)
+		if (value === null || value === undefined || value === '') return
+		let day: string
+		if (isDay(value)) day = value
+		else {
+			const time = toTime(value)
+			if (time === undefined) return
+			day = dayOf(time, zone)
+		}
+		if (from === '' || day < from) from = day
+		if (to === '' || day > to) to = day
+	})
+	return from === '' ? null : { from, to }
 }

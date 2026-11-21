@@ -49,9 +49,13 @@ const columns: DataTableColumn<Person>[] = [
 ]
 
 let unmount: (() => void) | undefined
-afterEach(() => unmount?.())
+afterEach(() => {
+	unmount?.()
+	writers.downloadCsv.mockClear()
+	writers.downloadXlsx.mockClear()
+})
 
-test('an agent finds the styled table by its name and operates every control of it', async () => {
+test('an agent finds the styled table by its name and operates each of its controls', async () => {
 	const controller = createTableController()
 	const wrapper = mount(
 		() =>
@@ -101,12 +105,12 @@ test('an agent finds the styled table by its name and operates every control of 
 	)
 	for (const label of [
 		'Search, People',
-		'Filters',
-		'Columns',
-		'Export',
+		'Filters, People',
+		'Columns, People',
+		'Export, People',
 		'Rows per page, People',
 		'Pages, People',
-		'Select all rows',
+		'Select all 10 rows, People',
 		'Select row Person 1',
 		'Expand row Person 1',
 	]) {
@@ -121,8 +125,8 @@ test('an agent finds the styled table by its name and operates every control of 
 	expect(view().rowCount).toBe(9)
 
 	// Each kind of column filter, inside the popover.
-	await act('Filters', 'setOpen', true)
-	expect(seen('Column filters')?.open).toBe(true)
+	await act('Filters, People', 'setOpen', true)
+	expect(seen('Column filters, People')?.open).toBe(true)
 	await act('Filter Name', 'setValue', 'Person')
 	expect(view().filter.columns).toEqual({ name: 'Person' })
 	// The list offers the values of the column; a value goes by its place in the list.
@@ -145,24 +149,28 @@ test('an agent finds the styled table by its name and operates every control of 
 	expect(view().filter.columns?.score).toBeUndefined()
 	await act('Clear all filters', 'press')
 	expect(view().rowCount).toBe(9)
-	await act('Column filters', 'setOpen', false)
+	await act('Column filters, People', 'setOpen', false)
 
 	// Column visibility.
-	await act('Columns', 'setOpen', true)
-	expect(seen('Columns')?.buttons).toEqual(
+	await act('Columns, People', 'setOpen', true)
+	expect(seen('Columns, People')?.buttons).toEqual(
 		expect.arrayContaining(['Name', 'Team', 'Score', 'Joined', 'Show all']),
 	)
-	await act('Columns', 'press', 'Joined')
+	await act('Columns, People', 'press', 'Joined')
 	expect(view().visibleColumns.map((column) => column.header)).not.toContain('Joined')
-	await act('Columns', 'press', 'Show all')
+	await act('Columns, People', 'press', 'Show all')
 	expect(view().visibleColumns.map((column) => column.header)).toContain('Joined')
-	await act('Columns', 'setOpen', false)
+	await act('Columns, People', 'setOpen', false)
 
 	// Export.
-	await act('Export', 'setOpen', true)
-	await act('Export', 'press', 'Export CSV')
+	await act('Export, People', 'setOpen', true)
+	await act('Export, People', 'press', 'Export CSV')
 	await vi.waitFor(() => expect(writers.downloadCsv).toHaveBeenCalledTimes(1))
 	expect(writers.downloadCsv.mock.calls[0]?.[1]).toBe('people')
+	await act('Export, People', 'setOpen', true)
+	await act('Export, People', 'press', 'Export Excel')
+	await vi.waitFor(() => expect(writers.downloadXlsx).toHaveBeenCalledTimes(1))
+	expect(writers.downloadXlsx.mock.calls[0]?.[1]).toBe('people')
 
 	// Page size, next page, previous page.
 	expect(view().pageSize).toBe(3)
@@ -174,24 +182,36 @@ test('an agent finds the styled table by its name and operates every control of 
 	expect(firstNames()).toEqual(['Person 7', 'Person 8', 'Person 9'])
 	await act('Pages, People', 'previous')
 	expect(view().page).toBe(1)
+	// The last and the first page, and a page by its number.
+	await act('Rows per page, People', 'setValue', '3')
+	expect(view().pageCount).toBe(3)
+	await act('Pages, People', 'last')
+	expect(view().page).toBe(3)
+	await act('Pages, People', 'first')
+	expect(view().page).toBe(1)
+	await act('Pages, People', 'setPage', 2)
+	expect(view().page).toBe(2)
+	expect(firstNames()).toEqual(['Person 4', 'Person 5', 'Person 6'])
+	await act('Rows per page, People', 'setValue', '6')
 
 	// Select all, then one row.
-	await act('Select all rows', 'setChecked', true)
+	await act('Select all 10 rows, People', 'setChecked', true)
 	// The nine rows and the child row of the first one.
 	expect(view().selected).toHaveLength(10)
-	await act('Select all rows', 'setChecked', false)
+	await act('Select all 10 rows, People', 'setChecked', false)
 	expect(view().selected).toEqual([])
 	await act('Select row Person 2', 'setChecked', true)
 	expect(view().selected).toEqual(['p2'])
 
 	// A sort header. Its name is the name of its column, which the other
-	// controls of the header row have in their row text, so the agent takes
-	// the ref of the button from its snapshot.
+	// controls of the header row have in their row text, and the agent reads
+	// a name against the row text too. So it takes the ref of the button
+	// from its snapshot. The button of a group row is found the same way.
 	const header = (label: string) => {
 		const found = agent
 			.snapshot()
 			.find((component) => component.component === 'button' && component.label === label)
-		expect(found, `a sort button named "${label}"`).toBeDefined()
+		expect(found, `a button named "${label}"`).toBeDefined()
 		return found?.ref ?? ''
 	}
 	await act(header('Score'), 'press')
@@ -208,8 +228,24 @@ test('an agent finds the styled table by its name and operates every control of 
 	expect(firstNames()).toContain('Report 1')
 	await act('Collapse row Person 1', 'press')
 	expect(view().expanded).toEqual([])
-	await act('Expand all rows', 'press')
+	await act('Expand all rows, People', 'press')
 	expect(view().expanded).toEqual(['p1'])
+
+	// A group row: its checkbox selects its rows, and its button opens and closes it.
+	controller.clearSelection()
+	controller.setGroupBy(['team'])
+	await nextTick()
+	expect(seen('Select group Design')).toBeDefined()
+	await act('Select group Design', 'setChecked', true)
+	// Persons 1, 4 and 7 are in Design; the child row of the first one is not a row of the group.
+	expect([...view().selected].sort()).toEqual(['p1', 'p4', 'p7'])
+	await act('Select group Design', 'setChecked', false)
+	expect(view().selected).toEqual([])
+	await act(header('Design (3)'), 'press')
+	expect(view().expanded).toContain('group/team=Design')
+	expect(firstNames()).toContain('Person 4')
+	await act(header('Design (3)'), 'press')
+	expect(view().expanded).not.toContain('group/team=Design')
 
 	// A wrong argument comes back as a message that says what is valid.
 	const failed = await agent.act({
@@ -217,4 +253,78 @@ test('an agent finds the styled table by its name and operates every control of 
 	})
 	expect(failed.ok).toBe(false)
 	expect(failed.error?.message).toContain('No column "age" to read the facets of. Columns:')
+})
+
+test('an agent tells the controls of two tables on one page apart by their names', async () => {
+	const first = createTableController()
+	const second = createTableController()
+	const table = (label: string, controller: typeof first) =>
+		h(Styled, {
+			rows: people,
+			columns,
+			controller,
+			label,
+			search: true,
+			columnFilters: true,
+			columnMenu: true,
+			export: true,
+			pagination: true,
+			pageSizes: [3, 6],
+			selection: 'multiple',
+			getChildren: (row: Person) => row.reports,
+		} satisfies DataTableProps<Person>)
+	const wrapper = mount(() => h('div', [table('Staff', first), table('Guests', second)]), {
+		attachTo: document.body,
+	})
+	unmount = () => wrapper.unmount()
+	await nextTick()
+
+	const agent = createAgent()
+	async function act(ref: string, action: string, ...args: unknown[]) {
+		const result = await agent.act({ steps: [{ ref, action, args }] })
+		await nextTick()
+		expect(result.error?.message, `${action} on "${ref}"`).toBeUndefined()
+	}
+
+	// No control of the toolbar or of the pages, and no control for the whole
+	// table in the header, shares its name with one of the other table. A sort
+	// button has the name of its column and a row control the name of its row;
+	// both tables show the same columns and rows here, so those are left out,
+	// and an agent reaches them through the table: `toggleSort` on "Staff".
+	const perRow = /^(Select|Expand|Collapse) row /
+	const sortButtons = new Set(columns.map((column) => column.header))
+	const labels = agent
+		.snapshot()
+		.map((component) => component.label ?? '')
+		.filter((label) => !perRow.test(label) && !sortButtons.has(label))
+	expect(labels).toContain('Expand all rows, Guests')
+	expect(labels.filter((label, index) => labels.indexOf(label) !== index)).toEqual([])
+
+	await act('Guests', 'toggleSort', 'score')
+	expect([first.getView().sort, second.getView().sort]).toEqual([
+		[],
+		[{ id: 'score', desc: false }],
+	])
+	await act('Select all 10 rows, Guests', 'setChecked', true)
+	expect([first.getView().selected.length, second.getView().selected.length]).toEqual([0, 10])
+	await act('Search, Staff', 'setValue', 'Person 2')
+	expect([first.getView().rowCount, second.getView().rowCount]).toEqual([1, 9])
+	await act('Pages, Guests', 'next')
+	expect([first.getView().page, second.getView().page]).toEqual([1, 2])
+	await act('Columns, Guests', 'setOpen', true)
+	await act('Columns, Guests', 'press', 'Team')
+	expect(first.getView().visibleColumns.map((column) => column.id)).toContain('team')
+	expect(second.getView().visibleColumns.map((column) => column.id)).not.toContain('team')
+	await act('Columns, Guests', 'setOpen', false)
+	await act('Filters, Staff', 'setOpen', true)
+	await act('Filter Name', 'setValue', 'Person')
+	expect(first.getView().filter.columns).toEqual({ name: 'Person' })
+	expect(second.getView().filter.columns).toBeUndefined()
+	await act('Column filters, Staff', 'setOpen', false)
+	await act('Export, Guests', 'setOpen', true)
+	await act('Export, Guests', 'press', 'Export CSV')
+	await vi.waitFor(() => expect(writers.downloadCsv).toHaveBeenCalledTimes(1))
+	// The file holds the rows of the second table: every row, without the team column.
+	const data = writers.downloadCsv.mock.calls[0]?.[0] as { columns: { id: string }[] }
+	expect(data.columns.map((column) => column.id)).toEqual(['name', 'score', 'joined'])
 })

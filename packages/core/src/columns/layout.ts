@@ -43,6 +43,9 @@ export type ColumnLayout<Row = unknown> = {
 
 type Leaf<Row> = { column: ColumnDef<Row>; path: ColumnDef<Row>[]; position: number }
 
+/** Whether a top-level column leads the table: see `lead` of a column. */
+export const isLead = (column: ColumnDef<any>) => column.lead === true && !column.columns?.length
+
 /**
  * Works out which columns show, in which order, and how the header rows
  * cover them. Every part of the table reads the columns from this one result,
@@ -76,6 +79,17 @@ export function layoutColumns<Row>(
 	for (const id of pinning.start ?? []) pins.set(id, 'start')
 	for (const id of pinning.end ?? []) if (!pins.has(id)) pins.set(id, 'end')
 
+	// A leading column has no pin of its own. It goes where the first columns
+	// go: to the start edge while a column in view is pinned there, so it never
+	// scrolls under that column, and with the columns that scroll otherwise.
+	const leads = (leaf: Leaf<Row>) => isLead(leaf.column) && leaf.path.length === 0
+	const startHeld = shown.some((leaf) => !leads(leaf) && pins.get(leaf.column.id) === 'start')
+	for (const leaf of found) {
+		if (!leads(leaf)) continue
+		if (startHeld) pins.set(leaf.column.id, 'start')
+		else pins.delete(leaf.column.id)
+	}
+
 	const rank = (ids: readonly string[]) => new Map(ids.map((id, position) => [id, position]))
 	const ordered = rank(order)
 	const pinnedStart = rank(pinning.start ?? [])
@@ -87,6 +101,8 @@ export function layoutColumns<Row>(
 	const place = (leaf: Leaf<Row>) => {
 		const id = leaf.column.id
 		const pin = pins.get(id)
+		// Before every place that an order or a pin gives, in definition order.
+		if (leads(leaf)) return leaf.position - found.length
 		// A pinned column takes its place from the order of the pins.
 		if (pin === 'start') return pinnedStart.get(id) ?? 0
 		if (pin === 'end') return pinnedEnd.get(id) ?? 0
@@ -152,12 +168,19 @@ export function layoutColumns<Row>(
 	}
 }
 
-/** Every column id in display order, hidden columns too. This is the full form of a column order. */
+/**
+ * Every column id in display order, hidden columns too. This is the full form
+ * of a column order. A leading column has its place without an order, so it
+ * is not in one.
+ */
 export function fullColumnOrder<Row>(
 	columns: readonly ColumnDef<Row>[],
 	order: readonly string[] = [],
 ): string[] {
-	const all = layoutColumns(columns).all.map((column) => column.id)
+	const lead = new Set(columns.filter(isLead).map((column) => column.id))
+	const all = layoutColumns(columns)
+		.all.map((column) => column.id)
+		.filter((id) => !lead.has(id))
 	const known = new Set(all)
 	const listed = order.filter((id, position) => known.has(id) && order.indexOf(id) === position)
 	const rest = new Set(listed)

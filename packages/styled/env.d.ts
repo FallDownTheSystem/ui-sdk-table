@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 // vue-tsc reads `.vue` files itself. The type-aware lint does not, so it needs
 // this declaration to resolve a `.vue` import.
 declare module '*.vue' {

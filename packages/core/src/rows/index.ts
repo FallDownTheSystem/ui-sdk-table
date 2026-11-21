@@ -1,6 +1,17 @@
 export { aggregateRows, aggregates } from './aggregate'
-export { cellValue, dayEnd, leafColumns, requireColumns, toText, toTime, valueKey } from './columns'
-export { dateRange, numberRange, uniqueValues, type FacetValue } from './facets'
+export {
+	cellValue,
+	dayEnd,
+	dayOf,
+	isDay,
+	leafColumns,
+	requireColumns,
+	timeZoneOf,
+	toText,
+	toTime,
+	valueKey,
+} from './columns'
+export { dateRange, dayRange, numberRange, uniqueValues, type FacetValue } from './facets'
 export { createRowPredicate, filterRows, isEmptyFilter, type FilterOptions } from './filter'
 export { detailRowId, flattenRows, type FlatRow } from './flatten'
 export { groupRows, type GroupOptions } from './group'

@@ -391,15 +391,19 @@ describe('sticky rows', () => {
 			body.style.getPropertyValue('--table-sticky-bottom-size'),
 		]
 		const settle = () => new Promise<void>((resolve) => queueMicrotask(resolve))
+		// Each place has the inset of the owner in it: a page with a fixed header
+		// sets `--table-sticky-top`, and every sticky row starts under that header.
+		const top = (pixels: number) => `calc(${pixels}px + var(--table-sticky-top, 0px))`
+		const bottom = (pixels: number) => `calc(${pixels}px + var(--table-sticky-bottom, 0px))`
 		try {
 			await settle()
 			expect([offset(header), offset(a), offset(b), offset(footer)]).toEqual([
-				'0px',
+				top(0),
 				'',
-				'30px',
-				'0px',
+				top(30),
+				bottom(0),
 			])
-			expect(sizes()).toEqual(['54px', '28px'])
+			expect(sizes()).toEqual([top(54), bottom(28)])
 
 			// A second row at the bottom goes over the footer, and the header can stop to stick.
 			pinned = [
@@ -411,21 +415,21 @@ describe('sticky rows', () => {
 			await settle()
 			expect([offset(header), offset(b), offset(c), offset(footer)]).toEqual([
 				'',
-				'0px',
-				'28px',
-				'0px',
+				top(0),
+				bottom(28),
+				bottom(0),
 			])
-			expect(sizes()).toEqual(['24px', '48px'])
+			expect(sizes()).toEqual([top(24), bottom(48)])
 
 			// A change of live state only moves no row.
 			pinned = []
 			for (const listener of listeners) listener(true)
 			await settle()
-			expect(offset(b)).toBe('0px')
+			expect(offset(b)).toBe(top(0))
 			sticky.refresh()
 			await settle()
 			expect([offset(b), offset(c)]).toEqual(['', ''])
-			expect(sizes()).toEqual(['0px', '28px'])
+			expect(sizes()).toEqual([top(0), bottom(28)])
 		} finally {
 			leave.forEach((cleanup) => cleanup())
 			destroy.forEach((cleanup) => cleanup())

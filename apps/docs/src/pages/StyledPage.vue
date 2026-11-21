@@ -5,6 +5,7 @@ import DemoSwitch from '../styled/DemoSwitch.vue'
 import StyledBasics from '../styled/StyledBasics.vue'
 import StyledCustomers from '../styled/StyledCustomers.vue'
 import StyledCustomisation from '../styled/StyledCustomisation.vue'
+import StyledGrid from '../styled/StyledGrid.vue'
 import StyledHeadless from '../styled/StyledHeadless.vue'
 import StyledInteraction from '../styled/StyledInteraction.vue'
 import StyledStructure from '../styled/StyledStructure.vue'
@@ -23,6 +24,7 @@ watchEffect(() => document.documentElement.classList.toggle('dark', dark.value))
 		<StyledBasics />
 		<StyledStructure />
 		<StyledInteraction />
+		<StyledGrid />
 		<StyledCustomisation />
 		<StyledHeadless />
 		<StyledCustomers />

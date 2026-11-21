@@ -9,6 +9,8 @@ export { default as DataTableToolbar } from './DataTableToolbar.vue'
 export {
 	buttonClass,
 	checkboxClass,
+	focusInsetClass,
+	focusRingClass,
 	inputClass,
 	listContentClass,
 	listItemClass,
@@ -20,6 +22,8 @@ export {
 	defaultDataTableMessages,
 	resolveMessages,
 	type DataTableControlMessages,
+	type DataTableCount,
+	type DataTableExportFormat,
 	type DataTableMessages,
 } from './messages'
 export {
@@ -38,6 +42,7 @@ export {
 export { createTableController } from 'ui-sdk-table-vue'
 export type {
 	ColumnDef,
+	ColumnFacetsSource,
 	ColumnVisibility,
 	FilterState,
 	PageState,

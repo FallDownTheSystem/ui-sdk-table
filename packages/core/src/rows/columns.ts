@@ -36,34 +36,106 @@ export function toText(value: unknown): string {
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/
 
-function dayStart(value: unknown, addDays: number): number | undefined {
-	const parts = typeof value === 'string' ? DATE_ONLY.exec(value) : null
-	if (!parts) return undefined
-	const time = new Date(
-		Number(parts[1]),
-		Number(parts[2]) - 1,
-		Number(parts[3]) + addDays,
-	).getTime()
-	return Number.isNaN(time) ? undefined : time
+const zoneClocks = new Map<string, Intl.DateTimeFormat>()
+
+/** The date and the time of day that a clock in a zone shows at a moment, as if they were UTC. */
+function zoneClock(time: number, timeZone: string): number {
+	let clock = zoneClocks.get(timeZone)
+	if (!clock) {
+		clock = new Intl.DateTimeFormat('en-US', {
+			timeZone,
+			hourCycle: 'h23',
+			year: 'numeric',
+			month: 'numeric',
+			day: 'numeric',
+			hour: 'numeric',
+			minute: 'numeric',
+			second: 'numeric',
+		})
+		zoneClocks.set(timeZone, clock)
+	}
+	const read: Record<string, number> = {}
+	for (const part of clock.formatToParts(time)) read[part.type] = Number(part.value)
+	return Date.UTC(
+		read.year ?? 0,
+		(read.month ?? 1) - 1,
+		read.day ?? 1,
+		read.hour ?? 0,
+		read.minute ?? 0,
+		read.second ?? 0,
+	)
 }
 
 /**
- * The last millisecond of a day given as `YYYY-MM-DD`, or `undefined` for any
- * other value. It comes from the start of the next day, because a day is 23
- * or 25 hours long when the clocks change.
+ * The zone of a column of dates: the `timeZone` of its format options. A name
+ * that the runtime does not know is no zone, as for a column without one.
  */
-export function dayEnd(value: unknown): number | undefined {
-	const next = dayStart(value, 1)
+export function timeZoneOf(column: { formatOptions?: unknown }): string | undefined {
+	const options = column.formatOptions
+	const zone =
+		typeof options === 'object' && options !== null
+			? (options as { timeZone?: unknown }).timeZone
+			: undefined
+	if (typeof zone !== 'string' || zone === '') return undefined
+	try {
+		zoneClock(0, zone)
+		return zone
+	} catch {
+		return undefined
+	}
+}
+
+function dayStart(value: unknown, addDays: number, timeZone?: string): number | undefined {
+	const parts = typeof value === 'string' ? DATE_ONLY.exec(value) : null
+	if (!parts) return undefined
+	const [year, month, day] = [Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]) + addDays]
+	if (timeZone === undefined) {
+		const time = new Date(year, month, day).getTime()
+		return Number.isNaN(time) ? undefined : time
+	}
+	const wall = Date.UTC(year, month, day)
+	if (Number.isNaN(wall)) return undefined
+	// The zone is ahead of UTC by what its clock shows more. The second step
+	// corrects a first guess that fell on the other side of a clock change.
+	let time = wall - (zoneClock(wall, timeZone) - wall)
+	time = wall - (zoneClock(time, timeZone) - time)
+	return time
+}
+
+/** Whether a value is a calendar day without a time of day, as `YYYY-MM-DD`. */
+export function isDay(value: unknown): value is string {
+	return typeof value === 'string' && DATE_ONLY.test(value)
+}
+
+/**
+ * The last millisecond of a `YYYY-MM-DD` day, in local time or in a zone, or
+ * `undefined` for any other value. It comes from the start of the next day,
+ * because a day is 23 or 25 hours long when the clocks change.
+ */
+export function dayEnd(value: unknown, timeZone?: string): number | undefined {
+	const next = dayStart(value, 1, timeZone)
 	return next === undefined ? undefined : next - 1
+}
+
+/** The day that a moment falls on, as `YYYY-MM-DD`, in local time or in a zone. */
+export function dayOf(time: number, timeZone?: string): string {
+	const pad = (part: number, length = 2) => String(part).padStart(length, '0')
+	if (timeZone === undefined) {
+		const date = new Date(time)
+		return `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+	}
+	const clock = new Date(zoneClock(time, timeZone))
+	return `${pad(clock.getUTCFullYear(), 4)}-${pad(clock.getUTCMonth() + 1)}-${pad(clock.getUTCDate())}`
 }
 
 /**
  * A cell value as a point in time, or `undefined` when it is not a date. A
  * `YYYY-MM-DD` text is the start of that day in local time, like a date a
- * person picks; the filter and the facets must agree on this.
+ * person picks, or in the zone that is given; the filter and the facets must
+ * agree on this.
  */
-export function toTime(value: unknown): number | undefined {
-	const day = dayStart(value, 0)
+export function toTime(value: unknown, timeZone?: string): number | undefined {
+	const day = dayStart(value, 0, timeZone)
 	if (day !== undefined) return day
 	const time =
 		value instanceof Date
@@ -75,12 +147,12 @@ export function toTime(value: unknown): number | undefined {
 }
 
 /**
- * A key that is the same for two values a person sees as the same. Two `Date`
- * objects for one moment are different objects, so a `Set` or a `Map` keyed
- * on the values themselves never matches them.
+ * A key that is the same for two values a person sees as the same, as a
+ * group is: `1` and `'1'` share a key, and so do two `Date` objects for one
+ * moment. A value without a text has the empty key.
  */
-export function valueKey(value: unknown): unknown {
-	return value instanceof Date ? `date:${value.getTime()}` : value
+export function valueKey(value: unknown): string {
+	return toText(value)
 }
 
 /**

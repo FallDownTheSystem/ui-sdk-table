@@ -128,7 +128,7 @@ test('group rows, detail rows and the row of an empty table take attributes too'
 	empty.unmount()
 })
 
-test('a new selection does not ask for the attributes again, and renders one row', async () => {
+test('a new selection asks for no row attributes again, and for the cell attributes of one row', async () => {
 	const renders = new Map<string, number>()
 	const Probe = defineComponent({
 		props: { id: { type: String, required: true } },
@@ -137,18 +137,29 @@ test('a new selection does not ask for the attributes again, and renders one row
 			return () => h('span', props.id)
 		},
 	})
-	let asked = 0
+	const asked = { rows: 0, cells: 0 }
 	let mark = 0
-	const counting = (context: RowAttrsContext<Person>) => {
-		asked++
+	const countingRows = (context: RowAttrsContext<Person>) => {
+		asked.rows++
 		return rowAttrs(context)
+	}
+	const countingCells = (context: CellAttrsContext<Person>) => {
+		asked.cells++
+		return cellAttrs(context)
 	}
 	const controller = createTableController()
 	const wrapper = mount(
 		() =>
 			h(
 				Table<Person>,
-				{ rows: people, columns, controller, selection: 'multiple', rowAttrs: counting, cellAttrs },
+				{
+					rows: people,
+					columns,
+					controller,
+					selection: 'multiple',
+					rowAttrs: countingRows,
+					cellAttrs: countingCells,
+				},
 				{
 					'col-name': ({ row }: CellSlotProps<Person>) =>
 						h(Probe, { id: row.id, 'data-mark': ++mark }),
@@ -156,14 +167,131 @@ test('a new selection does not ask for the attributes again, and renders one row
 			),
 		{ attachTo: document.body },
 	)
-	const before = asked
+	asked.rows = 0
+	asked.cells = 0
 	controller.select('b')
 	await nextTick()
-	expect(asked).toBe(before)
+	// The selection is state of the row part: the table does not render its
+	// rows again, and the one row whose state changed renders its own cells.
+	expect(asked).toEqual({ rows: 0, cells: columns.length })
 	expect([...renders.keys()]).toEqual(['b'])
 	// The state of the row is on the part, so a class of the caller can follow it.
 	expect(wrapper.get('tbody tr[data-selected]').classes()).toContain('low')
 	wrapper.unmount()
+})
+
+test('attributes of the caller cannot take the place of what the table sets itself', () => {
+	const plain = mount(() => h(Table<Person>, { rows: people, columns, selection: 'multiple' }), {
+		attachTo: document.body,
+	})
+	const read = (wrapper: typeof plain) => ({
+		rows: wrapper.findAll('tbody tr').map((row) => ({
+			index: row.attributes('aria-rowindex'),
+			role: row.attributes('role'),
+			selected: row.attributes('aria-selected'),
+			tabindex: row.attributes('tabindex'),
+			text: row.text(),
+		})),
+		cells: wrapper.findAll('tbody tr:first-child td, thead th').map((cell) => ({
+			role: cell.attributes('role'),
+			colspan: cell.attributes('colspan'),
+			colindex: cell.attributes('aria-colindex'),
+			sort: cell.attributes('aria-sort'),
+			pinned: cell.attributes('data-pinned'),
+			slot: cell.attributes('data-slot'),
+			tabindex: cell.attributes('tabindex'),
+		})),
+	})
+	const expected = read(plain)
+	plain.unmount()
+
+	const wrapper = mount(
+		() =>
+			h(Table<Person>, {
+				rows: people,
+				columns,
+				selection: 'multiple',
+				rowAttrs: () => ({
+					// Props of the row part, and state that the table shows.
+					value: 'a',
+					index: 5,
+					key: 'same',
+					role: 'presentation',
+					tabindex: '0',
+					'aria-selected': 'true',
+					'aria-rowindex': '99',
+					'data-selected': '',
+					'data-slot': 'mine',
+					// Attributes that are the caller's own.
+					class: 'mine',
+					title: 'A row',
+					'data-tone': 'calm',
+				}),
+				cellAttrs: () => ({
+					value: 'r|a|name',
+					row: 0,
+					col: 0,
+					colspan: 3,
+					role: 'presentation',
+					tabindex: '0',
+					'aria-colindex': '99',
+					'aria-sort': 'none',
+					'data-pinned': 'start',
+					'data-slot': 'mine',
+					class: 'mine',
+					'aria-describedby': 'note',
+				}),
+				sectionAttrs: { body: { role: 'presentation', 'data-slot': 'mine', class: 'mine' } },
+			}),
+		{ attachTo: document.body },
+	)
+	expect(read(wrapper)).toEqual(expected)
+	const row = wrapper.get('tbody tr')
+	expect(row.classes()).toContain('mine')
+	expect(row.attributes()).toMatchObject({ title: 'A row', 'data-tone': 'calm' })
+	expect(row.attributes('data-selected')).toBeUndefined()
+	const cell = wrapper.get('tbody td')
+	expect(cell.classes()).toContain('mine')
+	expect(cell.attributes('aria-describedby')).toBe('note')
+	const body = wrapper.get('tbody')
+	expect(body.attributes()).toMatchObject({ role: 'rowgroup', 'data-slot': 'table-body' })
+	expect(body.classes()).toContain('mine')
+	wrapper.unmount()
+})
+
+test('`subscribe` waits for the table when it is called before the table exists', async () => {
+	const controller = createTableController()
+	const seen: (readonly string[])[] = []
+	const stop = controller.subscribe((changed) => seen.push(changed))
+	const other = controller.subscribe(() => seen.push(['other']))
+	expect(typeof stop).toBe('function')
+	// A listener that was stopped while it waited never runs.
+	other()
+	expect(() => controller.subscribe(undefined as never)).toThrow('`subscribe` takes a function.')
+
+	const wrapper = mount(() => h(Table<Person>, { rows: people, columns, controller }), {
+		attachTo: document.body,
+	})
+	await nextTick()
+	// The table arrived: the listener runs once, with no key, and can read the view.
+	expect(seen).toEqual([[]])
+	expect(controller.getView().rowCount).toBe(people.length)
+	controller.sortBy('name')
+	expect(seen).toHaveLength(2)
+	expect(seen[1]).toContain('sort')
+	stop()
+	controller.sortBy('name', 'desc')
+	expect(seen).toHaveLength(2)
+
+	// With the table on the page, `subscribe` answers with the stop function at once.
+	const later = controller.subscribe((changed) => seen.push(changed))
+	controller.sortBy('name', 'asc')
+	expect(seen).toHaveLength(3)
+	wrapper.unmount()
+	// The table is gone: its listeners are released, and a call does nothing.
+	controller.sortBy('name', 'desc')
+	expect(seen).toHaveLength(3)
+	later()
 })
 
 test('the footer slot gets the totals of every column', () => {

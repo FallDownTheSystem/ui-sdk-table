@@ -15,7 +15,8 @@ for (const theme of ['light', 'dark'] as const) {
 		await installContrast(page)
 		// A colour is measured at its end value, not on its way there.
 		await page.emulateMedia({ reducedMotion: 'reduce' })
-		await page.goto(`/?page=styled${theme === 'dark' ? '&theme=dark' : ''}`)
+		// The server of one demo answers late, so its rows can be measured while they wait.
+		await page.goto(`/?page=styled&delay=1500${theme === 'dark' ? '&theme=dark' : ''}`)
 		await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^$/)
 
 		const measured: { name: string; ratio: number; limit: number }[] = []
@@ -26,6 +27,16 @@ for (const theme of ['light', 'dark'] as const) {
 			expect
 				.soft(ratio, `${name} (${theme}): ${ratio} to 1, needs ${limit} to 1`)
 				.toBeGreaterThanOrEqual(limit)
+			// A line has two sides: what is around the control, and the fill of the control.
+			if (kind === 'border')
+				await check(`${name}, against its own fill`, locator, 'border-inside', limit)
+		}
+		/** Gives an element focus as a key does, so the ring of `:focus-visible` shows. */
+		async function keyFocus(name: string, locator: Locator) {
+			await page.keyboard.press('Shift')
+			await locator.focus()
+			await expect(locator, name).toBeFocused()
+			await check(`focus ring, ${name}`, locator, 'outline', PART)
 		}
 		/** Moves focus away and back with keys, so the ring of `:focus-visible` shows. */
 		async function ring(name: string, locator: Locator, away = 'Shift+Tab', back = 'Tab') {
@@ -49,7 +60,9 @@ for (const theme of ['light', 'dark'] as const) {
 		const filters = found.locator('[data-slot="popover-trigger"]')
 		const sizes = found.getByRole('combobox', { name: 'Rows per page, Customers' })
 		const pages = found.getByRole('navigation', { name: 'Pages, Customers' })
-		const sorter = table.getByRole('columnheader', { name: 'Customer' }).getByRole('button')
+		const sorter = table
+			.getByRole('columnheader', { name: 'Customer', exact: true })
+			.getByRole('button')
 
 		// The table.
 		await check('header cell with a sort button', sorter, 'text', TEXT)
@@ -62,6 +75,7 @@ for (const theme of ['light', 'dark'] as const) {
 
 		await row.hover()
 		await check('body cell, hovered row', row.locator('td').nth(3), 'text', TEXT)
+		await check('row checkbox on a hovered row, line', row.getByRole('checkbox'), 'border', PART)
 		await check('second line, hovered row', row.locator('td').nth(2).locator('a'), 'text', TEXT)
 
 		await row.getByRole('checkbox').click()
@@ -74,7 +88,7 @@ for (const theme of ['light', 'dark'] as const) {
 		await check('expand button on a selected row, mark', row.getByRole('button'), 'text', PART)
 		await check(
 			'header checkbox, mixed, fill',
-			table.getByRole('checkbox', { name: 'Select all rows' }),
+			table.getByRole('checkbox', { name: /^Select all \d+ rows?/ }),
 			'fill',
 			PART,
 		)
@@ -90,6 +104,7 @@ for (const theme of ['light', 'dark'] as const) {
 			'text',
 			PART,
 		)
+		await ring('clear button of the search', found.getByRole('button', { name: 'Clear search' }))
 		await search.fill('')
 		await check('outline button', filters, 'text', TEXT)
 		await check('outline button, line', filters, 'border', PART)
@@ -116,6 +131,12 @@ for (const theme of ['light', 'dark'] as const) {
 		await check('current page, fill', pages.getByRole('button', { name: 'Page 1' }), 'fill', PART)
 		await check('next page, mark', pages.getByRole('button', { name: 'Next page' }), 'text', PART)
 		await check('next page, line', pages.getByRole('button', { name: 'Next page' }), 'border', PART)
+		await check(
+			'mark for the pages that are left out',
+			pages.locator('[data-slot="pagination-ellipsis"] svg'),
+			'text',
+			PART,
+		)
 		await pages.getByRole('button', { name: 'Page 2' }).hover()
 		await check('page link, hovered', pages.getByRole('button', { name: 'Page 2' }), 'text', TEXT)
 
@@ -148,7 +169,7 @@ for (const theme of ['light', 'dark'] as const) {
 		await expect(row.getByRole('button')).toBeFocused()
 		await check('focus ring, expand button', row.getByRole('button'), 'outline', PART)
 		await page.keyboard.press('Escape')
-		await table.getByRole('columnheader', { name: 'Customer' }).focus()
+		await table.getByRole('columnheader', { name: 'Customer', exact: true }).focus()
 		await page.keyboard.press('ArrowRight')
 		await page.keyboard.press('ArrowLeft')
 		await page.keyboard.press('F2')
@@ -230,6 +251,21 @@ for (const theme of ['light', 'dark'] as const) {
 		await check('name of a total in a group row', grouped.locator('dt').first(), 'text', TEXT)
 		await check('total in a group row', grouped.locator('dd').first(), 'text', TEXT)
 		await check('footer cell', grouped.locator('tfoot td').last(), 'text', TEXT)
+		await grouped.locator('dd').first().hover()
+		await check(
+			'group row, hovered',
+			grouped.getByRole('button', { name: 'Hardware (4)' }),
+			'text',
+			TEXT,
+		)
+		await check(
+			'name of a total in a hovered group row',
+			grouped.locator('dt').first(),
+			'text',
+			TEXT,
+		)
+		await check('total in a hovered group row', grouped.locator('dd').first(), 'text', TEXT)
+		await keyFocus('button of a group row', grouped.getByRole('button', { name: 'Hardware (4)' }))
 		const tasks = (await section('selection-grouping')).getByRole('treegrid', {
 			name: 'Selectable tasks',
 		})
@@ -239,10 +275,22 @@ for (const theme of ['light', 'dark'] as const) {
 			'border',
 			PART,
 		)
+		await tasks.getByRole('button', { name: /^High/ }).hover()
+		await check(
+			'checkbox of a hovered group row, line',
+			tasks.getByRole('checkbox', { name: 'Select group High' }),
+			'border',
+			PART,
+		)
+		await keyFocus(
+			'checkbox of a group row',
+			tasks.getByRole('checkbox', { name: 'Select group High' }),
+		)
 		const empty = await section('empty-loading')
 		await check('empty state', empty.locator('[data-slot="data-table-empty"] span'), 'text', TEXT)
 		const formats = (await section('format-types')).getByRole('grid', { name: 'Formats' })
 		await check('link in a cell', formats.getByRole('link').first(), 'text', TEXT)
+		await keyFocus('link in a cell', formats.getByRole('link').first())
 		await check('true mark of a boolean cell', formats.locator('tbody svg').first(), 'text', PART)
 		await check('false mark of a boolean cell', formats.locator('tbody svg').last(), 'text', PART)
 		const detail = await section('expansion-custom')
@@ -286,6 +334,106 @@ for (const theme of ['light', 'dark'] as const) {
 			'text',
 			TEXT,
 		)
+
+		// Pinned cells. They are opaque, and paint the tint of their row themselves.
+		const orders = (await section('pinned-columns')).getByRole('grid', {
+			name: 'Orders with pinned columns',
+		})
+		const product = (row: Locator) => row.locator('td[data-column="product"]')
+		const order = orders
+			.locator('tbody tr[data-slot="table-row"]:not([class*="bg-warning"])')
+			.nth(1)
+		const returned = orders.locator('tbody tr[class*="bg-warning"]').first()
+		await page.mouse.move(0, 0)
+		await check('pinned cell', product(order), 'text', TEXT)
+		await check(
+			'pinned cell of a sticky header',
+			orders.locator('thead th[data-column="product"]').getByRole('button'),
+			'text',
+			TEXT,
+		)
+		await check('pinned cell, row with a tint of the caller', product(returned), 'text', TEXT)
+		await check(
+			'checkbox in a pinned cell of a tinted row, line',
+			returned.getByRole('checkbox'),
+			'border',
+			PART,
+		)
+		await order.hover()
+		await check('pinned cell, hovered row', product(order), 'text', TEXT)
+		await check(
+			'checkbox in a pinned cell of a hovered row, line',
+			order.getByRole('checkbox'),
+			'border',
+			PART,
+		)
+		await order.getByRole('checkbox').click()
+		await page.mouse.move(0, 0)
+		await expect(order).toHaveAttribute('aria-selected', 'true')
+		await check('pinned cell, selected row', product(order), 'text', TEXT)
+
+		// Sticky cells of a header and a footer in a frame.
+		const framed = (await section('column-footers')).getByRole('grid', {
+			name: 'Orders in a frame',
+		})
+		await check('sticky header cell', framed.locator('thead th').nth(1), 'text', TEXT)
+		await check('sticky footer cell', framed.locator('tfoot td').last(), 'text', TEXT)
+
+		// The bar that resizes a column, and the header of a column that is picked up.
+		const sized = (await section('column-resize')).getByRole('grid', {
+			name: 'People with columns to resize and move',
+		})
+		const bar = sized.locator('[data-slot="table-resizer"][data-column="role"]')
+		await bar.hover()
+		await check('resize bar, hovered', bar, 'fill', PART)
+		await page.mouse.move(0, 0)
+		await page.keyboard.press('Shift')
+		await bar.focus()
+		await check('resize bar with focus', bar, 'fill', PART)
+		const moved = sized.locator('thead th[data-column="name"]')
+		await moved.focus()
+		await page.keyboard.press('Space')
+		await expect(moved).toHaveAttribute('data-moving', '')
+		await check('header of a column that is picked up', moved.getByRole('button'), 'text', TEXT)
+		await page.keyboard.press('Escape')
+
+		// A range of cells, the editor of a cell and the reason for a refused value.
+		const edited = (await section('cell-editing')).getByRole('grid', { name: 'People to edit' })
+		const age = (row: number) => edited.locator(`tr[aria-rowindex="${row}"] > [aria-colindex="3"]`)
+		await age(2).click()
+		await page.keyboard.press('Shift+ArrowDown')
+		await expect(age(3)).toHaveAttribute('data-selected', '')
+		await check('cell in a range', age(3), 'text', TEXT)
+		await page.mouse.move(0, 0)
+		await check('cell in a range, with focus', age(2), 'text', TEXT)
+		await check('focus ring, cell in a range', age(2), 'outline', PART)
+		await page.keyboard.press('Escape')
+		await page.keyboard.press('Enter')
+		const editor = edited.locator('[data-slot="table-editor"]')
+		await expect(editor).toBeFocused()
+		await check('editor of a cell', editor, 'text', TEXT)
+		await check('editor of a cell, ring', editor, 'outline', PART)
+		await page.keyboard.type('7')
+		await page.keyboard.press('Enter')
+		const refused = edited.locator('[data-slot="table-edit-error"]')
+		await check('reason for a refused value', refused, 'text', TEXT)
+		await check('reason for a refused value, fill', refused, 'fill', PART)
+		await check('editor with a refused value, ring', editor, 'outline', PART)
+		await page.keyboard.press('Escape')
+
+		// Rows that wait for the next page stay as easy to read as rows that are here.
+		const served = await section('server-pages')
+		const waiting = served.getByRole('grid', { name: 'People from a server' })
+		await expect(dataRows(waiting)).toHaveCount(5)
+		await served.getByRole('button', { name: 'Next page' }).click()
+		await expect(waiting).toHaveAttribute('aria-busy', 'true')
+		await check(
+			'body cell while a page loads',
+			dataRows(waiting).first().locator('td').first(),
+			'text',
+			TEXT,
+		)
+		await expect(waiting).toHaveAttribute('aria-busy', 'true')
 
 		// The pairs nearest to their limit, for the one who reads the run.
 		const closest = (limit: number) =>

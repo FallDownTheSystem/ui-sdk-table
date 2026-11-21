@@ -29,7 +29,7 @@ const { controller, view, messages, label } = useDataTable()
 		<InputGroup v-if="search" class="relative w-full sm:w-64">
 			<SearchIcon
 				aria-hidden="true"
-				class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+				class="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
 			/>
 			<Input
 				type="text"
@@ -44,7 +44,7 @@ const { controller, view, messages, label } = useDataTable()
 			/>
 			<InputClear
 				:aria-label="messages.clearSearch()"
-				:class="cn(buttonClass('ghost', 'icon-xs'), 'absolute top-1/2 right-1.5 -translate-y-1/2')"
+				:class="cn(buttonClass('ghost', 'icon-xs'), 'absolute end-1.5 top-1/2 -translate-y-1/2')"
 			>
 				<XIcon aria-hidden="true" />
 			</InputClear>

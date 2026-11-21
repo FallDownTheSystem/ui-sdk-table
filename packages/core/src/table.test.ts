@@ -285,4 +285,55 @@ describe('table primitive', () => {
 			view.unmount()
 		}
 	})
+
+	test('Space on a group row selects the rows of the group, and Space again takes them out', async () => {
+		const groups = ['group/team=Design', 'group/team=Platform']
+		const view = setup({ selection: 'multiple', defaultGroupBy: ['team'] }, groups)
+		try {
+			await view.keys('Tab', 'ArrowDown', 'Space')
+			expect(view.state.selected).toEqual(['a', 'c'])
+			expect(view.changes.at(-1)).toMatchObject({
+				key: 'selected',
+				reason: 'list-navigation',
+				source: 'keyboard',
+			})
+			// The rows of another group stay as they are.
+			await view.keys('ArrowDown', 'Space')
+			expect(view.state.selected).toEqual(['a', 'c', 'b'])
+			await view.keys('ArrowUp', 'Space')
+			expect(view.state.selected).toEqual(['b'])
+			// A group with some rows selected gets the rest.
+			view.api.selectRows(['c'])
+			await view.keys('Space')
+			expect([...view.state.selected].sort()).toEqual(['a', 'b', 'c'])
+			// Enter is still the button of the group: it opens it.
+			await view.keys('Enter')
+			expect(view.state.expanded).toEqual(['group/team=Design'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('Space on a group row leaves out the rows that cannot be selected, and needs a multiple selection', async () => {
+		const groups = ['group/team=Design', 'group/team=Platform']
+		const some = setup(
+			{ selection: 'multiple', defaultGroupBy: ['team'], canSelect: (row) => row.id !== 'c' },
+			groups,
+		)
+		try {
+			await some.keys('Tab', 'ArrowDown', 'Space')
+			expect(some.state.selected).toEqual(['a'])
+			await some.keys('Space')
+			expect(some.state.selected).toEqual([])
+		} finally {
+			some.unmount()
+		}
+		const single = setup({ selection: 'single', defaultGroupBy: ['team'] }, groups)
+		try {
+			await single.keys('Tab', 'ArrowDown', 'Space')
+			expect(single.state.selected).toEqual([])
+		} finally {
+			single.unmount()
+		}
+	})
 })

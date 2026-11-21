@@ -85,3 +85,67 @@ describe('column layout', () => {
 		])
 	})
 })
+
+describe('leading columns', () => {
+	const withControls: ColumnDef[] = [
+		{ id: 'check', lead: true },
+		{ id: 'open', lead: true },
+		{ id: 'name' },
+		{ id: 'team' },
+		{ id: 'score' },
+	]
+	const ids = (layout: ReturnType<typeof layoutColumns>) =>
+		layout.leaves.map((column) => `${column.id}${layout.pins.get(column.id)?.[0] ?? ''}`)
+
+	test('a leading column stays first under any column order', () => {
+		expect(ids(layoutColumns(withControls, { order: ['score', 'name'] }))).toEqual([
+			'check',
+			'open',
+			'score',
+			'name',
+			'team',
+		])
+		// An order that names a leading column moves it nowhere.
+		expect(ids(layoutColumns(withControls, { order: ['team', 'open', 'check'] }))).toEqual([
+			'check',
+			'open',
+			'team',
+			'name',
+			'score',
+		])
+	})
+
+	test('a leading column sticks with the start pins, and only while a column is pinned there', () => {
+		expect(ids(layoutColumns(withControls, { pinning: { start: ['team'] } }))).toEqual([
+			'checks',
+			'opens',
+			'teams',
+			'name',
+			'score',
+		])
+		expect(ids(layoutColumns(withControls, { pinning: { end: ['team'] } }))).toEqual([
+			'check',
+			'open',
+			'name',
+			'score',
+			'teame',
+		])
+		// A pin of the caller on a leading column changes nothing: its place follows the other columns.
+		expect(
+			ids(layoutColumns(withControls, { pinning: { start: ['open'], end: ['check'] } })),
+		).toEqual(['check', 'open', 'name', 'team', 'score'])
+		// A hidden column pins nothing, so it holds no leading column at the start.
+		expect(
+			ids(
+				layoutColumns(withControls, {
+					pinning: { start: ['team'] },
+					visibility: { team: false },
+				}),
+			),
+		).toEqual(['check', 'open', 'name', 'score'])
+	})
+
+	test('a column order does not hold the leading columns', () => {
+		expect(fullColumnOrder(withControls, ['score', 'check'])).toEqual(['score', 'name', 'team'])
+	})
+})

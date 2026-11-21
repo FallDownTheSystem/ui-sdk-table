@@ -135,6 +135,7 @@ describe('what a control beside the table reads', () => {
 				],
 				range: null,
 				dates: null,
+				days: null,
 			})
 			// A cell that holds a list counts once for each entry.
 			expect(view.api.getFacets('tags').values).toEqual([
@@ -150,11 +151,13 @@ describe('what a control beside the table reads', () => {
 			expect(dates.kind).toBe('dateRange')
 			expect(dates.dates?.from.getFullYear()).toBe(2023)
 			expect(dates.dates?.to.getFullYear()).toBe(2025)
+			expect(dates.days).toEqual({ from: '2023-01-15', to: '2025-06-30' })
 			expect(view.api.getFacets('name')).toEqual({
 				kind: 'text',
 				values: [],
 				range: null,
 				dates: null,
+				days: null,
 			})
 		} finally {
 			view.unmount()
@@ -254,4 +257,239 @@ test('`clearColumnFilters` takes every column filter away in one change, and kee
 	} finally {
 		view.unmount()
 	}
+})
+
+describe('what a review of the controls found', () => {
+	test('`selectRows` with no row changes nothing, also with a single selection', () => {
+		const changes: unknown[] = []
+		const view = setup({ selection: 'single', onSelectedChange: (value) => changes.push(value) })
+		try {
+			view.api.select('a')
+			view.api.selectRows([])
+			expect(view.api.getView().selected).toEqual(['a'])
+			expect(changes).toEqual([['a']])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a listener of `subscribe` does not run after the table is gone', () => {
+		const view = setup()
+		let calls = 0
+		view.api.subscribe(() => calls++)
+		view.api.sortBy('name')
+		expect(calls).toBe(1)
+		view.unmount()
+		try {
+			view.api.sortBy('name', 'desc')
+		} catch {
+			// A table that is gone may refuse the call; the listener must stay quiet either way.
+		}
+		expect(calls).toBe(1)
+	})
+
+	test('a filter that asks for nothing leaves no key in the state', () => {
+		const view = setup()
+		try {
+			view.api.setColumnFilter('score', { min: 40 })
+			view.api.setColumnFilter('team', ['Design'])
+			view.api.setColumnFilter('score', undefined)
+			expect(view.api.getView().filter).toEqual({ columns: { team: ['Design'] } })
+			view.api.setColumnFilter('team', [])
+			expect(view.api.getView().filter).toEqual({})
+			view.api.setSearch('a')
+			view.api.setColumnFilter('score', { min: null, max: null })
+			expect(view.api.getView().filter).toEqual({ search: 'a' })
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('`setPageSize(null)` takes the pages away, and a size brings them back', () => {
+		const changes: unknown[] = []
+		const view = setup({
+			defaultPage: { page: 2, pageSize: 2 },
+			onPageChange: (value, details) => changes.push([value, details.reason]),
+		})
+		try {
+			expect(view.api.rows()).toHaveLength(1)
+			view.api.setPageSize(null)
+			expect(view.api.getView()).toMatchObject({ pageSize: undefined, page: 1, pageCount: 1 })
+			expect(view.api.rows()).toHaveLength(3)
+			// A table without pages has none to take away: no second change.
+			view.api.setPageSize(null)
+			expect(changes).toEqual([[undefined, 'imperative']])
+			view.api.setPageSize(2)
+			expect(view.api.getView()).toMatchObject({ pageSize: 2, page: 1, pageCount: 2 })
+			expect(() => view.api.setPageSize(0)).toThrow(
+				'A page size must be a whole number above 0, or null for a table without pages.',
+			)
+			expect(() => view.api.setPageSize(undefined as never)).toThrow('or null')
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('the facets and the select filter read a value as grouping does: 1 and "1" are one value', () => {
+		type Item = { id: string; code: unknown }
+		const items: Item[] = [
+			{ id: 'a', code: 1 },
+			{ id: 'b', code: '1' },
+			{ id: 'c', code: true },
+			{ id: 'd', code: 'true' },
+			{ id: 'e', code: 'x' },
+			{ id: 'f', code: null },
+		]
+		const view = mount(
+			table,
+			{ rows: items, columns: [{ id: 'code', filter: 'select' }] } as TableOptions,
+			'<root aria-label="Items"></root>',
+		)
+		try {
+			const facets = view.api.getFacets('code').values
+			expect(facets.map((facet) => [facet.text, facet.count])).toEqual([
+				['1', 2],
+				['true', 2],
+				['x', 1],
+			])
+			view.api.setGroupBy(['code'])
+			const groups = view.api.rows().filter((row) => row.node.kind === 'group')
+			// One group for each facet, and one for the row without a value.
+			expect(groups).toHaveLength(facets.length + 1)
+			view.api.setGroupBy([])
+			view.api.setColumnFilter('code', [facets[0]?.value])
+			expect(view.api.rows().map((row) => row.id)).toEqual(['a', 'b'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('with a filter on the server, the facets of the owner stay while the rows change', () => {
+		const facets = {
+			team: { values: [{ value: 'Design', count: 2 }, { value: 'Platform' }, { value: 'Sales' }] },
+			score: { range: { min: 0, max: 100 } },
+			joined: { dates: { from: '2020-01-01', to: new Date(2025, 11, 31, 15) } },
+		}
+		// The server answered with the rows that pass a filter on the team.
+		const view = setup({
+			manualFilter: true,
+			facets,
+			rows: people.filter((person) => person.team === 'Design'),
+			defaultFilter: { columns: { team: ['Design'] } },
+		})
+		const plain = setup({
+			manualFilter: true,
+			rows: people.filter((person) => person.team === 'Design'),
+		})
+		try {
+			// Without facets of the owner, the list holds what the rows hold: one team.
+			expect(plain.api.getFacets('team').values.map((facet) => facet.value)).toEqual(['Design'])
+			expect(view.api.getFacets('team').values).toEqual([
+				{ value: 'Design', text: 'Design', count: 2 },
+				{ value: 'Platform', text: 'Platform' },
+				{ value: 'Sales', text: 'Sales' },
+			])
+			expect(view.api.getFacets('score').range).toEqual({ min: 0, max: 100 })
+			expect(view.api.getFacets('joined').days).toEqual({ from: '2020-01-01', to: '2025-12-31' })
+			// A column without an entry reads the rows that the table holds.
+			expect(view.api.getFacets('tags').values.map((facet) => facet.value)).toEqual(['lead', 'new'])
+		} finally {
+			view.unmount()
+			plain.unmount()
+		}
+	})
+
+	test('facets that name an unknown column or have a wrong shape fail with the reason', () => {
+		expect(() => setup({ facets: { nobody: { values: [] } } }).api.getFacets('team')).toThrow(
+			'No column "nobody" to give facets to. Columns: name, team, score, joined, tags.',
+		)
+		expect(() =>
+			setup({ facets: { score: { range: { min: 'a' } } } as never }).api.getFacets('score'),
+		).toThrow('The facets of column "score" need `range` as { min, max } with two numbers.')
+		expect(() =>
+			setup({ facets: { team: { values: ['Design'] } } as never }).api.getFacets('team'),
+		).toThrow('The facets of column "team" need `values` as a list of { value, count? } entries.')
+	})
+
+	test('the days of a column of dates are days in the zone of the column', () => {
+		const view = mount(
+			table,
+			{
+				rows: [
+					{ id: 'a', at: new Date(Date.UTC(2024, 0, 5, 2)) },
+					{ id: 'b', at: new Date(Date.UTC(2024, 0, 9, 23)) },
+				],
+				columns: [{ id: 'at', format: 'date', formatOptions: { timeZone: 'America/Los_Angeles' } }],
+			} as TableOptions,
+			'<root aria-label="Flights"></root>',
+		)
+		try {
+			expect(view.api.getFacets('at').days).toEqual({ from: '2024-01-04', to: '2024-01-09' })
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('the view says what the pages count: rows, groups, rows with child rows, or both', () => {
+		const flat = setup({ defaultPage: { page: 1, pageSize: 2 } })
+		const grouped = setup({ defaultPage: { page: 1, pageSize: 2 }, defaultGroupBy: ['team'] })
+		const mixed = setup({
+			defaultPage: { page: 1, pageSize: 2 },
+			defaultGroupBy: ['team'],
+			canGroup: (row) => row.team !== 'Platform',
+		})
+		const tree = mount(
+			table,
+			{
+				rows: [
+					{
+						id: 'p',
+						n: 1,
+						kids: [
+							{ id: 'k1', n: 2 },
+							{ id: 'k2', n: 3 },
+						],
+					},
+					{ id: 'q', n: 4 },
+				],
+				columns: [{ id: 'n' }],
+				getChildren: (row: { kids?: unknown[] }) => row.kids,
+				defaultPage: { page: 1, pageSize: 1 },
+			} as TableOptions,
+			'<root aria-label="Tree"></root>',
+		)
+		try {
+			expect(flat.api.getView()).toMatchObject({ rowCount: 3, pageUnit: 'rows', dataRowCount: 3 })
+			expect(grouped.api.getView()).toMatchObject({
+				rowCount: 2,
+				pageUnit: 'groups',
+				dataRowCount: 3,
+			})
+			expect(mixed.api.getView()).toMatchObject({ rowCount: 2, pageUnit: 'mixed', dataRowCount: 3 })
+			expect(tree.api.getView()).toMatchObject({
+				rowCount: 2,
+				pageUnit: 'parents',
+				dataRowCount: 4,
+			})
+			grouped.api.setSearch('Aino')
+			expect(grouped.api.getView()).toMatchObject({ rowCount: 1, dataRowCount: 1 })
+		} finally {
+			for (const view of [flat, grouped, mixed, tree]) view.unmount()
+		}
+	})
+
+	test('`hasExpanded` reads the rows of now, not ids that no row has any more', () => {
+		const view = setup({ defaultGroupBy: ['team'] })
+		try {
+			expect(view.api.getView().hasExpanded).toBe(false)
+			view.api.expandAll()
+			expect(view.api.getView().hasExpanded).toBe(true)
+			// The ids of the old groups stay in the state, and none of them is a group now.
+			view.api.setGroupBy(['name'])
+			expect(view.api.getView().expanded.length).toBeGreaterThan(0)
+			expect(view.api.getView().hasExpanded).toBe(false)
+		} finally {
+			view.unmount()
+		}
+	})
 })

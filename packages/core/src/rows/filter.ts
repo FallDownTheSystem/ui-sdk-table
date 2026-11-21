@@ -1,5 +1,14 @@
 import { fuzzyScore } from '@ui-sdk/core/text-match'
-import { cellValue, dayEnd, leafColumns, toText, toTime, valueKey } from './columns'
+import {
+	cellValue,
+	dayEnd,
+	isDay,
+	leafColumns,
+	timeZoneOf,
+	toText,
+	toTime,
+	valueKey,
+} from './columns'
 import type { ColumnDef, DataRow, FilterKind, FilterMatcher, FilterState } from './types'
 
 export type FilterOptions<Row> = {
@@ -46,10 +55,15 @@ function kindOf(value: unknown): FilterKind {
 	return 'text'
 }
 
-function boundTime(value: unknown, endOfDay: boolean): number | undefined {
+/** One end of a range of dates: a moment, and the day when the caller gave a day. */
+type DateBound = { time: number; day?: string }
+
+function dateBound(value: unknown, endOfDay: boolean, timeZone?: string): DateBound | undefined {
 	if (value === null || value === undefined || value === '') return undefined
 	// An end bound without a time of day means the whole day.
-	return (endOfDay ? dayEnd(value) : undefined) ?? toTime(value)
+	const time = (endOfDay ? dayEnd(value, timeZone) : undefined) ?? toTime(value, timeZone)
+	if (time === undefined) return undefined
+	return isDay(value) ? { time, day: value } : { time }
 }
 
 function matcherFor<Row>(
@@ -88,17 +102,32 @@ function matcherFor<Row>(
 
 	if (kind === 'dateRange') {
 		const { from, to } = (isRecord(filter) ? filter : {}) as DateRange
-		let start = boundTime(from, false)
-		let end = boundTime(to, true)
+		// A day of the range is a day as the column shows it: in the zone of its
+		// format, or in local time for a column without one.
+		const zone = timeZoneOf(column)
+		let start = dateBound(from, false, zone)
+		let end = dateBound(to, true, zone)
 		// A range picked backwards still means the days between the two dates.
-		if (start !== undefined && end !== undefined && start > end) {
-			start = boundTime(to, false)
-			end = boundTime(from, true)
+		if (start && end && start.time > end.time) {
+			start = dateBound(to, false, zone)
+			end = dateBound(from, true, zone)
 		}
+		const after = start?.time ?? -Infinity
+		const before = end?.time ?? Infinity
 		return (row) => {
-			const time = boundTime(cellValue(row, column), false)
+			const value = cellValue(row, column)
+			if (value === null || value === undefined || value === '') return false
+			// A cell that holds a calendar day has no zone: it is compared as a
+			// day with a bound that is a day, and no zone moves it to another one.
+			if (isDay(value)) {
+				const time = toTime(value) ?? Number.NaN
+				const late = !start || (start.day === undefined ? start.time <= time : start.day <= value)
+				const early = !end || (end.day === undefined ? time <= end.time : value <= end.day)
+				return late && early
+			}
+			const time = toTime(value)
 			if (time === undefined) return false
-			return (start ?? -Infinity) <= time && time <= (end ?? Infinity)
+			return after <= time && time <= before
 		}
 	}
 

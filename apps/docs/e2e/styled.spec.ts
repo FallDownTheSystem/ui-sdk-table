@@ -1,16 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-
-async function open(page: Page, query = '') {
-	await page.goto(`/?page=styled${query}`)
-	await expect(page.getByRole('heading', { level: 1, name: 'Data table examples' })).toBeVisible()
-}
-
-/** A demo of the page, scrolled into view. */
-async function section(page: Page, id: string) {
-	const found = page.locator(`#${id}`)
-	await found.scrollIntoViewIfNeeded()
-	return found
-}
+import { box, dataRows, focused, open, section } from './styled-page'
 
 /** The customer directory, once its rows are there. */
 async function customers(page: Page) {
@@ -20,14 +9,7 @@ async function customers(page: Page) {
 	return { section: found, table }
 }
 
-const dataRows = (table: Locator) => table.locator('tbody tr[data-slot="table-row"]')
 const firstCells = (table: Locator) => table.locator('tbody tr > td:first-child')
-const focused = (page: Page) => page.locator(':focus')
-const box = async (locator: Locator) => {
-	const found = await locator.boundingBox()
-	if (!found) throw new Error('The element is not in the page.')
-	return found
-}
 
 /** Keeps the files that the page writes in the page, where a browser test can read them. */
 const catchFiles = (page: Page) =>
@@ -49,6 +31,50 @@ const fileText = async (page: Page, index: number) => {
 	)
 	return (text ?? '').replace(/^\uFEFF/, '')
 }
+
+/**
+ * The cells of the first sheet of an Excel file that the page wrote, by their
+ * place: `A1`, `B2`. The file is a zip archive, and the sheet is one XML file
+ * in it. The page reads it, as a program that opens the file would.
+ */
+const sheetCells = (page: Page, index: number) =>
+	page.evaluate(async (index) => {
+		const file = (window as unknown as { exported: Blob[] }).exported[index]
+		if (!file) throw new Error(`The page wrote no file ${index}.`)
+		const bytes = new Uint8Array(await file.arrayBuffer())
+		const view = new DataView(bytes.buffer)
+		// The end record of an archive without a comment is its last 22 bytes.
+		const end = bytes.length - 22
+		if (view.getUint32(end, true) !== 0x06054b50) throw new Error('The file is not a zip archive.')
+		let at = view.getUint32(end + 16, true)
+		let sheet = ''
+		for (let entry = 0; entry < view.getUint16(end + 10, true); entry++) {
+			const method = view.getUint16(at + 10, true)
+			const size = view.getUint32(at + 20, true)
+			const nameLength = view.getUint16(at + 28, true)
+			const local = view.getUint32(at + 42, true)
+			const name = new TextDecoder().decode(bytes.subarray(at + 46, at + 46 + nameLength))
+			if (name === 'xl/worksheets/sheet1.xml') {
+				const start =
+					local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true)
+				const data = new Blob([bytes.slice(start, start + size)])
+				sheet =
+					method === 0
+						? await data.text()
+						: await new Response(
+								data.stream().pipeThrough(new DecompressionStream('deflate-raw')),
+							).text()
+			}
+			at += 46 + nameLength + view.getUint16(at + 30, true) + view.getUint16(at + 32, true)
+		}
+		const cells: Record<string, string> = {}
+		const pattern =
+			/<c r="([A-Z]+\d+)"[^>]*>(?:<v>([^<]*)<\/v>|<is><t[^>]*>([^<]*)<\/t><\/is>)<\/c>/g
+		for (const match of sheet.matchAll(pattern)) {
+			cells[match[1] ?? ''] = match[2] ?? match[3] ?? ''
+		}
+		return cells
+	}, index)
 
 test.describe('page', () => {
 	test('the styled page has the tokens of the app, and the theme follows the dark class', async ({
@@ -98,7 +124,7 @@ test.describe('page', () => {
 		})
 	})
 
-	test('every demo of the old page has its section and its table', async ({ page }) => {
+	test('every demo has its section and its table', async ({ page }) => {
 		await open(page)
 		const ids = await page
 			.locator('[data-slot="page-section"]')
@@ -123,6 +149,12 @@ test.describe('page', () => {
 			'column-visibility',
 			'export',
 			'custom-controls',
+			// Five demos that the old page did not have: what the new table adds.
+			'pinned-columns',
+			'column-resize',
+			'cell-editing',
+			'server-pages',
+			'sticky-offset',
 			'format-types',
 			'localization',
 			'ui-translations',
@@ -135,14 +167,14 @@ test.describe('page', () => {
 			'empty-loading',
 			'customer-directory',
 		])
-		// 38 styled tables and the headless one. The 50,000-row table comes with its button.
-		await expect(page.locator('table[data-slot="table"]')).toHaveCount(39)
+		// 43 styled tables and the headless one. The 50,000-row table comes with its button.
+		await expect(page.locator('table[data-slot="table"]')).toHaveCount(44)
 		// Every table has a name of its own.
 		const names = await page
 			.locator('table[data-slot="table"]')
 			.evaluateAll((tables) => tables.map((table) => table.getAttribute('aria-label')))
 		expect(names.every(Boolean)).toBe(true)
-		expect(new Set(names).size).toBe(39)
+		expect(new Set(names).size).toBe(44)
 	})
 
 	test('the stress case shows 2,000 customers on pages of 50 behind ?stress=1', async ({
@@ -196,18 +228,20 @@ test.describe('keyboard and focus', () => {
 			stops.push((await focused(page).getAttribute('aria-label')) ?? '')
 		}
 		// A button that is off on the first page stays a stop, so a screen reader finds it.
-		expect(stops).toEqual([
-			'First page',
-			'Previous page',
-			'Page 1',
-			'Page 2',
-			'Page 3',
-			'Page 4',
-			'Page 5',
-			'Page 8',
-			'Next page',
-			'Last page',
-		])
+		expect(stops).toEqual(
+			[
+				'First page',
+				'Previous page',
+				'Page 1',
+				'Page 2',
+				'Page 3',
+				'Page 4',
+				'Page 5',
+				'Page 8',
+				'Next page',
+				'Last page',
+			].map((name) => `${name}, Customers`),
+		)
 
 		// And back: from the page sizes into the table, then to the toolbar.
 		await found.getByRole('combobox', { name: 'Rows per page, Customers' }).focus()
@@ -338,6 +372,177 @@ test.describe('keyboard and focus', () => {
 	})
 })
 
+test.describe('keyboard, rows and pages', () => {
+	test('the checkbox of a group works from the keyboard: Space on its row, or inside the cell', async ({
+		page,
+	}) => {
+		await open(page)
+		const found = await section(page, 'selection-grouping')
+		const table = found.getByRole('treegrid', { name: 'Selectable tasks' })
+		const output = found.getByTestId('selected-tasks')
+		const high = table.getByRole('checkbox', { name: 'Select group High' })
+		const cell = table.locator('td:has([aria-label="Select group High"])')
+
+		await table.locator('thead th').first().focus()
+		await page.keyboard.press('ArrowDown')
+		await expect(cell).toBeFocused()
+		// Space on the row of a group is the choice of its rows.
+		await page.keyboard.press('Space')
+		await expect(high).toBeChecked()
+		await expect(output).toHaveText(
+			'Selected tasks: Move billing to the new provider, Fix the export of large reports',
+		)
+		await expect(cell).toBeFocused()
+		await expect(table.locator('tbody tr[aria-selected="true"]')).toHaveCount(2)
+		await page.keyboard.press('Space')
+		await expect(high).not.toBeChecked()
+		await expect(output).toHaveText('Selected tasks: none')
+
+		// One row of the group: the checkbox of the group is mixed, and Space takes the rest.
+		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('Space')
+		await expect(high).toHaveAttribute('aria-checked', 'mixed')
+		await page.keyboard.press('ArrowUp')
+		await page.keyboard.press('Space')
+		await expect(high).toBeChecked()
+
+		// F2 goes into the cell, to the checkbox. Enter stays the button of the group.
+		await page.keyboard.press('F2')
+		await expect(high).toBeFocused()
+		await page.keyboard.press('Space')
+		await expect(high).not.toBeChecked()
+		await expect(output).toHaveText('Selected tasks: none')
+		await page.keyboard.press('Escape')
+		await expect(cell).toBeFocused()
+		await page.keyboard.press('Enter')
+		await expect(dataRows(table)).toHaveCount(7)
+		await page.keyboard.press('Enter')
+		await expect(dataRows(table)).toHaveCount(9)
+	})
+
+	test('the button of the header opens and closes all rows from the keyboard', async ({ page }) => {
+		await open(page)
+		const found = await section(page, 'expansion-children')
+		const table = found.getByRole('treegrid', { name: 'Teams' })
+		const head = table.locator('thead th').first()
+
+		await head.focus()
+		// Enter goes into the header cell, to its button.
+		await page.keyboard.press('Enter')
+		const button = table.locator('thead').getByRole('button', { name: /all rows, Teams$/ })
+		await expect(button).toBeFocused()
+		await expect(button).toHaveAccessibleName('Expand all rows, Teams')
+		await expect(button).toHaveAttribute('aria-expanded', 'false')
+		await page.keyboard.press('Enter')
+		await expect(dataRows(table)).toHaveCount(6)
+		// The button is the same one, with its other name, and it keeps focus.
+		await expect(button).toBeFocused()
+		await expect(button).toHaveAccessibleName('Collapse all rows, Teams')
+		await expect(button).toHaveAttribute('aria-expanded', 'true')
+		await page.keyboard.press('Space')
+		await expect(dataRows(table)).toHaveCount(2)
+		await expect(button).toBeFocused()
+		// Escape goes back to the cell, and the arrow keys work again.
+		await page.keyboard.press('Escape')
+		await expect(head).toBeFocused()
+		await page.keyboard.press('ArrowDown')
+		await expect(focused(page)).toHaveAttribute('role', 'gridcell')
+	})
+
+	test('focus stays on a control of the pages while the pages change under it', async ({
+		page,
+	}) => {
+		await open(page)
+		const found = await section(page, 'pagination')
+		const pages = found.getByRole('navigation', { name: 'Pages, Paged people' })
+		const status = found.locator('[data-slot="data-table-page"]').first()
+		const next = pages.getByRole('button', { name: 'Next page' })
+		await expect(status).toHaveText('Page 1 of 5')
+
+		// To the last page with Enter. The button is off there and keeps focus, so a
+		// screen reader says why nothing happens, and Shift+Tab still starts from it.
+		await next.focus()
+		for (let press = 0; press < 4; press++) await page.keyboard.press('Enter')
+		await expect(status).toHaveText('Page 5 of 5')
+		await expect(next).toBeDisabled()
+		await expect(next).toBeFocused()
+		await page.keyboard.press('Enter')
+		await expect(status).toHaveText('Page 5 of 5')
+
+		// The link of a page keeps focus when its page becomes the current one.
+		await page.keyboard.press('Shift+Tab')
+		await expect(focused(page)).toHaveAccessibleName('Page 5, Paged people')
+		await page.keyboard.press('Shift+Tab')
+		await expect(focused(page)).toHaveAccessibleName('Page 4, Paged people')
+		await page.keyboard.press('Enter')
+		await expect(status).toHaveText('Page 4 of 5')
+		await expect(focused(page)).toHaveAccessibleName('Page 4, Paged people')
+		await expect(focused(page)).toHaveAttribute('aria-current', 'page')
+
+		// First page: its button is off after the press, and keeps focus too.
+		const first = pages.getByRole('button', { name: 'First page' })
+		await first.focus()
+		await page.keyboard.press('Enter')
+		await expect(status).toHaveText('Page 1 of 5')
+		await expect(first).toBeFocused()
+
+		// A new page size makes fewer pages. Focus is back on the list of sizes.
+		const sizes = found.getByRole('combobox', { name: 'Rows per page, Paged people' })
+		await sizes.focus()
+		await page.keyboard.press('Enter')
+		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('Enter')
+		await expect(status).not.toHaveText('Page 1 of 5')
+		await expect(sizes).toBeFocused()
+	})
+
+	test('a search, a sort and a page are said to assistive technology, once after a pause', async ({
+		page,
+	}) => {
+		await open(page)
+		const { section: found, table } = await customers(page)
+		const status = found.locator('[data-slot="data-table-status"]')
+		await expect(status).toHaveAttribute('role', 'status')
+		await expect(status).toHaveAttribute('aria-live', 'polite')
+		// It is on the page for a screen reader and takes no place that a person sees.
+		expect((await box(status)).width).toBeLessThanOrEqual(1)
+		await expect(status).toHaveText('')
+
+		// Every text that the region gets, in order.
+		await status.evaluate((region) => {
+			const said: string[] = []
+			Object.assign(window, { said })
+			new MutationObserver(() => {
+				const text = region.textContent?.trim() ?? ''
+				if (text && said.at(-1) !== text) said.push(text)
+			}).observe(region, { childList: true, characterData: true, subtree: true })
+		})
+		const said = () => page.evaluate(() => (window as unknown as { said: string[] }).said)
+
+		// Four letters, faster than the pause: nothing while they come, one text after them.
+		const search = found.getByRole('textbox', { name: 'Search, Customers' })
+		await search.pressSequentially('labs', { delay: 80 })
+		expect(await said()).toEqual([])
+		await expect(status).toHaveText(/^\d+ rows? found\.$/)
+		expect(await said()).toHaveLength(1)
+		const count = Number((await status.innerText()).replace(/\D/g, ''))
+		expect(count).toBeGreaterThan(0)
+		await expect(found.locator('[data-slot="data-table-rows"]')).toContainText(`of ${count} row`)
+
+		await table
+			.getByRole('columnheader', { name: 'Customer', exact: true })
+			.getByRole('button')
+			.click()
+		await expect(status).toHaveText('Sorted by Customer, ascending.')
+
+		await search.fill('')
+		await expect(status).toHaveText(/^\d+ rows found\.$/)
+		await found.getByRole('button', { name: 'Next page' }).click()
+		await expect(status).toHaveText(/^Page 2 of \d+$/)
+		expect(await said()).toHaveLength(4)
+	})
+})
+
 test.describe('menus and pages', () => {
 	test('the column menu opens from the keyboard, stays open while columns change, and gives focus back', async ({
 		page,
@@ -433,7 +638,52 @@ test.describe('menus and pages', () => {
 		await trigger.click()
 		const xlsx = page.waitForEvent('download')
 		await menu.getByRole('menuitem', { name: 'Export Excel' }).click()
+		const book = await xlsx
+		expect(book.suggestedFilename()).toBe('people.xlsx')
+		// The file opens, and holds the header row and the rows of the table: a text and a number.
+		const cells = await sheetCells(page, 1)
+		expect([cells.A1, cells.B1, cells.C1]).toEqual(['Name', 'Role', 'Age'])
+		const first = dataRows(found.getByRole('grid', { name: 'People to export' })).first()
+		expect(cells.A2).toBe(await first.locator('td').nth(0).innerText())
+		expect(cells.C2).toBe(await first.locator('td').nth(2).innerText())
+		expect(Object.keys(cells).filter((place) => place.startsWith('A'))).toHaveLength(6)
+	})
+
+	test('an export that gives no file says so, and the message goes away with its button', async ({
+		page,
+	}) => {
+		// The part of the page that writes a CSV file does not arrive.
+		await page.route(/\/export\/csv\.ts/, (route) => route.abort())
+		await open(page)
+		const found = await section(page, 'export')
+		const trigger = found.getByRole('button', { name: 'Export' })
+		const menu = page.getByRole('menu', { name: 'Export' })
+		const alert = found.getByRole('alert')
+		await expect(alert).toHaveCount(0)
+
+		await trigger.focus()
+		await page.keyboard.press('Enter')
+		await page.keyboard.press('Enter')
+		await expect(alert).toHaveText('The export failed. Try again.')
+		await expect(menu).toBeHidden()
+		await expect(trigger).toBeFocused()
+
+		// The message has a button, and focus is not lost with the message.
+		await alert.getByRole('button', { name: 'Dismiss' }).focus()
+		await page.keyboard.press('Enter')
+		await expect(alert).toHaveCount(0)
+		await expect(trigger).toBeFocused()
+
+		// The next export starts without the old message, and one that works leaves none.
+		await trigger.click()
+		await menu.getByRole('menuitem', { name: 'Export CSV' }).click()
+		await expect(alert).toBeVisible()
+		await page.unroute(/\/export\/csv\.ts/)
+		await trigger.click()
+		const xlsx = page.waitForEvent('download')
+		await menu.getByRole('menuitem', { name: 'Export Excel' }).click()
 		expect((await xlsx).suggestedFilename()).toBe('people.xlsx')
+		await expect(alert).toHaveCount(0)
 	})
 
 	test('the page sizes are a list that opens from the keyboard, and the pages move', async ({
@@ -492,7 +742,7 @@ test.describe('selection and rows', () => {
 		const found = await section(page, 'selection')
 		const table = found.getByRole('grid', { name: 'Selectable people' })
 		const output = found.getByTestId('selected')
-		const all = table.getByRole('checkbox', { name: 'Select all rows' })
+		const all = table.getByRole('checkbox', { name: /^Select all \d+ rows?/ })
 		const aino = table.getByRole('checkbox', { name: 'Select row Aino Korhonen' })
 
 		// The arrow keys move through the checkbox column, cell by cell.
@@ -544,7 +794,7 @@ test.describe('selection and rows', () => {
 		})
 		const admin = people.getByRole('checkbox', { name: 'Select row Aino Korhonen' })
 		await expect(admin).toBeDisabled()
-		await people.getByRole('checkbox', { name: 'Select all rows' }).click()
+		await people.getByRole('checkbox', { name: /^Select all \d+ rows?/ }).click()
 		await expect(admin).not.toBeChecked()
 		await expect(people.locator('tbody tr[aria-selected="true"]')).toHaveCount(4)
 
@@ -565,7 +815,7 @@ test.describe('selection and rows', () => {
 		await expect(output).toHaveText(
 			'Selected tasks: Move billing to the new provider, Fix the export of large reports',
 		)
-		await expect(table.getByRole('checkbox', { name: 'Select all rows' })).toHaveAttribute(
+		await expect(table.getByRole('checkbox', { name: /^Select all \d+ rows?/ })).toHaveAttribute(
 			'aria-checked',
 			'mixed',
 		)
@@ -627,6 +877,21 @@ test.describe('selection and rows', () => {
 			'aria-expanded',
 			'true',
 		)
+		// From the keyboard: Enter on the button, and Enter on a cell of the row.
+		await teams.getByRole('button', { name: 'Collapse row Engineering' }).focus()
+		await page.keyboard.press('Enter')
+		await expect(dataRows(teams)).toHaveCount(2)
+		await expect(teams.getByRole('button', { name: 'Expand row Engineering' })).toBeFocused()
+		await page.keyboard.press('Enter')
+		await expect(dataRows(teams)).toHaveCount(4)
+		await page.keyboard.press('Escape')
+		await expect(focused(page)).toHaveAttribute('data-slot', 'table-cell')
+		await page.keyboard.press('ArrowRight')
+		await page.keyboard.press('Enter')
+		await expect(dataRows(teams)).toHaveCount(2)
+		await page.keyboard.press('Enter')
+		await expect(dataRows(teams)).toHaveCount(4)
+
 		// With a row open, the button of the header closes every row. With none open, it opens all.
 		await teams.getByRole('button', { name: 'Collapse all rows' }).click()
 		await expect(dataRows(teams)).toHaveCount(2)
@@ -1083,7 +1348,7 @@ test.describe('layout', () => {
 		}
 
 		// Selection of every row that passes the filters, with the count under the table and in the toolbar.
-		await table.getByRole('checkbox', { name: 'Select all rows' }).click()
+		await table.getByRole('checkbox', { name: /^Select all \d+ rows?/ }).click()
 		const total = Number(
 			(await found.getByTestId('selected-customers').innerText()).replace(/\D/g, ''),
 		)

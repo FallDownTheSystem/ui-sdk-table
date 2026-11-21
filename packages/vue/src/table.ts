@@ -1,4 +1,5 @@
 import { usePart, usePrimitive, type PrimitiveHandle } from '@ui-sdk/vue/primitive'
+import { tableArrived } from './controller'
 import {
 	cellKey,
 	cellValue,
@@ -31,6 +32,7 @@ import {
 	defineComponent,
 	h,
 	onBeforeUnmount,
+	onMounted,
 	shallowRef,
 	Text,
 	type ComponentObjectPropsOptions,
@@ -137,6 +139,7 @@ const OPTIONS = [
 	'cellSelection',
 	'manualSort',
 	'manualFilter',
+	'facets',
 	'manualPage',
 	'rowCount',
 	'loading',
@@ -201,11 +204,17 @@ export type PartAttrs = Record<string, unknown>
 
 /**
  * Attributes for the elements that the table renders itself, such as a class
- * or a `data-*` attribute. The table calls a function when it renders its
+ * or a `data-*` attribute. The table calls `rowAttrs` when it renders its
  * rows, and not for a new selection or a new active cell: show such state
- * with the `data-*` and `aria-*` attributes that the parts carry. Pass the
- * same function while its answers are the same, because a new function
- * renders every row again.
+ * with the `data-*` and `aria-*` attributes that the parts carry. A row whose
+ * own state changed renders its cells, so `cellAttrs` runs for that row.
+ * Pass the same function while its answers are the same, because a new
+ * function renders every row again.
+ *
+ * What the table sets itself stays the table's: the props of its parts
+ * (`value`, `index`, `colspan` and the others), `role`, `tabindex`, and the
+ * `aria-*` and `data-*` attributes that show its state. Such a name in the
+ * answer of the caller is left out.
  */
 export type TableAttrsProps<Row> = {
 	/** Attributes of a `tr` element. */
@@ -217,6 +226,74 @@ export type TableAttrsProps<Row> = {
 }
 
 const ATTRS = ['rowAttrs', 'cellAttrs', 'sectionAttrs'] as const
+
+// The names that belong to the table on the elements it renders: the props
+// of the parts, and the attributes that carry its roles and its state. A
+// caller that could set them could show a row as selected that is not, or
+// give two rows one place.
+const OWN_ATTRS: ReadonlySet<string> = new Set([
+	'key',
+	'value',
+	'index',
+	'row',
+	'col',
+	'colspan',
+	'rowspan',
+	'header',
+	'footer',
+	'role',
+	'tabindex',
+	'aria-busy',
+	'aria-colcount',
+	'aria-colindex',
+	'aria-expanded',
+	'aria-invalid',
+	'aria-level',
+	'aria-multiselectable',
+	'aria-posinset',
+	'aria-readonly',
+	'aria-rowcount',
+	'aria-rowindex',
+	'aria-selected',
+	'aria-setsize',
+	'aria-sort',
+	'data-active',
+	'data-cell-selection',
+	'data-checking',
+	'data-column',
+	'data-dragging',
+	'data-editable',
+	'data-editing',
+	'data-empty',
+	'data-expanded',
+	'data-grabbed',
+	'data-invalid',
+	'data-kind',
+	'data-loading',
+	'data-moving',
+	'data-pinned',
+	'data-pinned-edge',
+	'data-range-edge',
+	'data-row-window',
+	'data-selected',
+	'data-sized',
+	'data-slot',
+	'data-sorted',
+	'data-sticky',
+])
+
+/** The attributes of a caller without the names that belong to the table. */
+function callerAttrs(attrs: PartAttrs | undefined): PartAttrs | undefined {
+	if (!attrs) return undefined
+	let kept: PartAttrs | undefined
+	for (const name in attrs) {
+		if (!OWN_ATTRS.has(name)) continue
+		// Most answers hold a class and nothing of the table's: they pass as they are.
+		kept ??= { ...attrs }
+		delete kept[name]
+	}
+	return kept ?? attrs
+}
 
 export type TableProps<Row> = Omit<TableOptions<Row>, `on${string}`> & TableAttrsProps<Row>
 
@@ -413,10 +490,16 @@ const TableImpl = defineComponent(
 		}) as Handle
 		const api = handle.api
 
-		const rowAttrs = (context: RowAttrsContext<unknown>) => props.rowAttrs?.(context)
-		const cellAttrs = (context: CellAttrsContext<unknown>) => props.cellAttrs?.(context)
+		const rowAttrs = (context: RowAttrsContext<unknown>) => callerAttrs(props.rowAttrs?.(context))
+		const cellAttrs = (context: CellAttrsContext<unknown>) =>
+			callerAttrs(props.cellAttrs?.(context))
+		const sectionAttrs = (section: 'head' | 'body' | 'foot') =>
+			callerAttrs(props.sectionAttrs?.[section]) ?? null
 
 		context.expose({ api } satisfies { api: TableController })
+
+		// A listener that was given to the controller before this table existed starts now.
+		onMounted(() => tableArrived(props.controller))
 
 		// The key of a cell part. The two prefixes keep a header cell apart from the
 		// cell of a row that has the id "header".
@@ -430,13 +513,14 @@ const TableImpl = defineComponent(
 			return api.headerRows().map((cells, index) =>
 				h(
 					TableHeaderRow,
-					{ key: `header-${index}`, index, ...rowAttrs({ kind: 'header', index }) },
+					{ ...rowAttrs({ kind: 'header', index }), key: `header-${index}`, index },
 					() =>
 						cells.map((cell) => {
 							const column = cell.column
 							return h(
 								TableHeaderCell,
 								{
+									...cellAttrs({ kind: 'header', column, leaf: cell.leaf }),
 									// The key is the column, so the element stays with its column when the order changes.
 									key: cell.key,
 									value: headerKey(cell.key),
@@ -445,7 +529,6 @@ const TableImpl = defineComponent(
 									colspan: cell.colSpan,
 									rowspan: cell.rowSpan,
 									header: true,
-									...cellAttrs({ kind: 'header', column, leaf: cell.leaf }),
 								},
 								() => {
 									const label = column.header ?? column.id
@@ -484,15 +567,15 @@ const TableImpl = defineComponent(
 			span: number,
 		) {
 			const attrs = rowAttrs({ kind: 'group', group, index: position, level: flat.level })
-			return h(TableRow, { key: flat.id, value: flat.id, index, ...attrs }, () =>
+			return h(TableRow, { ...attrs, key: flat.id, value: flat.id, index }, () =>
 				h(
 					TableCell,
 					{
+						...cellAttrs({ kind: 'group', group }),
 						value: groupKey(flat.id),
 						row: index,
 						col: 0,
 						colspan: span,
-						...cellAttrs({ kind: 'group', group }),
 					},
 					() => {
 						const column = api.column(group.columnId)
@@ -575,10 +658,10 @@ const TableImpl = defineComponent(
 			return h(
 				TableRow,
 				{
+					...rowAttrs({ kind: 'row', row: node.row, node, index: position, level: flat.level }),
 					key: flat.id,
 					value: flat.id,
 					index,
-					...rowAttrs({ kind: 'row', row: node.row, node, index: position, level: flat.level }),
 				},
 				{
 					// The state of the row part is the only thing here that follows the
@@ -588,12 +671,8 @@ const TableImpl = defineComponent(
 							h(
 								TableCell,
 								{
-									key: column.id,
-									value: cellId(flat.id, column.id),
-									row: index,
-									col,
 									...(props.cellAttrs
-										? props.cellAttrs({
+										? cellAttrs({
 												kind: 'cell',
 												column,
 												row: node.row,
@@ -601,6 +680,10 @@ const TableImpl = defineComponent(
 												value: cellValue(node.row, column),
 											})
 										: undefined),
+									key: column.id,
+									value: cellId(flat.id, column.id),
+									row: index,
+									col,
 								},
 								{
 									// The state of the cell part says whether its editor is open,
@@ -653,15 +736,15 @@ const TableImpl = defineComponent(
 			span: number,
 		) {
 			const attrs = rowAttrs({ kind: 'detail', row: node.row, node, index: position })
-			return h(TableRow, { key: flat.id, value: flat.id, index, ...attrs }, () =>
+			return h(TableRow, { ...attrs, key: flat.id, value: flat.id, index }, () =>
 				h(
 					TableCell,
 					{
+						...cellAttrs({ kind: 'detail', row: node.row, node }),
 						value: detailKey(node.id),
 						row: index,
 						col: 0,
 						colspan: span,
-						...cellAttrs({ kind: 'detail', row: node.row, node }),
 					},
 					() =>
 						slots.detail?.({
@@ -720,8 +803,8 @@ const TableImpl = defineComponent(
 		function footRow(columns: readonly ColumnDef[], index: number) {
 			if (!api.footerRowCount()) return null
 			const totals = api.totals()
-			return h(TableFoot, props.sectionAttrs?.foot ?? null, () =>
-				h(TablePlainRow, { index, footer: true, ...rowAttrs({ kind: 'foot' }) }, () =>
+			return h(TableFoot, sectionAttrs('foot'), () =>
+				h(TablePlainRow, { ...rowAttrs({ kind: 'foot' }), index, footer: true }, () =>
 					columns.map((column, col) => {
 						const value = totals[column.id]
 						const text = column.aggregate ? api.totalText(column, value) : ''
@@ -729,11 +812,11 @@ const TableImpl = defineComponent(
 						return h(
 							TableCell,
 							{
+								...cellAttrs({ kind: 'foot', column }),
 								key: column.id,
 								value: footKey(column.id),
 								row: index,
 								col,
-								...cellAttrs({ kind: 'foot', column }),
 							},
 							() => (slot ? slot({ column, value, text, totals }) : text),
 						)
@@ -744,10 +827,10 @@ const TableImpl = defineComponent(
 
 		function emptyRow(index: number, span: number) {
 			const attrs = rowAttrs({ kind: 'empty' })
-			return h(TablePlainRow, { key: 'empty', index, 'data-kind': 'empty', ...attrs }, () =>
+			return h(TablePlainRow, { ...attrs, key: 'empty', index, 'data-kind': 'empty' }, () =>
 				h(
 					TableCell,
-					{ value: 'empty', row: index, col: 0, colspan: span, ...cellAttrs({ kind: 'empty' }) },
+					{ ...cellAttrs({ kind: 'empty' }), value: 'empty', row: index, col: 0, colspan: span },
 					() =>
 						api.loading()
 							? (shown(slots.loading?.({})) ?? api.message('loading')())
@@ -783,8 +866,8 @@ const TableImpl = defineComponent(
 				h('colgroup', null, [
 					columns.map((column) => h(TableCol, { key: column.id, value: column.id })),
 				]),
-				h(TableHead, props.sectionAttrs?.head ?? null, headerRows),
-				h(TableBody, props.sectionAttrs?.body ?? null, () =>
+				h(TableHead, sectionAttrs('head'), headerRows),
+				h(TableBody, sectionAttrs('body'), () =>
 					rows.length ? bodyRows(rows, head, columns) : emptyRow(head, columns.length),
 				),
 				footRow(columns, head + Math.max(1, rows.length)),

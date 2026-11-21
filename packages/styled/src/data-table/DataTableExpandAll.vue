@@ -5,9 +5,11 @@ import { computed } from 'vue'
 import { buttonClass } from './DataTableClasses'
 import { useDataTable } from './types'
 
-const { controller, view, messages } = useDataTable()
+const { controller, view, messages, label: table } = useDataTable()
 
-const open = computed(() => (view.value?.expanded.length ?? 0) > 0)
+// What is open in the rows of now. The ids in `expanded` can name rows and
+// groups that left the table, and those keep nothing open.
+const open = computed(() => view.value?.hasExpanded ?? false)
 
 function toggle() {
 	if (open.value) controller.collapseAll()
@@ -19,7 +21,7 @@ function toggle() {
 	<!-- `expandAll` opens groups and rows with child rows. A table that has neither has nothing for the button to do. -->
 	<Button
 		v-if="view?.hasExpandable"
-		:aria-label="open ? messages.collapseAllRows() : messages.expandAllRows()"
+		:aria-label="open ? messages.collapseAllRows({ table }) : messages.expandAllRows({ table })"
 		:aria-expanded="open"
 		:class="buttonClass('ghost', 'icon-xs')"
 		@click="toggle"

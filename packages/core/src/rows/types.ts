@@ -37,6 +37,13 @@ export type ColumnDef<Row = unknown> = {
 	resizable?: boolean
 	/** Whether a person can move the column. Without it, the `reorderable` option of the table decides. */
 	reorderable?: boolean
+	/**
+	 * The column leads the table: it stays before every other column, whatever
+	 * the column order says, and it sticks to the start as soon as another
+	 * column is pinned there. A column order and the pins do not hold it. For
+	 * a top-level column that holds a control of its row, such as a checkbox.
+	 */
+	lead?: boolean
 	/** Whether the column can be hidden. Defaults to true. */
 	hideable?: boolean
 	/**

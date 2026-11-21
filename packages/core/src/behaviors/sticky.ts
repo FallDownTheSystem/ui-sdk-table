@@ -40,7 +40,16 @@ export type StickyRows = {
  * sticky rows cover at each edge, `--table-sticky-top-size` and
  * `--table-sticky-bottom-size`, on the elements that hold cells: a cell that
  * scrolls into view must stop that far from the edge.
+ *
+ * The owner of the page can move both edges inward: every value has
+ * `--table-sticky-top` or `--table-sticky-bottom` added, two CSS variables
+ * that the owner sets on the table or on a parent, for a page that has a
+ * fixed header or footer of its own over the frame.
  */
+/** A distance from an edge, with the inset of the owner of the page added. */
+const inset = (edge: StickyEdge, pixels: number) =>
+	`calc(${pixels}px + var(--table-sticky-${edge}, 0px))`
+
 export function createStickyRows<State extends object>(
 	context: Pick<PrimitiveContext<any, State, any>, 'store' | 'onDestroy'>,
 	options: {
@@ -101,7 +110,7 @@ export function createStickyRows<State extends object>(
 		)
 		const place = (el: HTMLElement, pixels: number) => {
 			const row = active.get(el)
-			const offset = `${pixels}px`
+			const offset = row ? inset(row.edge, pixels) : ''
 			if (!row || row.offset === offset) return
 			row.offset = offset
 			el.style.setProperty('--table-sticky-offset', offset)
@@ -120,15 +129,15 @@ export function createStickyRows<State extends object>(
 			place(el, bottom)
 			bottom += row.size
 		}
-		const next = { top: `${top}px`, bottom: `${bottom}px` }
+		const next = { top: inset('top', top), bottom: inset('bottom', bottom) }
 		if (next.top === covered.top && next.bottom === covered.bottom) return
 		covered = next
 		for (const group of groups) write(group)
 	}
 
 	function write(group: HTMLElement): void {
-		group.style.setProperty('--table-sticky-top-size', covered.top || '0px')
-		group.style.setProperty('--table-sticky-bottom-size', covered.bottom || '0px')
+		group.style.setProperty('--table-sticky-top-size', covered.top || inset('top', 0))
+		group.style.setProperty('--table-sticky-bottom-size', covered.bottom || inset('bottom', 0))
 	}
 
 	/** Takes a row that leaves out of the sticky rows, and gives the others their new places. */

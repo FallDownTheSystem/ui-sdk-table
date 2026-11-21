@@ -146,7 +146,9 @@ test('each kind of column filter writes the filter of its column', async () => {
 
 	await wrapper.get('[data-slot="popover-trigger"]').trigger('click')
 	await nextTick()
-	expect(onPage('[data-slot="popover-title"]').textContent).toBe('Column filters')
+	// The text that shows is short; the name of the popover holds the name of its table.
+	expect(onPage('[data-slot="popover-title"] [aria-hidden]').textContent).toBe('Column filters')
+	expect(onPage('[data-slot="popover-title"] .sr-only').textContent).toBe('Column filters, People')
 	expect(
 		[...document.body.querySelectorAll('[data-slot="data-table-filter"]')].map((field) =>
 			field.getAttribute('data-kind'),
@@ -305,26 +307,26 @@ test('the pages start on the first page size, and each control of the pages move
 	expect(bar.get('[data-slot="data-table-rows"]').text()).toBe('Showing 1 to 2 of 7 rows')
 	expect(names(wrapper)).toEqual(['Person 1', 'Person 2'])
 
-	await bar.get('[aria-label="Next page"]').trigger('click')
+	await bar.get('[aria-label="Next page, People"]').trigger('click')
 	await nextTick()
 	expect(pages.at(-1)).toEqual({ page: 2, pageSize: 2 })
 	expect(names(wrapper)).toEqual(['Person 3', 'Person 4'])
 
-	await bar.get('[aria-label="Previous page"]').trigger('click')
+	await bar.get('[aria-label="Previous page, People"]').trigger('click')
 	await nextTick()
 	expect(pages.at(-1)).toEqual({ page: 1, pageSize: 2 })
 
-	await bar.get('[aria-label="Last page"]').trigger('click')
+	await bar.get('[aria-label="Last page, People"]').trigger('click')
 	await nextTick()
 	expect(pages.at(-1)).toEqual({ page: 4, pageSize: 2 })
 	expect(bar.get('[data-slot="data-table-rows"]').text()).toBe('Showing 7 to 7 of 7 rows')
 
-	await bar.get('[aria-label="First page"]').trigger('click')
+	await bar.get('[aria-label="First page, People"]').trigger('click')
 	await nextTick()
-	await bar.get('[aria-label="Page 3"]').trigger('click')
+	await bar.get('[aria-label="Page 3, People"]').trigger('click')
 	await nextTick()
 	expect(pages.at(-1)).toEqual({ page: 3, pageSize: 2 })
-	expect(bar.get('[aria-label="Page 3"]').attributes('aria-current')).toBe('page')
+	expect(bar.get('[aria-label="Page 3, People"]').attributes('aria-current')).toBe('page')
 
 	await bar.get('[aria-label="Rows per page, People"]').trigger('click')
 	await nextTick()
@@ -344,7 +346,8 @@ test('the checkbox of a row and the checkbox of all rows write the selection', a
 	})
 	await nextTick()
 
-	const all = wrapper.get('[aria-label="Select all rows"]')
+	// The name says how many rows the checkbox selects: the two that can be selected.
+	const all = wrapper.get('[aria-label="Select all 2 rows, People"]')
 	const aino = wrapper.get('[aria-label="Select row Aino"]')
 	// A row that cannot be selected has a checkbox that is off.
 	expect(wrapper.get('[aria-label="Select row Eero"]').attributes('aria-disabled')).toBe('true')
@@ -386,7 +389,7 @@ test('a group row has a checkbox for its rows, its totals and a button that open
 	await group.get('[aria-label="Select group Design"]').trigger('click')
 	await nextTick()
 	expect([...controller.getView().selected].sort()).toEqual(['a', 'c'])
-	expect(wrapper.get('[aria-label="Select all rows"]').attributes('aria-checked')).toBe('mixed')
+	expect(wrapper.get('thead [role="checkbox"]').attributes('aria-checked')).toBe('mixed')
 
 	await group.get('button[aria-expanded="true"]').trigger('click')
 	await nextTick()
@@ -440,10 +443,10 @@ test('the button of a row opens its child rows, and the button of the header ope
 	await nextTick()
 	expect(expanded.at(-1)).toEqual([])
 
-	await wrapper.get('[aria-label="Expand all rows"]').trigger('click')
+	await wrapper.get('[aria-label="Expand all rows, People"]').trigger('click')
 	await nextTick()
 	expect(expanded.at(-1)).toEqual(['a'])
-	await wrapper.get('[aria-label="Collapse all rows"]').trigger('click')
+	await wrapper.get('[aria-label="Collapse all rows, People"]').trigger('click')
 	await nextTick()
 	expect(expanded.at(-1)).toEqual([])
 })
@@ -490,8 +493,8 @@ test('the texts of the controls and of the table change with `messages` at run t
 		search: () => 'Suchen',
 		columns: () => 'Spalten',
 		pageOf: ({ page, pageCount }) => `Seite ${page} von ${pageCount}`,
-		nextPage: () => 'Nächste Seite',
-		selectAllRows: () => 'Alle Zeilen auswählen',
+		nextPage: ({ table }) => `Nächste Seite, ${table}`,
+		selectAllRows: ({ count }) => `Alle ${count} Zeilen auswählen`,
 		selectRow: ({ row }) => `Zeile ${row} auswählen`,
 		expandRowOf: ({ row }) => `Zeile ${row} öffnen`,
 		noRowsForSearch: ({ search }) => `Keine Zeilen für „${search}“.`,
@@ -501,12 +504,22 @@ test('the texts of the controls and of the table change with `messages` at run t
 	expect(wrapper.get('input').attributes('placeholder')).toBe('Suchen')
 	expect(wrapper.get('[data-slot="menu-trigger"]').text()).toBe('Spalten')
 	expect(wrapper.get('[data-slot="data-table-page"]').text()).toBe('Seite 1 von 2')
-	expect(wrapper.find('[aria-label="Nächste Seite"]').exists()).toBe(true)
-	expect(wrapper.find('[aria-label="Alle Zeilen auswählen"]').exists()).toBe(true)
+	expect(wrapper.find('[aria-label="Nächste Seite, People"]').exists()).toBe(true)
+	expect(wrapper.find('[aria-label="Alle 4 Zeilen auswählen"]').exists()).toBe(true)
 	expect(wrapper.find('[aria-label="Zeile Aino auswählen"]').exists()).toBe(true)
 	expect(wrapper.find('[aria-label="Zeile Aino öffnen"]').exists()).toBe(true)
 	// A text without a translation stays English.
-	expect(wrapper.find('[aria-label="Previous page"]').exists()).toBe(true)
+	expect(wrapper.find('[aria-label="Previous page, People"]').exists()).toBe(true)
+	// The name of a control follows the text that a person sees on it: a
+	// translation of the text alone gives no control an English name.
+	expect(wrapper.get('input').attributes('aria-label')).toBe('Suchen, People')
+	expect(wrapper.get('[data-slot="menu-trigger"]').attributes('aria-label')).toBe('Spalten, People')
+	// A name of its own wins over the text.
+	messages.value = { ...messages.value, columnsLabel: () => 'Spalten der Tabelle' }
+	await nextTick()
+	expect(wrapper.get('[data-slot="menu-trigger"]').attributes('aria-label')).toBe(
+		'Spalten der Tabelle',
+	)
 
 	type(wrapper.get('input').element, 'zzz')
 	await nextTick()
@@ -646,4 +659,500 @@ test('a link column renders a link, and a boolean column a mark with a text for 
 	])
 	expect(links[0]?.attributes('rel')).toBe('noopener noreferrer')
 	expect(wrapper.get('tbody td:last-child .sr-only').text()).not.toBe('')
+})
+
+// ---- Rules that a review of the first version found broken. Each test failed before its fix.
+
+const headerIds = (wrapper: ReturnType<typeof table>) =>
+	wrapper.findAll('thead th').map((cell) => cell.attributes('data-column'))
+const pinnedIds = (wrapper: ReturnType<typeof table>) =>
+	wrapper
+		.findAll('thead th[data-pinned]')
+		.map((cell) => `${cell.attributes('data-column')}:${cell.attributes('data-pinned')}`)
+const settle = async () => {
+	await nextTick()
+	await nextTick()
+}
+
+test('the checkbox and the expand column stay first under a column order of the caller, and no event names them', async () => {
+	const controller = createTableController()
+	const orders: (readonly string[])[] = []
+	const wrapper = table({
+		controller,
+		selection: 'multiple',
+		getChildren: (row: Person) => row.reports,
+		reorderable: true,
+		defaultColumnOrder: ['team', 'name'],
+		'onUpdate:columnOrder': (value: readonly string[]) => orders.push(value),
+		onColumnOrderChange: (value: readonly string[]) => orders.push(value),
+	})
+	await settle()
+	expect(headerIds(wrapper)).toEqual([
+		'data-table-select',
+		'data-table-expand',
+		'team',
+		'name',
+		'score',
+		'joined',
+	])
+
+	controller.moveColumn('score', 0)
+	await settle()
+	expect(headerIds(wrapper).slice(0, 3)).toEqual([
+		'data-table-select',
+		'data-table-expand',
+		'score',
+	])
+	expect(orders).toEqual([
+		['score', 'team', 'name', 'joined'],
+		['score', 'team', 'name', 'joined'],
+	])
+})
+
+test('the checkbox and the expand column stick with the start pins, and no event names them', async () => {
+	const controller = createTableController()
+	const pins: unknown[] = []
+	const wrapper = table({
+		controller,
+		selection: 'multiple',
+		getChildren: (row: Person) => row.reports,
+		'onUpdate:columnPinning': (value: unknown) => pins.push(value),
+	})
+	await settle()
+	expect(pinnedIds(wrapper)).toEqual([])
+
+	controller.pinColumn('team', 'start')
+	controller.pinColumn('joined', 'end')
+	await settle()
+	expect(pinnedIds(wrapper)).toEqual([
+		'data-table-select:start',
+		'data-table-expand:start',
+		'team:start',
+		'joined:end',
+	])
+	expect(pins.at(-1)).toEqual({ start: ['team'], end: ['joined'] })
+
+	// Without a start pin of the caller, the two columns scroll with the rest again.
+	controller.pinColumn('team', null)
+	await settle()
+	expect(pinnedIds(wrapper)).toEqual(['joined:end'])
+	expect(pins.at(-1)).toEqual({ start: [], end: ['joined'] })
+})
+
+test('a controlled column order and pinning of the caller hold the ids of the caller only', async () => {
+	const order = shallowRef<readonly string[]>(['joined'])
+	const pinning = shallowRef<{ start?: string[]; end?: string[] }>({ start: ['name'] })
+	const controller = createTableController()
+	const wrapper = mount(
+		() =>
+			h(Styled, {
+				rows: people,
+				columns,
+				label: 'People',
+				controller,
+				selection: 'multiple',
+				columnOrder: order.value,
+				'onUpdate:columnOrder': (value: readonly string[]) => (order.value = value),
+				columnPinning: pinning.value,
+				'onUpdate:columnPinning': (value: { start?: string[]; end?: string[] }) =>
+					(pinning.value = value),
+			} satisfies Props),
+		{ attachTo: document.body },
+	)
+	mounted.push(wrapper)
+	await settle()
+	expect(headerIds(wrapper)).toEqual(['data-table-select', 'name', 'joined', 'team', 'score'])
+	expect(pinnedIds(wrapper)).toEqual(['data-table-select:start', 'name:start'])
+
+	controller.pinColumn('score', 'start')
+	await settle()
+	expect(pinning.value).toEqual({ start: ['name', 'score'], end: [] })
+	expect(pinnedIds(wrapper)).toEqual(['data-table-select:start', 'name:start', 'score:start'])
+})
+
+test('`pagination` can change at run time, in both directions', async () => {
+	const pagination = shallowRef(true)
+	const wrapper = mount(
+		() =>
+			h(Styled, {
+				rows: people,
+				columns,
+				label: 'People',
+				pagination: pagination.value,
+				pageSizes: [2, 4],
+			} satisfies Props),
+		{ attachTo: document.body },
+	)
+	mounted.push(wrapper)
+	await settle()
+	expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+	expect(wrapper.find('[data-slot="data-table-pagination"]').exists()).toBe(true)
+
+	pagination.value = false
+	await settle()
+	expect(wrapper.find('[data-slot="data-table-pagination"]').exists()).toBe(false)
+	expect(wrapper.findAll('tbody tr')).toHaveLength(3)
+
+	pagination.value = true
+	await settle()
+	expect(wrapper.find('[data-slot="data-table-pagination"]').exists()).toBe(true)
+	expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+	expect(wrapper.get('[data-slot="data-table-page"]').text()).toBe('Page 1 of 2')
+})
+
+test('the filter of a hidden column is listed, so a person can see it and take it away', async () => {
+	const controller = createTableController()
+	const wrapper = table({ controller, columnFilters: true, columnMenu: true })
+	await settle()
+	controller.setColumnFilter('team', ['Design'])
+	controller.setColumnVisibility('team', false)
+	await settle()
+
+	const trigger = wrapper.get('[data-slot="popover-trigger"]')
+	expect(trigger.text()).toBe('1 filter applied')
+	await trigger.trigger('click')
+	await settle()
+	const fields = [...document.body.querySelectorAll('[data-slot="data-table-filter"]')].map(
+		(field) => field.querySelector('span')?.textContent?.trim(),
+	)
+	// The columns in view first, then the hidden column that filters.
+	expect(fields).toEqual(['Name', 'Score', 'Joined', 'Team'])
+
+	onPage('button[aria-label="Reset filter of Team"]').click()
+	await settle()
+	expect(controller.getView().filter).toEqual({})
+	// A hidden column without a filter has no place in the list.
+	expect(document.body.querySelectorAll('[data-slot="data-table-filter"]')).toHaveLength(3)
+})
+
+test('with a filter on the server, a chosen value stays in the list and in the filter on the next choice', async () => {
+	const controller = createTableController()
+	const rows = shallowRef(people)
+	const wrapper = mount(
+		() =>
+			h(Styled, {
+				rows: rows.value,
+				columns,
+				label: 'People',
+				controller,
+				columnFilters: true,
+				manualFilter: true,
+			} satisfies Props),
+		{ attachTo: document.body },
+	)
+	mounted.push(wrapper)
+	await settle()
+	controller.setColumnFilter('team', ['Platform'])
+	// The server answers with rows of one team, and then with rows of another one.
+	rows.value = people.filter((person) => person.team === 'Design')
+	await settle()
+
+	await wrapper.get('[data-slot="popover-trigger"]').trigger('click')
+	await settle()
+	const list = onPage('[role="combobox"][aria-label="Values of Team"]')
+	expect(list.textContent).toContain('Platform')
+	list.click()
+	await settle()
+	const options = () =>
+		[...document.body.querySelectorAll<HTMLElement>('[role="option"]')].map((option) => ({
+			text: option.textContent?.trim(),
+			selected: option.getAttribute('aria-selected'),
+		}))
+	expect(options()).toEqual([
+		{ text: 'Design', selected: 'false' },
+		{ text: 'Platform', selected: 'true' },
+	])
+	byText('[role="option"]', 'Design').click()
+	await settle()
+	expect(controller.getView().filter.columns?.team).toEqual(['Design', 'Platform'])
+})
+
+test('the `facets` prop gives a filter control the choices of the owner of the rows', async () => {
+	const controller = createTableController()
+	const wrapper = table({
+		controller,
+		columnFilters: true,
+		manualFilter: true,
+		rows: people.slice(0, 1),
+		facets: {
+			team: { values: [{ value: 'Design' }, { value: 'Platform' }, { value: 'Sales' }] },
+			score: { range: { min: 0, max: 100 } },
+		},
+	})
+	await settle()
+	await wrapper.get('[data-slot="popover-trigger"]').trigger('click')
+	await settle()
+	onPage('[role="combobox"][aria-label="Values of Team"]').click()
+	await settle()
+	expect(
+		[...document.body.querySelectorAll('[role="option"]')].map((option) =>
+			option.textContent?.trim(),
+		),
+	).toEqual(['Design', 'Platform', 'Sales'])
+	expect(onPage('input[aria-label="Lowest Score"]').getAttribute('placeholder')).toBe('0')
+	expect(onPage('input[aria-label="Highest Score"]').getAttribute('placeholder')).toBe('100')
+})
+
+test('the controls of two tables on one page have names of their own', async () => {
+	const props = {
+		search: true,
+		columnFilters: true,
+		columnMenu: true,
+		export: true,
+		pagination: true,
+		pageSizes: [2, 4],
+		selection: 'multiple',
+	} as const
+	table({ ...props, label: 'First' })
+	table({ ...props, label: 'Second' })
+	await settle()
+	const named = [
+		...document.body.querySelectorAll<HTMLElement>(
+			'[data-slot="data-table-toolbar"] button, [data-slot="data-table-toolbar"] input, thead [role="checkbox"], [data-slot="data-table-pagination"] button, [data-slot="data-table-pagination"] [role="combobox"], nav',
+		),
+	].map((element) => element.getAttribute('aria-label') ?? element.textContent?.trim() ?? '')
+	expect(named).toHaveLength(new Set(named).size)
+	expect(named).toEqual(
+		expect.arrayContaining([
+			'Search, First',
+			'Filters, First',
+			'Columns, First',
+			'Export, First',
+			'Select all 3 rows, First',
+			'Next page, First',
+			'Page 2, First',
+			'Filters, Second',
+		]),
+	)
+	// The text that a person sees stays short.
+	expect(byText('[data-slot="popover-trigger"]', 'Filters')).toBeDefined()
+})
+
+test('the pages stay on the page while a page from a server loads, and a table without a label is not named in its controls', async () => {
+	const rows = shallowRef(people)
+	const loading = shallowRef(false)
+	const wrapper = mount(
+		() =>
+			h(Styled, {
+				rows: rows.value,
+				columns,
+				manualPage: true,
+				loading: loading.value,
+				pagination: true,
+				pageSizes: [3],
+				page: { page: 1, pageSize: 3 },
+			} satisfies Props),
+		{ attachTo: document.body },
+	)
+	mounted.push(wrapper)
+	await settle()
+	expect(wrapper.get('nav').attributes('aria-label')).toBe('Pages')
+	// The rows of the page are on their way, and the table holds none.
+	rows.value = []
+	loading.value = true
+	await settle()
+	expect(wrapper.find('[data-slot="data-table-pagination"]').exists()).toBe(true)
+	expect(wrapper.get('[data-slot="data-table-page"]').text()).toBe('Page 1')
+})
+
+test('the pages text says what is counted: rows, groups or rows with child rows', async () => {
+	const flat = table({ pagination: true, pageSizes: [2] })
+	await settle()
+	expect(flat.get('[data-slot="data-table-rows"]').text()).toBe('Showing 1 to 2 of 3 rows')
+
+	const grouped = table({ pagination: true, pageSizes: [1], defaultGroupBy: ['team'] })
+	await settle()
+	expect(grouped.get('[data-slot="data-table-rows"]').text()).toBe(
+		'Showing group 1 of 2 groups (3 rows)',
+	)
+
+	const tree = table({
+		pagination: true,
+		pageSizes: [2],
+		getChildren: (row: Person) => row.reports,
+	})
+	await settle()
+	expect(tree.get('[data-slot="data-table-rows"]').text()).toBe(
+		'Showing top-level rows 1 to 2 of 3 (4 rows with child rows)',
+	)
+
+	const empty = table({ pagination: true, pageSizes: [2], rows: [] })
+	await settle()
+	expect(empty.get('[data-slot="data-table-rows"]').text()).toBe('No rows')
+})
+
+test('a group checkbox follows the selection of its rows, with many groups and a large selection', async () => {
+	const controller = createTableController()
+	const many = Array.from({ length: 600 }, (_, index) => ({
+		id: `r${index}`,
+		name: `Person ${index}`,
+		team: `Team ${index % 30}`,
+		score: index,
+		joined: '2024-01-01',
+	}))
+	const wrapper = table({
+		rows: many,
+		controller,
+		selection: 'multiple',
+		defaultGroupBy: ['team'],
+	})
+	await settle()
+	const boxes = () =>
+		wrapper.findAll('tbody [role="checkbox"]').map((box) => box.attributes('aria-checked'))
+	expect(boxes()).toHaveLength(30)
+	controller.selectAll()
+	await settle()
+	expect(new Set(boxes())).toEqual(new Set(['true']))
+	controller.deselectRows(['r0', 'r1'])
+	await settle()
+	expect(boxes().slice(0, 3)).toEqual(['mixed', 'mixed', 'true'])
+	expect(wrapper.get('thead [role="checkbox"]').attributes('aria-checked')).toBe('mixed')
+})
+
+test('a search, a sort and a page are said to assistive technology, once after a pause', async () => {
+	vi.useFakeTimers()
+	try {
+		const controller = createTableController()
+		const wrapper = table({ controller, search: true, pagination: true, pageSizes: [2] })
+		await settle()
+		const status = wrapper.get('[data-slot="data-table-status"]')
+		expect(status.attributes()).toMatchObject({ role: 'status', 'aria-live': 'polite' })
+		expect(status.text()).toBe('')
+
+		// A fast typist: three letters, one announcement.
+		const input = wrapper.get('input')
+		const said: string[] = []
+		for (const text of ['A', 'Ai', 'Ain']) {
+			type(input.element, text)
+			await nextTick()
+			vi.advanceTimersByTime(100)
+			await nextTick()
+			said.push(status.text())
+		}
+		expect(said).toEqual(['', '', ''])
+		vi.advanceTimersByTime(600)
+		await nextTick()
+		expect(status.text()).toBe('1 row found.')
+
+		controller.setSearch('')
+		controller.sortBy('name', 'desc')
+		vi.advanceTimersByTime(600)
+		await nextTick()
+		// The rows changed and the sort changed: the count says more, so it is the one text.
+		expect(status.text()).toBe('3 rows found.')
+
+		controller.sortBy('score', 'asc')
+		vi.advanceTimersByTime(600)
+		await nextTick()
+		expect(status.text()).toBe('Sorted by Score, ascending.')
+
+		controller.nextPage()
+		vi.advanceTimersByTime(600)
+		await nextTick()
+		expect(status.text()).toBe('Page 2 of 2')
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+test('an export that fails says so, shows a message and sends an event', async () => {
+	const failures: unknown[][] = []
+	const wrapper = table({
+		export: { filename: 'people' },
+		onExportError: (...details: unknown[]) => failures.push(details),
+	})
+	await settle()
+	writers.downloadCsv.mockImplementationOnce(() => {
+		throw new Error('The disk is full.')
+	})
+	await wrapper.get('[data-slot="menu-trigger"]').trigger('click')
+	await settle()
+	byText('[role="menuitem"]', 'Export CSV').click()
+	await vi.waitFor(() => expect(failures).toHaveLength(1))
+	await settle()
+
+	expect(failures[0]?.[0]).toMatchObject({ message: 'The disk is full.' })
+	expect(failures[0]?.[1]).toEqual({ format: 'csv' })
+	const alert = wrapper.get('[role="alert"]')
+	expect(alert.text()).toContain('The export failed. Try again.')
+
+	// The next export that works takes the message away.
+	await wrapper.get('[data-slot="menu-trigger"]').trigger('click')
+	await settle()
+	byText('[role="menuitem"]', 'Export CSV').click()
+	await vi.waitFor(() => expect(writers.downloadCsv).toHaveBeenCalledTimes(2))
+	await settle()
+	expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+})
+
+test('a table without a label warns while the app is in development', async () => {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	try {
+		table({ label: undefined })
+		await settle()
+		expect(warn).toHaveBeenCalledTimes(1)
+		expect(String(warn.mock.calls[0]?.[0])).toContain('has no accessible name. Pass `label`')
+		table({ label: 'People' })
+		await settle()
+		expect(warn).toHaveBeenCalledTimes(1)
+	} finally {
+		warn.mockRestore()
+	}
+})
+
+test('the placeholders of a number range are numbers that a person can read', async () => {
+	const wrapper = table({
+		columnFilters: true,
+		rows: [
+			{ id: 'a', name: 'A', team: 'T', score: 0.1 + 0.2, joined: '2024-01-05' },
+			{ id: 'b', name: 'B', team: 'T', score: 1 / 3, joined: '2024-01-07' },
+		],
+		columns: [{ id: 'score', header: 'Score', format: 'number' }],
+	})
+	await settle()
+	await wrapper.get('[data-slot="popover-trigger"]').trigger('click')
+	await settle()
+	// The lowest value is rounded down and the highest up, so the two bounds hold every row.
+	expect(onPage('input[aria-label="Lowest Score"]').getAttribute('placeholder')).toBe('0.3')
+	expect(onPage('input[aria-label="Highest Score"]').getAttribute('placeholder')).toBe('0.333334')
+})
+
+test('the date fields take their first and last day in the zone of the column', async () => {
+	const wrapper = table({
+		columnFilters: true,
+		rows: [
+			{ id: 'a', at: new Date(Date.UTC(2024, 0, 5, 2)) },
+			{ id: 'b', at: new Date(Date.UTC(2024, 0, 9, 23)) },
+		] as never,
+		columns: [
+			{
+				id: 'at',
+				header: 'At',
+				format: 'date',
+				formatOptions: { timeZone: 'America/Los_Angeles' },
+			},
+		],
+	})
+	await settle()
+	await wrapper.get('[data-slot="popover-trigger"]').trigger('click')
+	await settle()
+	const from = onPage('input[aria-label="At from"]')
+	expect([from.getAttribute('min'), from.getAttribute('max')]).toEqual(['2024-01-04', '2024-01-09'])
+})
+
+test('the button of the header reads the rows that are open now, not ids that no row has', async () => {
+	const wrapper = table({
+		getChildren: (row: Person) => row.reports,
+		// The id of a row that left the table.
+		defaultExpanded: ['gone'],
+	})
+	await settle()
+	const button = wrapper.get('thead button')
+	expect(button.attributes()).toMatchObject({
+		'aria-label': 'Expand all rows, People',
+		'aria-expanded': 'false',
+	})
+	await button.trigger('click')
+	await settle()
+	expect(wrapper.get('thead button').attributes('aria-label')).toBe('Collapse all rows, People')
 })

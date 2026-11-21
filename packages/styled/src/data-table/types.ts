@@ -8,6 +8,7 @@ import type {
 	HeaderSlotProps,
 	CellRange,
 	ColumnDef,
+	ColumnFacetsSource,
 	ColumnPinning,
 	ColumnVisibility,
 	ColumnWidths,
@@ -24,6 +25,7 @@ import type {
 	TableView,
 } from 'ui-sdk-table-vue'
 import { inject, type ComputedRef, type InjectionKey, type ShallowRef } from 'vue'
+import type { DataTableExportFormat } from './messages'
 import type { DataTableMessages } from './messages'
 
 /** A class as Vue takes it: a text, a list or a record of switches. */
@@ -136,6 +138,13 @@ export interface DataTableProps<Row> {
 	cellSelection?: boolean
 	manualSort?: boolean
 	manualFilter?: boolean
+	/**
+	 * The choices of the filter controls as the owner of the rows knows them,
+	 * by column id: the values of a list, the lowest and highest number, the
+	 * first and last date. With `manualFilter`, the rows of the table hold
+	 * only what passes the filter, so give the facets of every row here.
+	 */
+	facets?: Readonly<Record<string, ColumnFacetsSource>>
 	manualPage?: boolean
 	rowCount?: number
 	loading?: boolean
@@ -170,7 +179,7 @@ export interface DataTableProps<Row> {
 	defaultCellRange?: CellRange | null
 }
 
-export type DataTableEmits = {
+export type DataTableEmits<Row = unknown> = {
 	'update:sort': [value: readonly SortRule[]]
 	'update:filter': [value: FilterState]
 	'update:groupBy': [value: readonly string[]]
@@ -197,7 +206,9 @@ export type DataTableEmits = {
 	rowPinningChange: [value: RowPinning, details: TableChangeDetails]
 	cellRangeChange: [value: CellRange | null, details: TableChangeDetails]
 	cellRangeCommit: [value: CellRange | null, details: TableCommitDetails]
-	cellEdit: [edits: readonly CellEdit<any>[], details: TableEditDetails]
+	cellEdit: [edits: readonly CellEdit<Row>[], details: TableEditDetails]
+	/** An export did not give a file: the writers did not load, or the data or the file could not be written. */
+	exportError: [error: unknown, details: { format: DataTableExportFormat }]
 }
 
 /**
@@ -248,6 +259,19 @@ export type DataTableContext = {
 	messages: ComputedRef<DataTableMessages>
 	/** The name of the table, or an empty text. */
 	label: ComputedRef<string>
+	/**
+	 * The ids of the selected rows as one set for every part. A table with
+	 * groups has a checkbox for each group, and each of them asks which of
+	 * its rows are selected: a set of its own for each would be built again
+	 * for every checkbox after every change.
+	 */
+	selected: ComputedRef<ReadonlySet<string>>
+	/** How many columns have a filter that asks for something. */
+	filterCount: ComputedRef<number>
+	/** An export starts: a message about an export that failed before goes away. */
+	exportStarted: () => void
+	/** An export failed: the table says so, shows a message and sends `exportError`. */
+	exportFailed: (error: unknown, format: DataTableExportFormat) => void
 }
 
 export const DATA_TABLE_CONTEXT: InjectionKey<DataTableContext> = Symbol('data-table')
