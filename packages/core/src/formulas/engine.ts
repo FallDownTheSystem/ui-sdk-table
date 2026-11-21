@@ -10,14 +10,29 @@ import { columnCircle, withColumnFormulas, type ColumnCompiler } from './columns
 import { compileTree, type FormulaOptions } from './compile'
 import { FORMULA_FUNCTIONS } from './functions'
 import { formulaShows } from './kinds'
-import { documentLetters } from '../sheet/chrome'
-import { namedColumns, parseTree, type FormulaAddresses, type FormulaNode } from './parser'
+import {
+	addressesFor,
+	CellMap,
+	cellReader,
+	createCompiler,
+	createFollow,
+	whereOf,
+	type Addresses,
+} from './graph'
+import { namedColumns, parseTree, type FormulaNode } from './parser'
 import { addressRef, bracketRef, headerNames, printTree } from './print'
 import { revertFormulas, setFormulas } from './state'
 import { formulaSigns, STORED_SIGNS } from './tokens'
 import { describeFormulaIssue } from './words'
 
-export type FormulaEngineOptions = FormulaOptions
+export type FormulaEngineOptions = FormulaOptions & {
+	/**
+	 * The most cells that one change may read, 5,000,000 by default. A
+	 * formula in each row that sums from the first row to its own reads the
+	 * square of the rows; past the limit the change is refused with words.
+	 */
+	maxReads?: number
+}
 
 /** The ids of the columns that a tree reads, each once. */
 export function columnsRead(tree: FormulaNode): string[] {
@@ -48,14 +63,6 @@ export function columnsRead(tree: FormulaNode): string[] {
 	return [...found]
 }
 
-/** The maps of the addresses of one list of columns and rows. */
-type Addresses = {
-	letters: ReadonlyMap<string, string>
-	columns: ReadonlyMap<string, string>
-	numbers: ReadonlyMap<string, number>
-	rowIds: readonly string[]
-}
-
 const ADDRESS = /^(\$?)([A-Z]{1,3})(\$?)(\d+)$/
 
 /** A value function that computes each row object once and keeps the value for it. */
@@ -81,35 +88,20 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 		engine.column(formula, columnId, columns)
 
 	// The maps are kept for each list of row ids, and made again for other columns.
-	const kept = new WeakMap<readonly string[], { columns: readonly ColumnDef[]; maps: Addresses }>()
+	const kept = new WeakMap<readonly string[], { defs: readonly ColumnDef[]; maps: Addresses }>()
 	function addressesOf(sheet: FormulaSheet): Addresses {
 		const rowIds = sheet.rowIds()
-		const columns = sheet.columns()
+		const defs = sheet.columns()
 		const found = kept.get(rowIds)
-		if (found && found.columns === columns) return found.maps
-		const letters = documentLetters(columns)
-		const numbers = new Map<string, number>()
-		rowIds.forEach((id, index) => numbers.set(id, index + 1))
-		const maps = {
-			letters,
-			columns: new Map([...letters].map(([id, letter]) => [letter, id])),
-			numbers,
-			rowIds,
-		}
-		kept.set(rowIds, { columns, maps })
+		if (found && found.defs === defs) return found.maps
+		const maps = addressesFor(rowIds, defs)
+		kept.set(rowIds, { defs, maps })
 		return maps
 	}
-	function where(place: FormulaPlace, sheet: FormulaSheet): FormulaAddresses {
-		const maps = addressesOf(sheet)
-		return {
-			rowId: place.rowId,
-			columnOf: (letters) => maps.columns.get(letters),
-			letterOf: (id) => maps.letters.get(id),
-			rowOf: (number) => maps.rowIds[number - 1],
-			numberOf: (id) => maps.numbers.get(id),
-			rows: maps.rowIds.length,
-		}
-	}
+	const where = (place: FormulaPlace, sheet: FormulaSheet) =>
+		whereOf(place.rowId, addressesOf(sheet))
+	const compileCell = createCompiler(options)
+	const follow = createFollow({ compile: compileCell, maxReads: options.maxReads ?? 5_000_000 })
 
 	const engine: FormulaEngine = {
 		parse(text, at, sheet) {
@@ -150,14 +142,29 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 			const shows = formulaShows(formula, known, options.timeZone)
 			return { value: keptByRow(run), reads: columnsRead(parsed.tree), shows }
 		},
-		evaluate() {
-			throw new Error('This engine computes the formulas of columns only.')
+		evaluate(formula, at, sheet) {
+			const maps = addressesOf(sheet)
+			const compiled = compileCell(formula, sheet.columns(), maps)
+			if ('error' in compiled) return compiled.error
+			return compiled.run(cellReader(sheet, maps, new CellMap(), () => {})(at.rowId))
 		},
-		follow() {
-			return { results: [] }
-		},
-		reads(_formula: string, _at: FormulaPlace) {
-			return undefined
+		follow: (changes, formulas, sheet) => follow(changes, formulas, sheet, addressesOf(sheet)),
+		reads(formula, at, sheet) {
+			const maps = addressesOf(sheet)
+			const compiled = compileCell(formula, sheet.columns(), maps)
+			if ('error' in compiled) return []
+			const places: FormulaPlace[] = compiled.own.map((columnId) => ({ rowId: at.rowId, columnId }))
+			places.push(...compiled.cells)
+			for (const range of compiled.ranges) {
+				const a = range.from === '*' ? 1 : maps.numbers.get(range.from)
+				const b = range.to === '*' ? maps.rowIds.length : maps.numbers.get(range.to)
+				if (a === undefined || b === undefined) continue
+				for (let number = Math.min(a, b); number <= Math.max(a, b); number++) {
+					const rowId = maps.rowIds[number - 1] ?? ''
+					for (const columnId of range.columns) places.push({ rowId, columnId })
+				}
+			}
+			return places
 		},
 		functions: () => FORMULA_FUNCTIONS,
 		withColumns: (columns, layer) => withColumnFormulas(columns, layer, compile),

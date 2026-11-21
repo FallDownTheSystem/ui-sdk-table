@@ -1,6 +1,6 @@
 import { isFormulaError } from '../../formula/errors'
 import { toFormulaText } from '../values'
-import { ANY, countArg, type FormulaArgs, type FormulaFunction } from './shared'
+import { ANY, countArg, eachArg, type FormulaArgs, type FormulaFunction } from './shared'
 
 // A text is counted in UTF-16 code units, as a spreadsheet counts it.
 
@@ -34,12 +34,12 @@ export const TEXT_FUNCTIONS: Record<string, FormulaFunction> = {
 		help: 'The texts joined together.',
 		call: (args) => {
 			let joined = ''
-			for (let index = 0; index < args.length; index++) {
-				const text = toFormulaText(args.value(index))
+			const stop = eachArg(args, (value) => {
+				const text = toFormulaText(value)
 				if (isFormulaError(text)) return text
 				joined += text
-			}
-			return joined
+			})
+			return stop ?? joined
 		},
 	},
 	LEN: oneText('How many characters the text has.', (text) => text.length),

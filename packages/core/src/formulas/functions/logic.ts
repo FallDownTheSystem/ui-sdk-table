@@ -1,6 +1,6 @@
 import { isFormulaError } from '../../formula/errors'
 import { compare, isDate, isEmpty, toTest } from '../values'
-import { ANY, type FormulaArgs, type FormulaFunction } from './shared'
+import { ANY, eachArg, type FormulaArgs, type FormulaFunction } from './shared'
 
 /**
  * The tests of `AND` and `OR`, as a spreadsheet reads them: every argument is
@@ -9,14 +9,14 @@ import { ANY, type FormulaArgs, type FormulaFunction } from './shared'
  */
 function tests(args: FormulaArgs): boolean[] | string {
 	const found: boolean[] = []
-	for (let index = 0; index < args.length; index++) {
-		const value = args.value(index)
+	const stop = eachArg(args, (value, ref) => {
 		if (isFormulaError(value)) return value
-		if (args.column(index) && (typeof value === 'string' || isEmpty(value))) continue
+		if (ref && (typeof value === 'string' || isEmpty(value))) return
 		const test = toTest(value)
 		if (typeof test !== 'boolean') return test
 		found.push(test)
-	}
+	})
+	if (stop !== undefined) return stop as string
 	return found.length ? found : '#VALUE!'
 }
 

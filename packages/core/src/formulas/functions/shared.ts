@@ -1,10 +1,25 @@
 import { isFormulaError, type FormulaError } from '../../formula/errors'
 import type { ColumnDef } from '../../rows/types'
-import { isDate, isEmpty, toNumber } from '../values'
+import type { ColumnNode } from '../parser'
+import { FormulaRange, isDate, isEmpty, toNumber } from '../values'
+
+/**
+ * The cells that a formula of a cell reads: by ids, with the values of now.
+ * A formula of a column has none, and reads the row object.
+ */
+export type CellReader = {
+	/** The row of the formula. */
+	rowId: string
+	/** The value of a cell, or `#REF!` for a row or a column that is gone. */
+	read(rowId: string, columnId: string): unknown
+	/** The cells between two references, both ends in it, or `#REF!`. */
+	range(from: ColumnNode, to: ColumnNode): FormulaRange | FormulaError
+}
 
 /** What a function reads while a formula runs. */
 export type FormulaContext = {
 	row: unknown
+	cell?: CellReader
 	/** The time of a date in the zone that the formula uses: the start of a day, or the moment of a `Date`. */
 	time: (date: string | Date) => number
 	/** The zone of a date that is no reference to a column: the `timeZone` of the formula, or local time. */
@@ -37,6 +52,30 @@ export const ANY = 255
 
 export const isError = isFormulaError
 
+/**
+ * Visits each value of the arguments: the cells of a range one by one, as
+ * references, and every other argument as it is. A visit that returns a value
+ * stops the walk, and that value is the answer.
+ */
+export function eachArg(
+	args: FormulaArgs,
+	visit: (value: unknown, ref: boolean) => unknown,
+): unknown {
+	for (let index = 0; index < args.length; index++) {
+		const value = args.value(index)
+		if (value instanceof FormulaRange) {
+			for (const cell of value.values) {
+				const stop = visit(cell, true)
+				if (stop !== undefined) return stop
+			}
+			continue
+		}
+		const stop = visit(value, !!args.column(index))
+		if (stop !== undefined) return stop
+	}
+	return undefined
+}
+
 /** A number argument, or the error that stops the call. */
 export function numberArg(args: FormulaArgs, index: number): number | FormulaError {
 	return toNumber(args.value(index))
@@ -61,19 +100,18 @@ export function countArg(
  */
 export function numbersOf(args: FormulaArgs): number[] | FormulaError {
 	const numbers: number[] = []
-	for (let index = 0; index < args.length; index++) {
-		const value = args.value(index)
+	const stop = eachArg(args, (value, ref) => {
 		if (isFormulaError(value)) return value
-		if (args.column(index)) {
+		if (ref) {
 			if (typeof value === 'number' && Number.isFinite(value)) numbers.push(value)
-			continue
+			return
 		}
 		// An empty value from a function is the empty cell that it read.
-		if (isEmpty(value)) continue
+		if (isEmpty(value)) return
 		if (isDate(value)) return '#VALUE!'
 		const number = toNumber(value)
 		if (typeof number !== 'number') return number
 		numbers.push(number)
-	}
-	return numbers
+	})
+	return stop === undefined ? numbers : (stop as FormulaError)
 }

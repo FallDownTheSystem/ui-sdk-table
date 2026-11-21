@@ -148,8 +148,12 @@ export type FormulaEngine = {
 		formulas: CellFormulas,
 		sheet: FormulaSheet,
 	): { results: FormulaResult[] } | { issues: FormulaIssue[] }
-	/** The cells that a formula at a cell reads, directly, by ids; for the check of a circle. */
-	reads(formula: string, at: FormulaPlace, sheet: FormulaSheet): readonly FormulaPlace[] | undefined
+	/**
+	 * The cells that a stored formula at a cell reads, directly, by ids: the
+	 * cells of its own row, of other rows, and every cell of its ranges. An
+	 * empty list for a formula that cannot be read.
+	 */
+	reads(formula: string, at: FormulaPlace, sheet: FormulaSheet): readonly FormulaPlace[]
 	/** The functions, for a list of a person or an agent. */
 	functions(): readonly { name: string; args: string; help: string }[]
 	/**

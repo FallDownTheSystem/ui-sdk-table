@@ -2,11 +2,11 @@ import { isFormulaError } from '../formula/errors'
 import type { FormulaIssue } from '../formula/types'
 import { cellValue, toTime } from '../rows/columns'
 import type { ColumnDef } from '../rows/types'
-import { FUNCTIONS, type FormulaArgs, type FormulaContext } from './functions'
+import { FUNCTIONS, type CellReader, type FormulaArgs, type FormulaContext } from './functions'
 import { namedColumns, parseTree, type FormulaNode } from './parser'
 import { bracketRef, headerNames, printTree } from './print'
 import { formulaSigns, STORED_SIGNS } from './tokens'
-import { compare, resultOf, toFormulaText, toNumber } from './values'
+import { compare, FormulaRange, resultOf, toFormulaText, toNumber } from './values'
 import { describeFormulaIssue } from './words'
 
 // A formula becomes a tree of closures, never code for `eval` or
@@ -78,14 +78,20 @@ function compileNode(node: FormulaNode, columns: ReadonlyMap<string, ColumnDef<n
 			const value = node.value
 			return () => value
 		}
-		case 'range':
-			throw new Error('A range is read by the formula of a cell only.')
+		case 'range': {
+			const { from, to } = node
+			return (context) => context.cell?.range(from, to) ?? '#REF!'
+		}
 		case 'column': {
-			if (node.row !== undefined)
-				throw new Error('Another row is read by the formula of a cell only.')
 			const column = columns.get(node.id)
 			if (!column) throw new Error(`No column "${node.id}".`)
-			return (context) => cellValue(context.row as never, column)
+			const { id, row } = node
+			if (row === '*') return (context) => context.cell?.range(node, node) ?? '#REF!'
+			return (context) => {
+				const cell = context.cell
+				if (cell) return cell.read(row ?? cell.rowId, id)
+				return row === undefined ? cellValue(context.row as never, column) : '#REF!'
+			}
 		}
 		case 'group':
 			return compileNode(node.inner, columns)
@@ -129,6 +135,7 @@ function compileNode(node: FormulaNode, columns: ReadonlyMap<string, ColumnDef<n
 				if (isFormulaError(a)) return a
 				const b = right(context)
 				if (isFormulaError(b)) return b
+				if (a instanceof FormulaRange || b instanceof FormulaRange) return '#VALUE!'
 				return comparison(op, compare(a, b, context.time))
 			}
 		}
@@ -230,10 +237,29 @@ export function compileTree(
 	columns: readonly ColumnDef<never>[],
 	options: FormulaOptions,
 ): (row: unknown) => unknown {
+	const run = compileContext(tree, columns, options)
+	return (row) => run({ row })
+}
+
+/** A function of a cell for a tree that was read already: it reads the cells through `cell`. */
+export function compileCellTree(
+	tree: FormulaNode,
+	columns: readonly ColumnDef<never>[],
+	options: FormulaOptions,
+): (cell: CellReader) => unknown {
+	const run = compileContext(tree, columns, options)
+	return (cell) => run({ row: undefined, cell })
+}
+
+function compileContext(
+	tree: FormulaNode,
+	columns: readonly ColumnDef<never>[],
+	options: FormulaOptions,
+): (place: { row: unknown; cell?: CellReader }) => unknown {
 	const byId = new Map(namedColumns(columns).map((column) => [column.id, column]))
 	const run = compileNode(tree, byId)
 	const timeZone = options.timeZone
 	const time = (date: string | Date) =>
 		date instanceof Date ? date.getTime() : (toTime(date, timeZone) ?? Number.NaN)
-	return (row) => resultOf(run({ row, time, zone: timeZone }))
+	return ({ row, cell }) => resultOf(run({ row, cell, time, zone: timeZone }))
 }

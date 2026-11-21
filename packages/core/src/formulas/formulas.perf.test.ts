@@ -207,3 +207,86 @@ describe.runIf(requested)('addresses with 50,000 rows', () => {
 		console.table(results)
 	})
 })
+
+describe.runIf(requested)('the engine of cell formulas with 50,000 rows', () => {
+	test('median time of `follow`', () => {
+		const engine = createFormulaEngine()
+		const defs: ColumnDef[] = [
+			{ id: 'price', header: 'Price' },
+			{ id: 'qty', header: 'Quantity' },
+			{ id: 'total', header: 'Total' },
+			{ id: 'sum', header: 'Sum' },
+		]
+		const ids = Array.from({ length: ROWS }, (_, index) => `r${index}`)
+		const values = new Map<string, number>()
+		const sheet = {
+			columns: () => defs,
+			rowIds: () => ids,
+			row: () => ({}),
+			value: (rowId: string, columnId: string) => values.get(`${rowId}|${columnId}`) ?? 1,
+			locale: () => undefined,
+		}
+		const results: Record<string, number> = {}
+
+		const same: Record<string, Record<string, string>> = {}
+		for (const id of ids) same[id] = { total: '=[price]*[qty]' }
+		const sameFormulas = { cells: same }
+		const changed = ids.map((rowId, index) => ({ rowId, columnId: 'price', value: index }))
+		engine.follow(changed.slice(0, 1), sameFormulas, sheet)
+		results['50,000 same-row formulas after 50,000 changed values'] = median(() => {
+			const found = engine.follow(changed, sameFormulas, sheet)
+			return 'results' in found ? found.results.length : 0
+		}, 5)
+		results['one changed value, 50,000 same-row formulas in the table'] = median(() =>
+			engine.follow([{ rowId: 'r7', columnId: 'price', value: 3 }], sameFormulas, sheet),
+		)
+
+		const chain: Record<string, Record<string, string>> = {}
+		ids.forEach((id, index) => {
+			if (index) chain[id] = { total: `=[total@r${index - 1}]+1` }
+		})
+		const chainFormulas = { cells: chain }
+		results['a chain of 50,000 cells, one edit at the top (index built)'] = median(() => {
+			const found = engine.follow(
+				[{ rowId: 'r0', columnId: 'total', value: 1 }],
+				chainFormulas,
+				sheet,
+			)
+			return 'results' in found ? found.results.length : 0
+		}, 5)
+		results['a chain of 50,000 cells, with a new index'] = median(() => {
+			const found = engine.follow(
+				[{ rowId: 'r0', columnId: 'total', value: 1 }],
+				{ cells: { ...chain } },
+				sheet,
+			)
+			return 'results' in found ? found.results.length : 0
+		}, 5)
+
+		const ranges: Record<string, Record<string, string>> = {}
+		for (let index = 0; index < 1000; index++) {
+			const from = index * 50
+			ranges[`r${from}`] = { sum: `=SUM([price@r${from}]:[price@r${from + 49}])` }
+		}
+		const rangeFormulas = { cells: ranges }
+		results['1,000 ranges of 50 rows and 50,000 changed cells'] = median(() => {
+			const found = engine.follow(changed, rangeFormulas, sheet)
+			return 'results' in found ? found.results.length : 0
+		}, 5)
+
+		const running: Record<string, Record<string, string>> = {}
+		ids.slice(0, 5000).forEach((id) => (running[id] = { sum: `=SUM([price@r0]:[price@${id}])` }))
+		results['a running sum over 5,000 rows (12.5 million reads), refused by `maxReads`'] = median(
+			() =>
+				engine.follow([{ rowId: 'r0', columnId: 'price', value: 2 }], { cells: running }, sheet),
+			3,
+		)
+		const refused = engine.follow(
+			[{ rowId: 'r0', columnId: 'price', value: 2 }],
+			{ cells: running },
+			sheet,
+		)
+		expect('issues' in refused).toBe(true)
+		console.table(results)
+	}, 120_000)
+})

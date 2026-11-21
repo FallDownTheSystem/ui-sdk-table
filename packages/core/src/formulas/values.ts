@@ -8,6 +8,11 @@ import { isDay, toText } from '../rows/columns'
 // except where the data of a table is not the data of a spreadsheet: a date
 // is no number here.
 
+/** The cells of a range, in the order of the document: the rows, and in each row the columns. */
+export class FormulaRange {
+	constructor(readonly values: readonly unknown[]) {}
+}
+
 export const isEmpty = (value: unknown): value is null | undefined | '' =>
 	value === null || value === undefined || value === ''
 
@@ -24,6 +29,7 @@ const PLAIN_NUMBER = /^\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?\s*$/i
 
 /** A value as a number for `+ - * / ^` and the functions of numbers. */
 export function toNumber(value: unknown): number | FormulaError {
+	if (value instanceof FormulaRange) return '#VALUE!'
 	if (typeof value === 'number') return Number.isFinite(value) ? value : '#NUM!'
 	if (isEmpty(value)) return 0
 	if (typeof value === 'boolean') return value ? 1 : 0
@@ -36,6 +42,7 @@ export function toNumber(value: unknown): number | FormulaError {
 
 /** A value as a text for `&` and the functions of texts, or the error that it is. */
 export function toFormulaText(value: unknown): string {
+	if (value instanceof FormulaRange) return '#VALUE!'
 	if (isFormulaError(value)) return value
 	if (isEmpty(value)) return ''
 	if (typeof value === 'number') return Number.isFinite(value) ? String(clean(value)) : '#NUM!'
@@ -101,6 +108,8 @@ export function compare(a: unknown, b: unknown, time: (date: string | Date) => n
 
 /** The value of a whole formula: a number without its last binary digits, and no number that is not finite. */
 export function resultOf(value: unknown): unknown {
+	// A range is no value of a cell: a function must read it.
+	if (value instanceof FormulaRange) return '#VALUE!'
 	if (typeof value !== 'number' || Number.isInteger(value)) return value
 	return Number.isFinite(value) ? clean(value) : '#NUM!'
 }

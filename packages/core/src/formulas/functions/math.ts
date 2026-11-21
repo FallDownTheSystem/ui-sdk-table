@@ -3,6 +3,7 @@ import { clean, isDate, isEmpty, toNumber } from '../values'
 import {
 	ANY,
 	countArg,
+	eachArg,
 	numberArg,
 	numbersOf,
 	type FormulaArgs,
@@ -114,15 +115,12 @@ export const MATH_FUNCTIONS: Record<string, FormulaFunction> = {
 		help: 'How many of the values are numbers.',
 		call: (args) => {
 			let count = 0
-			for (let index = 0; index < args.length; index++) {
-				const value = args.value(index)
+			eachArg(args, (value, ref) => {
 				if (typeof value === 'number') count += Number.isFinite(value) ? 1 : 0
-				else if (args.column(index) || isFormulaError(value) || isEmpty(value) || isDate(value)) {
-					continue
-				}
+				else if (ref || isFormulaError(value) || isEmpty(value) || isDate(value)) return
 				// A boolean or a text of a number written into the formula counts.
 				else if (typeof toNumber(value) === 'number') count++
-			}
+			})
 			return count
 		},
 	},
@@ -133,12 +131,9 @@ export const MATH_FUNCTIONS: Record<string, FormulaFunction> = {
 		help: 'How many of the values are not empty. An error counts.',
 		call: (args) => {
 			let count = 0
-			for (let index = 0; index < args.length; index++) {
-				const value = args.value(index)
-				if (!(args.column(index) && isEmpty(value)) && value !== null && value !== undefined) {
-					count++
-				}
-			}
+			eachArg(args, (value, ref) => {
+				if (!(ref && isEmpty(value)) && value !== null && value !== undefined) count++
+			})
 			return count
 		},
 	},

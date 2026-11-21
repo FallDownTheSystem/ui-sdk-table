@@ -135,6 +135,12 @@ Each value is the median of 9 runs (5 for a parse), in milliseconds, on the clou
 | Slice 4: the maps of the addresses for 50,000 new rows, and one number | under 5 | 5.8 |
 | Slice 4: the number of each of 50,000 rows, the maps kept | not estimated | 2.6 |
 | Slice 4: a parse of `=A1+A50000*B2` at a cell, the maps kept | not estimated | 0.04 |
+| Slice 5: `follow`, 50,000 same-row formulas after 50,000 changed values | under 100 | 176 |
+| Slice 5: `follow`, one changed value, 50,000 same-row formulas in the table, the index kept | under 2 | 0 (below 0.01) |
+| Slice 5: `follow`, a chain of 50,000 cells, one edit at the top, the index kept | under 90 | 298 |
+| Slice 5: the same with a new index of readers | not estimated | 378 |
+| Slice 5: `follow`, 1,000 ranges of 50 rows and 50,000 changed cells | not estimated | 129 |
+| Slice 5: `follow`, a running sum over 5,000 rows (12.5 million reads), refused by `maxReads` | not estimated | 5.1 |
 
 What the numbers show:
 
@@ -142,6 +148,7 @@ What the numbers show:
 - The first version of the engine cut every comparison to 15 digits with `toPrecision`; `IFS` was 70 ms and `IF` with `ROUND` 62 ms. A comparison now cuts only two numbers that are closer than 1e-13 of their size, which gives the same answers.
 - A date function first read the zone of its column with `timeZoneOf` for each row, which asks `Intl` whether the zone exists: 386 ms for the first read of 50,000 moments. The zone is now kept for each column object, and the offset of the zone for each day of UTC (`formulas/zone.ts`), so a row reads `Intl` only on a day that the clock changes.
 - A formula of a column at run time (`setColumnFormula`, slice 3) reports no value. It gives the row model new column objects, so the next read of the rows runs the stages again: nothing to compute until a stage reads the column, and one pass of the formula and one sort when the table sorts by it. The three lines of slice 3 come from the second test of `formulas/formulas.perf.test.ts`, which mounts a table with 50,000 rows.
+- `follow` (slice 5) builds a node for each cell to compute, with the list of its readers, puts them in order (Kahn), counts the reads against `maxReads` and only then computes. The first version kept a text key and a `Set` of edges for each cell: 402 ms for 50,000 same-row formulas, 571 ms for the ranges and 2,056 ms before the running sum was refused. A map by row id and then column id and a list of readers with a mark for the last reader give the numbers of the table. The rest of the time of a chain is the walk itself: each of the 50,000 cells is a node, and each is computed through its compiled tree.
 - A report of 100,000 cells through a paste reads each text with `parseText`; a report of dependents will not. The budgets of the report are written again before slice 5, with the real path of dependents.
 
 ## Size of the build
