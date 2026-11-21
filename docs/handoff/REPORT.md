@@ -301,3 +301,45 @@ All of this is on `master` of the library at `0305a78` and of the app at `65f3f6
 15. Open item 7 above is out of date: the sink page was restyled and has 60 tiles.
 
 **Not verified, added.** The letters and the formulas in Firefox and Safari, apart from the three proofs that ran in all three browsers; touch; a screen reader; `=` on a real Finnish keyboard; an Excel file opened in Excel; every number on another machine than the cloud machine.
+
+## After that: the rest of the formulas
+
+The whole plan of the formulas, slices 0 to 12, is on `master` of the library at `2675031`. Each of the three branches passed the five checks in a second checkout before its merge; the last one with 1079 unit tests and 171 Playwright tests. This closes open items 10 and 11 above. The section "Formulas" of `packages/vue/README.md` names every option, method, slot prop, attribute and message, and `CLAUDE.md` has the rules.
+
+**What a table with the `formulas` option can do.**
+- **Column formulas at run time** (`cellFormulas.columns`, `setColumnFormula`): set, change and take away, each as one step of the history. The field of a cell in such a column shows the formula of the column, and a save changes the column.
+- **Addresses.** The number of a row is its place in `rows`, and the letter of a column its place among `columns` without the columns that lead. After a sort the numbers read 7, 2, 9, and a hidden column leaves a gap in the letters (A, C). `$`, ranges and whole columns (`B:B`) are read.
+- **Cell formulas** (`cellFormulas.cells`): a text that starts with `=` in the editor, the formula bar, a paste, a fill or `editCell`. The result is a value of the row. One report holds the cell and every cell that reads it, in order, and one step of the history holds values and formulas. A circle is refused with its path.
+- **New rows of the owner:** the table checks the formula cells in a microtask and reports the differences with the reason `recalculate`, which is no step.
+- **Fill, paste and cut:** references without `$` move by the distance the cell moved; past the edge they give `#REF!`.
+- **Reads:** `getFormulaSummary`, `evaluateFormula` and `getFormulaFunctions` for an agent, and `useFormulaBar` for a formula bar.
+- **Excel:** `excelFormulas()` as the `formula` option of `toXlsx` writes a formula into the file only when all of it means the same in Excel; else the cell holds its result. A period of a day, a month or a year is a date cell when a spreadsheet shows the pattern as the screen does.
+
+**A fault of before that the work fixed.** A change of `cellFormats` back to the value of the last render, in the turn of the first change, was lost for an owner that holds the key. `createHeldKey` of `edit/turn.ts` is now the one change path for `cellFormats`, `columnAggregates` and `cellFormulas`.
+
+**Size.** The main entry may grow by 12 kB minified for the formulas, and `formulas-size.test.ts` holds that limit. The glue is 11.85 kB, so 152 bytes are left: a new feature of the formulas needs code moved behind the engine object. The formulas entry is 47.1 kB minified (16.0 kB gzip); the first estimate was 20 kB.
+
+**Measured with 50,000 rows on the cloud machine, against the estimates of the plan.** `docs/benchmarks.md` has every number.
+
+| Case | Estimate | Measured |
+| --- | --- | --- |
+| One edit that 11 formulas read | under 2 ms more | 0.08 ms |
+| Fill one formula down | under 70 ms | 573 ms |
+| Paste of 49,999 formulas | under 160 ms | 1,280 ms |
+| Paste of 50,000 prices that 50,000 formulas read | under 100 ms | 410 ms |
+| A chain of 50,000 cells, one edit at the top | under 90 ms | 325 ms (967 ms for the first edit) |
+| 50,000 new prices from the owner | none | 211 ms |
+| Excel file of 4 columns, with formulas | none | 252 ms (171 ms without) |
+
+**Set without an answer of the owner, added.**
+11. A value typed into a cell of a computed column is refused with words; it does not replace the formula for that one cell.
+12. The words of a formula error and of a refusal come from the engine; `messages.formulaIssue`, `messages.formulaError` and `messages.recalculated` put other words in their place.
+13. `FLOOR`, `CEILING` and every date function go into an Excel file as results, and so does a range of more than one column.
+14. After rows came or went, every formula is checked, not only the readers of those rows.
+
+**Open items, added.**
+16. **Speed of a fill and a paste of formulas over 50,000 rows** is five to eight times the estimate of the plan (see the table).
+17. **No development warning** when an owner does not take a result of a check after new rows. A guard stops the loop.
+18. **The sink page and the app** do not show the formulas yet. Both are being built.
+
+**Not verified, added.** An Excel file with formulas opened in Excel or LibreOffice (the file was read as XML and its patterns with `ssf`); Firefox and Safari, apart from the proofs; a screen reader; `=` on a real Finnish keyboard; the check after new rows in a browser with 50,000 rows; the examples of the README as an app of their own.
