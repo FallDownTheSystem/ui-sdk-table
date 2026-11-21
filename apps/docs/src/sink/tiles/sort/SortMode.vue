@@ -10,7 +10,7 @@ const MODES = [
 	{ value: 'always', label: 'Every press' },
 ] as const
 
-const people = createPeople(12)
+const people = createPeople(4)
 const columns: ColumnDef<Person>[] = [
 	{ id: 'team', header: 'Team', sortable: true },
 	{ id: 'country', header: 'Country', sortable: true },

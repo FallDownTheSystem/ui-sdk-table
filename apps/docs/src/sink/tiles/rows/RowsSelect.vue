@@ -2,6 +2,9 @@
 import { createTableController, Table, useTableView, type ColumnDef } from 'ui-sdk-table-vue'
 import { computed, shallowRef } from 'vue'
 import { count, orders, type Order } from '../../data'
+
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 4)
 import SinkCheck from '../../parts/SinkCheck.vue'
 import SinkIcon from '../../parts/SinkIcon.vue'
 
@@ -36,7 +39,7 @@ const all = computed(() => {
 		<div class="sink-frame">
 			<Table
 				v-model:selected="selected"
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:controller="controller"
 				:can-select="canSelect"

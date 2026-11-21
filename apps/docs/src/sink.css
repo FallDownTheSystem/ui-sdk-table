@@ -17,6 +17,7 @@
 
 	--sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 	--serif: 'Geist Serif', 'Times New Roman', Georgia, serif;
+	--pixel: 'Geist Pixel', 'Geist Mono', monospace;
 	--mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -56,6 +57,14 @@
 	font-family: 'Geist Mono';
 	src: url('../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2') format('woff2');
 	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Geist Pixel';
+	src: url('../node_modules/geist/dist/fonts/geist-pixel/GeistPixel-Square.woff2') format('woff2');
+	font-weight: 400;
 	font-style: normal;
 	font-display: swap;
 }
@@ -129,6 +138,7 @@ input {
 
 /* Display text is Geist Serif at its one weight, large and set tight. */
 .sink-head h1,
+.tile-title,
 .display,
 .bento-empty {
 	font-family: var(--serif);
@@ -172,7 +182,7 @@ input {
 .bento {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
-	grid-auto-rows: 420px;
+	grid-auto-rows: 460px;
 	gap: var(--gap);
 }
 
@@ -189,7 +199,7 @@ input {
 /*
  * The tones, in three weights as on the sink page of UI SDK: neutral
  * (`paper`, `sand`), soft (`mist`, `moss`, `sun`, `plum`) and bold (`clay`,
- * `ink`, `navy`). Every pair that holds text is 4.5 to 1 or more, and
+ * `ink`, `navy`, `pine`, `wine`). Every pair that holds text is 4.5 to 1 or more, and
  * `--tile-edge` and `--tile-accent` are 3 to 1 against the ground and the
  * surface. A table has no fill of its own and stands on `--tile-bg`;
  * `--tile-surface` is for the controls beside it and for popups.
@@ -336,6 +346,40 @@ input {
 	--tile-shadow: 0 10px 30px -12px oklch(0.15 0.08 260 / 0.7);
 }
 
+.tile[data-tone='pine'] {
+	--tile-bg: oklch(0.32 0.065 160);
+	--tile-surface: oklch(0.38 0.07 160);
+	--tile-ink: oklch(0.97 0.015 140);
+	--tile-ink-2: oklch(0.86 0.04 150);
+	--tile-edge: oklch(0.72 0.06 155);
+	--tile-accent: oklch(0.88 0.14 125);
+	--tile-accent-ink: oklch(0.27 0.06 160);
+	--tile-danger: oklch(0.84 0.1 40);
+	--tile-rule: color-mix(in oklab, var(--tile-ink) 17%, var(--tile-bg));
+	--tile-chip: color-mix(in oklab, var(--tile-ink) 12%, var(--tile-bg));
+	--mix-band: 7%;
+	--mix-hover: 10%;
+	--mix-selected: 20%;
+	--tile-shadow: 0 10px 30px -12px oklch(0.15 0.06 160 / 0.7);
+}
+
+.tile[data-tone='wine'] {
+	--tile-bg: oklch(0.34 0.1 5);
+	--tile-surface: oklch(0.4 0.105 5);
+	--tile-ink: oklch(0.97 0.012 350);
+	--tile-ink-2: oklch(0.87 0.04 355);
+	--tile-edge: oklch(0.73 0.07 0);
+	--tile-accent: oklch(0.87 0.11 80);
+	--tile-accent-ink: oklch(0.28 0.07 10);
+	--tile-danger: oklch(0.88 0.1 100);
+	--tile-rule: color-mix(in oklab, var(--tile-ink) 17%, var(--tile-bg));
+	--tile-chip: color-mix(in oklab, var(--tile-ink) 12%, var(--tile-bg));
+	--mix-band: 7%;
+	--mix-hover: 10%;
+	--mix-selected: 20%;
+	--tile-shadow: 0 10px 30px -12px oklch(0.15 0.08 5 / 0.7);
+}
+
 /*
  * The faint grid of the navy card. Only a table with nothing that sticks
  * stands on it: a part that sticks takes the plain colour of the card and
@@ -387,6 +431,8 @@ input {
 	position: relative;
 	display: flex;
 	flex: 1;
+	/* A demo stands in the middle of its stage, with air around it, as the demos of the original do. */
+	align-items: center;
 	min-block-size: 0;
 	padding: var(--stage-pad) var(--stage-pad) 16px;
 }
@@ -401,19 +447,18 @@ input {
 
 .tile-title,
 .tile-blurb {
-	display: inline;
 	margin: 0;
-	font-size: inherit;
-	line-height: inherit;
 	text-wrap: pretty;
 }
 
+/* The heading of a tile says what it shows, large, in the serif of the page title. */
 .tile-title {
-	font-weight: 600;
-}
-
-.tile-title::after {
-	content: ' ';
+	margin-block-end: 6px;
+	font-family: var(--serif);
+	font-size: 26px;
+	font-weight: 400;
+	line-height: 30px;
+	letter-spacing: -0.015em;
 }
 
 .tile-blurb {
@@ -553,6 +598,7 @@ input {
 	gap: 12px;
 	min-inline-size: 0;
 	min-block-size: 0;
+	max-block-size: 100%;
 	font-size: 13px;
 }
 
@@ -653,7 +699,8 @@ input {
 /* A table that is wider or higher than its tile scrolls in here, and the page never does for it. */
 .sink-frame {
 	position: relative;
-	flex: 1;
+	/* As high as its table, and lower only when the stage has no more room: then it scrolls. */
+	flex: 0 1 auto;
 	min-block-size: 0;
 	overflow: auto;
 	scrollbar-width: thin;
@@ -1693,6 +1740,11 @@ input {
 		padding: 16px 12px 110px;
 	}
 
+	/* One column: the controls and the copy of a wide tile wrap to more lines, so the tile is higher. */
+	.bento {
+		grid-auto-rows: 500px;
+	}
+
 	.sink-head {
 		margin-block: 12px 28px;
 	}
@@ -1995,4 +2047,311 @@ input {
 .tile [data-slot='button'].look {
 	inline-size: 28px;
 	padding: 0;
+}
+
+/*
+ * Tiles with a look of their own: the same headless table in styles far from
+ * the rest of the page, to show that the looks are the page's. A look sets the
+ * `--tile-*` variables of its card, so the copy under it follows, and styles
+ * the table through `data-slot`, `data-column`, `data-state` (from
+ * `cellAttrs`) and the place of a row only.
+ */
+
+/* The button of a header that sorts takes the capitals and the spacing of its look. */
+.tile
+	:is(.look-pixel, .look-deco, .look-swiss)
+	[data-slot='table']
+	thead
+	th
+	button:not([data-slot]) {
+	letter-spacing: inherit;
+	text-transform: inherit;
+}
+
+/* Neo-brutalism: thick black lines, hard shadows, a loud colour for each state. */
+.tile:has(.look-brutal) {
+	--tile-bg: oklch(0.9 0.16 100);
+	--tile-surface: oklch(1 0 0);
+	--tile-ink: oklch(0.15 0 0);
+	--tile-ink-2: oklch(0.27 0.03 95);
+	--tile-edge: oklch(0.15 0 0);
+	--tile-accent: oklch(0.15 0 0);
+	--tile-accent-ink: oklch(0.9 0.16 100);
+	border-radius: 6px;
+	box-shadow: inset 0 0 0 3px var(--tile-ink);
+}
+
+.tile:has(.look-brutal) .tile-title {
+	font: 800 28px/30px var(--sans);
+	letter-spacing: -0.035em;
+}
+
+.tile:has(.look-brutal) .tile-use {
+	border: 2px solid var(--tile-ink);
+	background: var(--tile-surface);
+	color: var(--tile-ink);
+	font-weight: 600;
+}
+
+.tile:has(.look-brutal) .tile-use[data-pressed] {
+	background: var(--tile-ink);
+	color: var(--tile-surface);
+}
+
+/* Room for the hard shadow of the table inside its frame. */
+.look-brutal .sink-frame {
+	padding: 0 8px 8px 0;
+}
+
+.tile .look-brutal [data-slot='table'] {
+	border: 3px solid var(--tile-ink);
+	box-shadow: 6px 6px 0 var(--tile-ink);
+	font-weight: 600;
+}
+
+.tile .look-brutal [data-slot='table'] :is(th, td) {
+	border-block-end: 2px solid var(--tile-ink);
+	background: var(--tile-surface);
+	color: var(--tile-ink);
+}
+
+.tile .look-brutal [data-slot='table'] :is(th, td):not(:last-child) {
+	border-inline-end: 2px solid var(--tile-ink);
+}
+
+.tile .look-brutal [data-slot='table'] tbody tr:last-child > td {
+	border-block-end: 0;
+}
+
+.tile .look-brutal [data-slot='table'] thead tr:last-child > th {
+	border-block-end-color: var(--tile-ink);
+}
+
+.tile .look-brutal [data-slot='table'] thead th {
+	background: oklch(0.83 0.12 350);
+	font-size: 12px;
+	font-weight: 800;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.tile .look-brutal [data-slot='table'] tbody tr:hover > td {
+	background: oklch(0.95 0.05 100);
+}
+
+.tile .look-brutal [data-slot='table'] td[data-state] {
+	font-size: 12px;
+	font-weight: 800;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.tile .look-brutal [data-slot='table'] td[data-state='todo'] {
+	background: oklch(0.86 0.1 350);
+}
+
+.tile .look-brutal [data-slot='table'] td[data-state='doing'] {
+	background: oklch(0.87 0.11 210);
+}
+
+.tile .look-brutal [data-slot='table'] td[data-state='done'] {
+	background: oklch(0.9 0.17 135);
+}
+
+/* Retro pixel art: a dark screen with a yellow frame, a pixel face, gold, silver and bronze for the first three. */
+.tile:has(.look-pixel) {
+	--tile-bg: oklch(0.17 0.035 265);
+	--tile-surface: oklch(0.23 0.045 265);
+	--tile-ink: oklch(0.97 0.02 120);
+	--tile-ink-2: oklch(0.85 0.08 200);
+	--tile-edge: oklch(0.86 0.17 95);
+	--tile-accent: oklch(0.88 0.19 135);
+	--tile-accent-ink: oklch(0.17 0.035 265);
+	border-radius: 0;
+	box-shadow: inset 0 0 0 4px var(--tile-edge);
+}
+
+.tile:has(.look-pixel) :is(.tile-title, .tile-use) {
+	font-family: var(--pixel);
+	letter-spacing: 0;
+}
+
+.tile:has(.look-pixel) .tile-title {
+	font-size: 26px;
+	text-transform: uppercase;
+}
+
+.tile:has(.look-pixel) .tile-use {
+	border-radius: 0;
+}
+
+.tile .look-pixel [data-slot='table'] {
+	counter-reset: rank;
+	font: 400 16px/1 var(--pixel);
+	text-transform: uppercase;
+}
+
+.tile .look-pixel [data-slot='table'] :is(th, td) {
+	border: 0;
+}
+
+.tile .look-pixel [data-slot='table'] thead th {
+	background: var(--tile-edge);
+	color: var(--tile-bg);
+}
+
+/* Every other line a step lighter, as the rows of an old screen. */
+.tile .look-pixel [data-slot='table'] tbody tr:nth-child(odd) > td {
+	background: var(--tile-surface);
+}
+
+.tile .look-pixel [data-slot='table'] tbody tr {
+	counter-increment: rank;
+}
+
+/* The place in the list is a number of the screen, not of the data: it follows the sort. */
+.tile .look-pixel [data-slot='table'] tbody td:first-child::before {
+	content: counter(rank) '. ';
+}
+
+.tile .look-pixel [data-slot='table'] tbody tr:nth-child(1) > td {
+	color: oklch(0.88 0.16 90);
+}
+
+.tile .look-pixel [data-slot='table'] tbody tr:nth-child(2) > td {
+	color: oklch(0.88 0.015 260);
+}
+
+.tile .look-pixel [data-slot='table'] tbody tr:nth-child(3) > td {
+	color: oklch(0.8 0.11 55);
+}
+
+.tile .look-pixel [data-slot='table'] tbody td[data-column='score'] {
+	color: var(--tile-accent);
+}
+
+/* Swiss style: white, black and one red, a grid of strong rules and large numbers. */
+.tile:has(.look-swiss) {
+	--tile-bg: oklch(0.985 0 0);
+	--tile-surface: oklch(1 0 0);
+	--tile-ink: oklch(0.14 0 0);
+	--tile-ink-2: oklch(0.38 0 0);
+	--tile-edge: oklch(0.14 0 0);
+	--tile-accent: oklch(0.53 0.21 28);
+	--tile-accent-ink: oklch(1 0 0);
+	border-radius: 2px;
+}
+
+/* A red bar across the top of the card, as on a poster. */
+.tile:has(.look-swiss)::before {
+	position: absolute;
+	inset: 0 0 auto;
+	block-size: 10px;
+	background: var(--tile-accent);
+	content: '';
+}
+
+.tile:has(.look-swiss) .tile-title {
+	font: 700 30px/32px var(--sans);
+	letter-spacing: -0.045em;
+}
+
+.tile .look-swiss [data-slot='table'] tr:not([data-slot='table-spacer']) {
+	block-size: 50px;
+}
+
+.tile .look-swiss [data-slot='table'] :is(th, td) {
+	padding-inline: 0 18px;
+	border-block-end: 1px solid var(--tile-ink);
+}
+
+.tile .look-swiss [data-slot='table'] thead tr:last-child > th {
+	border-block-end: 3px solid var(--tile-ink);
+}
+
+.tile .look-swiss [data-slot='table'] thead th {
+	color: var(--tile-ink);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.tile .look-swiss [data-slot='table'] tbody tr:last-child > td {
+	border-block-end-color: var(--tile-ink);
+}
+
+.tile .look-swiss [data-slot='table'] td:is([data-column='time'], [data-column='to']) {
+	font-size: 22px;
+	font-weight: 700;
+	letter-spacing: -0.03em;
+}
+
+.tile .look-swiss [data-slot='table'] :is(th, td)[data-column='track'] {
+	inline-size: 64px;
+	padding-inline: 0;
+	text-align: center;
+}
+
+.tile .look-swiss [data-slot='table'] td[data-column='track'] {
+	background: var(--tile-accent);
+	color: var(--tile-accent-ink);
+	font-size: 22px;
+	font-weight: 700;
+}
+
+/* Art deco: black and gold, double rules, spaced capitals and the serif of the page. */
+.tile:has(.look-deco) {
+	--tile-bg: oklch(0.18 0.012 80);
+	--tile-surface: oklch(0.24 0.015 80);
+	--tile-ink: oklch(0.94 0.03 85);
+	--tile-ink-2: oklch(0.8 0.08 85);
+	--tile-edge: oklch(0.74 0.11 85);
+	--tile-accent: oklch(0.82 0.12 85);
+	--tile-accent-ink: oklch(0.18 0.012 80);
+	border-radius: 2px;
+	box-shadow:
+		inset 0 0 0 1px var(--tile-edge),
+		inset 0 0 0 6px var(--tile-bg),
+		inset 0 0 0 7px var(--tile-edge);
+}
+
+.tile:has(.look-deco) .tile-title {
+	font-size: 22px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.tile .look-deco [data-slot='table'] {
+	border-block: 4px double var(--tile-edge);
+	font-family: var(--serif);
+	font-size: 14px;
+}
+
+.tile .look-deco [data-slot='table'] :is(th, td) {
+	padding-inline: 6px;
+	border-block-end-color: color-mix(in oklab, var(--tile-edge) 45%, var(--tile-bg));
+	text-align: center;
+}
+
+.tile .look-deco [data-slot='table'] thead tr:last-child > th {
+	border-block-end: 4px double var(--tile-edge);
+}
+
+.tile .look-deco [data-slot='table'] thead th {
+	color: var(--tile-ink-2);
+	font-family: var(--sans);
+	font-size: 10.5px;
+	font-weight: 500;
+	letter-spacing: 0.28em;
+	text-transform: uppercase;
+}
+
+.tile .look-deco [data-slot='table'] td[data-column='cabin'] {
+	color: var(--tile-ink-2);
+	letter-spacing: 0.08em;
+}
+
+.tile .look-deco [data-slot='table'] tbody tr[data-kind='row']:hover {
+	--row-fill: color-mix(in oklab, var(--tile-edge) 14%, var(--tile-bg));
 }

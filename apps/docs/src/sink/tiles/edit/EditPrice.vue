@@ -33,7 +33,7 @@ const columns: ColumnDef<Product>[] = [
 	},
 ]
 // The table reports an edit and never writes a row: the rows are yours.
-const rows = shallowRef(products)
+const rows = shallowRef(products.slice(0, 3))
 const last = shallowRef('Nothing edited yet')
 
 function onCellEdit(edits: readonly CellEdit<Product>[], details: TableEditDetails) {

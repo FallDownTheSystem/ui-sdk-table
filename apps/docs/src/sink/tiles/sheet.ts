@@ -19,7 +19,7 @@ export const tiles: TileCopy[] = [
 		id: 'sheet-undo',
 		title: 'Take it back.',
 		blurb: 'An undo reports the old value, as any edit does.',
-		tone: 'clay',
+		tone: 'wine',
 	},
 	{
 		id: 'sheet-formats',
@@ -45,6 +45,7 @@ export const tiles: TileCopy[] = [
 		id: 'sheet-letters',
 		title: 'Select a column.',
 		blurb: 'A press on a letter takes its column, and the corner takes every cell.',
+		size: 'wide',
 		tone: 'mist',
 	},
 	{
@@ -58,12 +59,13 @@ export const tiles: TileCopy[] = [
 		id: 'sheet-cut',
 		title: 'Cut, paste, empty.',
 		blurb: 'A cut and a paste move a block, each as one step.',
-		tone: 'ink',
+		tone: 'sand',
 	},
 	{
 		id: 'sheet-saved',
 		title: 'Open saved formats.',
 		blurb: 'A column shown as a share and two marked cells come with the document.',
+		size: 'wide',
 		tone: 'paper',
 	},
 ]

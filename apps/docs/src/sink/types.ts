@@ -5,10 +5,21 @@ export type TileSize = 's' | 'wide' | 'tall' | 'large'
 
 /**
  * The ground of a tile, in three weights: neutral (`paper`, `sand`), soft
- * (`mist`, `moss`, `sun`, `plum`) and bold (`clay`, `ink`, `navy`). The table
- * style reads `--tile-*` variables, so one style works on every tone.
+ * (`mist`, `moss`, `sun`, `plum`) and bold (`clay`, `ink`, `navy`, `pine`,
+ * `wine`). The table style reads `--tile-*` variables, so one style works on every tone.
  */
-export type TileTone = 'paper' | 'sand' | 'mist' | 'moss' | 'sun' | 'plum' | 'clay' | 'ink' | 'navy'
+export type TileTone =
+	| 'paper'
+	| 'sand'
+	| 'mist'
+	| 'moss'
+	| 'sun'
+	| 'plum'
+	| 'clay'
+	| 'ink'
+	| 'navy'
+	| 'pine'
+	| 'wine'
 
 /** What a group file says about one tile. The demo is the `.vue` file with the name of the id. */
 export type TileCopy = {
@@ -16,7 +27,7 @@ export type TileCopy = {
 	id: string
 	/** One to four words that end with a period: what a person does, not a feature. */
 	title: string
-	/** One short sentence that goes on after the title. */
+	/** One short sentence under the title, which is the heading of the tile. */
 	blurb: string
 	size?: TileSize
 	tone?: TileTone

@@ -4,6 +4,9 @@ import { createTableController, Table, type ColumnDef, type ColumnPinning } from
 import { shallowRef } from 'vue'
 import { euro, orders, type Order } from '../../data'
 
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 3)
+
 const columns: ColumnDef<Order>[] = [
 	{ id: 'customer', header: 'Customer', width: 130 },
 	{ id: 'city', header: 'City', width: 110 },
@@ -38,7 +41,7 @@ const toggle = (id: string, side: 'start' | 'end') =>
 			<Table
 				v-model:column-pinning="pinning"
 				:default-column-pinning="START"
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:controller="controller"
 				sticky-header

@@ -4,7 +4,7 @@ import { Table, type ColumnDef } from 'ui-sdk-table-vue'
 import { count, createOrders, euro, type Order } from '../../data'
 import SinkIcon from '../../parts/SinkIcon.vue'
 
-const orders = createOrders(28)
+const orders = createOrders(22)
 const columns: ColumnDef<Order>[] = [
 	// The column of the groups is in the table and out of view: the group rows say its values.
 	{ id: 'city', header: 'City' },
@@ -25,7 +25,7 @@ const columns: ColumnDef<Order>[] = [
 <template>
 	<div class="demo">
 		<div class="scene">
-			<p class="display">Orders by city</p>
+			<p class="scene-title">Orders by city</p>
 			<p class="scene-sub">{{ count(orders.length, 'order', 'orders') }}, a total for each city</p>
 		</div>
 		<div class="sink-frame">

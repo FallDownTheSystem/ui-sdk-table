@@ -4,6 +4,9 @@ import { createTableController, Table, type ColumnDef, type ColumnWidths } from 
 import { shallowRef } from 'vue'
 import { euro, orders, type Order } from '../../data'
 
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 4)
+
 const columns: ColumnDef<Order>[] = [
 	{ id: 'customer', header: 'Customer', width: 200, minWidth: 80, maxWidth: 320 },
 	{ id: 'city', header: 'City', width: 150 },
@@ -30,7 +33,7 @@ const saved = shallowRef(0)
 		<div class="sink-frame">
 			<Table
 				v-model:column-widths="widths"
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:controller="controller"
 				:column-min-width="60"

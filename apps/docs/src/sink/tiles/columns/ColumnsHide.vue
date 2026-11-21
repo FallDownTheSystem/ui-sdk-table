@@ -11,6 +11,9 @@ import {
 import { computed, shallowRef } from 'vue'
 import { euro, orders, type Order } from '../../data'
 
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 3)
+
 const columns: ColumnDef<Order>[] = [
 	{ id: 'customer', header: 'Customer', hideable: false },
 	{ id: 'city', header: 'City' },
@@ -62,7 +65,7 @@ function show(ids: string[]) {
 		<div class="sink-frame">
 			<Table
 				v-model:column-visibility="visibility"
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:controller="controller"
 				:default-column-visibility="{ status: false }"

@@ -21,7 +21,7 @@ const columns: ColumnDef<Week>[] = [
 const START: Week[] = [
 	{ id: 'w1', week: 14, due: '2028-02-22', owner: 'Aino' },
 	{ id: 'w2', week: 16, due: '2028-02-29', owner: null },
-	...Array.from({ length: 12 }, (_, index) => ({
+	...Array.from({ length: 14 }, (_, index) => ({
 		id: `w${index + 3}`,
 		week: null,
 		due: null,
@@ -33,7 +33,7 @@ const rows = shallowRef(START)
 
 // Two lines are the pattern: 14, 16 goes on to 18, and the days go on by a week, over the leap day.
 async function fill() {
-	controller.selectCells({ rowId: 'w1', columnId: 'week' }, { rowId: 'w14', columnId: 'due' })
+	controller.selectCells({ rowId: 'w1', columnId: 'week' }, { rowId: 'w16', columnId: 'due' })
 	await controller.fillCells('down', 2)
 }
 </script>

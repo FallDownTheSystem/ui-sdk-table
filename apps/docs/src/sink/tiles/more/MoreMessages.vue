@@ -48,7 +48,6 @@ const columns = computed<ColumnDef<Order>[]>(() => [
 				:messages="language === 'fi' ? FINNISH : undefined"
 				:locale="language === 'fi' ? 'fi-FI' : 'en-GB'"
 				:group-by="['status']"
-				:default-expanded="['group/status=Late']"
 				aria-label="Orders by status, in the chosen language"
 			/>
 		</div>

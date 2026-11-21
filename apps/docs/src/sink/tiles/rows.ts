@@ -6,7 +6,7 @@ export const tiles: TileCopy[] = [
 		title: 'Jump to row 40,000.',
 		blurb: 'Fifty thousand rows, and the page holds only the ones in view.',
 		size: 'tall',
-		tone: 'ink',
+		tone: 'sand',
 	},
 	{
 		id: 'rows-detail',
@@ -56,7 +56,6 @@ export const tiles: TileCopy[] = [
 		id: 'rows-measured',
 		title: 'Rows of any height.',
 		blurb: 'Two thousand notes of one to four lines, measured as they come into view.',
-		size: 'tall',
-		tone: 'clay',
+		tone: 'pine',
 	},
 ]

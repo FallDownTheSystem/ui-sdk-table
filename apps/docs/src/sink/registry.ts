@@ -9,6 +9,7 @@ import { tiles as rows } from './tiles/rows'
 import { tiles as server } from './tiles/server'
 import { tiles as sheet } from './tiles/sheet'
 import { tiles as sort } from './tiles/sort'
+import { tiles as style } from './tiles/style'
 import type { Tile, TileCopy } from './types'
 
 /** The tiles by the file that holds them. The name of a group starts the id of each of its tiles. */
@@ -22,6 +23,7 @@ export const groups: Record<string, TileCopy[]> = {
 	sheet,
 	server,
 	more,
+	style,
 }
 
 // A demo loads when its tile comes near the screen, so the page starts without the code of forty tables.
@@ -49,7 +51,16 @@ function interleave<Item>(lists: Item[][]): Item[] {
 }
 
 // The tiles that open the page, in this order.
-const FEATURED = ['group-totals', 'rows-window', 'edit-price', 'sort-two-columns']
+const FEATURED = [
+	'group-totals',
+	'rows-window',
+	'style-pixel',
+	'edit-price',
+	'style-brutal',
+	'sort-two-columns',
+	'style-swiss',
+	'style-deco',
+]
 
 const rank = (id: string) => {
 	const index = FEATURED.indexOf(id)

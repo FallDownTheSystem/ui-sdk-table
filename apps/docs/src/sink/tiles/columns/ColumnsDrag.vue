@@ -4,6 +4,9 @@ import { createTableController, Table, type ColumnDef } from 'ui-sdk-table-vue'
 import { shallowRef } from 'vue'
 import { euro, orders, type Order } from '../../data'
 
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 4)
+
 const columns: ColumnDef<Order>[] = [
 	{ id: 'customer', header: 'Customer', width: 150 },
 	{ id: 'city', header: 'City', width: 110 },
@@ -28,7 +31,7 @@ const order = shallowRef<readonly string[]>([])
 		<div class="sink-frame">
 			<Table
 				v-model:column-order="order"
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:controller="controller"
 				reorderable

@@ -4,7 +4,8 @@ import { Table, type ColumnDef } from 'ui-sdk-table-vue'
 import { createPeople, type Person } from '../../data'
 import SinkIcon from '../../parts/SinkIcon.vue'
 
-const people = createPeople(30)
+// Two countries, so the tree stands whole in its tile.
+const people = createPeople(20).filter((person) => ['Finland', 'Denmark'].includes(person.country))
 const columns: ColumnDef<Person>[] = [
 	// The columns of the groups are in the table and out of view: the group rows say their values.
 	{ id: 'country', header: 'Country' },

@@ -10,7 +10,7 @@ import {
 import { createPeople, type Person } from '../../data'
 import SinkIcon from '../../parts/SinkIcon.vue'
 
-const people = createPeople(40)
+const people = createPeople(13)
 const columns: ColumnDef<Person>[] = [
 	{ id: 'name', header: 'Name' },
 	{ id: 'team', header: 'Team' },
@@ -43,10 +43,13 @@ function typed(text: string, details: { reason: string }) {
 				/>
 				<InputClear aria-label="Clear the search"><SinkIcon name="x" /></InputClear>
 			</InputGroup>
-			<p class="demo-note" role="status">
-				{{ search.pending.value ? 'Waiting' : `${view?.dataRowCount ?? 0} found` }}
-			</p>
 		</div>
+		<p class="readout" role="status">
+			<strong class="display">{{ search.pending.value ? '…' : (view?.dataRowCount ?? 0) }}</strong>
+			<span class="readout-label">{{
+				search.pending.value ? 'waiting for a pause' : 'people found'
+			}}</span>
+		</p>
 		<div class="sink-frame">
 			<Table
 				:rows="people"

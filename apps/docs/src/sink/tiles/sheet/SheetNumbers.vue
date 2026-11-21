@@ -4,6 +4,9 @@ import { createTableController, Table, useTableView, type ColumnDef } from 'ui-s
 import { computed } from 'vue'
 import { orders, type Order } from '../../data'
 
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 4)
+
 const columns: ColumnDef<Order>[] = [
 	// The number of a row is its header: it leads the table, and no range holds it.
 	{ id: 'n', header: '', lead: true, rowHeader: true },
@@ -30,7 +33,7 @@ const said = computed(() => {
 		</div>
 		<div class="sink-frame">
 			<Table
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:controller="controller"
 				cell-selection

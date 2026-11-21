@@ -6,7 +6,8 @@ import { createPeople, type Person } from '../../data'
 import SinkCheck from '../../parts/SinkCheck.vue'
 import SinkIcon from '../../parts/SinkIcon.vue'
 
-const people = createPeople(16)
+// Ten people, so every team is open and the list fills its tile.
+const people = createPeople(10)
 const columns: ColumnDef<Person>[] = [
 	// A column that leads the table: always first, and never moved, hidden or pinned by a person.
 	{ id: 'pick', header: 'Pick', lead: true, hideable: false, searchable: false },
@@ -32,8 +33,9 @@ function pick(group: GroupRow<Person>, on: boolean) {
 
 <template>
 	<div class="demo">
-		<p class="demo-note" role="status">
-			<strong>{{ selected.length }}</strong> of {{ people.length }} people picked
+		<p class="readout" role="status">
+			<strong class="display">{{ selected.length }} of {{ people.length }}</strong>
+			<span class="readout-label">people picked</span>
 		</p>
 		<div class="sink-frame">
 			<Table
@@ -42,7 +44,13 @@ function pick(group: GroupRow<Person>, on: boolean) {
 				:columns="columns"
 				:controller="controller"
 				:group-by="['team']"
-				:default-expanded="['group/team=Design', 'group/team=Growth']"
+				:default-expanded="[
+					'group/team=Design',
+					'group/team=Platform',
+					'group/team=Growth',
+					'group/team=Billing',
+					'group/team=Support',
+				]"
 				:default-column-visibility="{ team: false }"
 				selection="multiple"
 				sticky-header

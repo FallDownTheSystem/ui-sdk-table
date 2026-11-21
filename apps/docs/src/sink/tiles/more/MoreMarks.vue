@@ -13,7 +13,6 @@ const invoices: Invoice[] = [
 	{ id: 'i2', customer: 'Birch & Co', days: 41, balance: 853.5 },
 	{ id: 'i3', customer: 'Cobalt Lab', days: 12, balance: -150 },
 	{ id: 'i4', customer: 'Dune Supply', days: 67, balance: 420.5 },
-	{ id: 'i5', customer: 'Ember Foods', days: 0, balance: 0 },
 	{ id: 'i6', customer: 'Fjord Tools', days: 33, balance: -75.25 },
 ]
 const columns: ColumnDef<Invoice>[] = [

@@ -11,7 +11,7 @@ import { computed, shallowRef } from 'vue'
 import { createPeople, type Person } from '../../data'
 
 // What a server would hold: it filters the rows, and counts every team.
-const everyone = createPeople(80)
+const everyone = createPeople(12)
 const teams = [...new Set(everyone.map((person) => person.team))].sort()
 const facets = {
 	team: {

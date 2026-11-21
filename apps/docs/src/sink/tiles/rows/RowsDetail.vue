@@ -3,6 +3,9 @@ import { Button } from '@ui-sdk/vue/button'
 import { Table, type ColumnDef } from 'ui-sdk-table-vue'
 import { shallowRef } from 'vue'
 import { euro, orders, type Order } from '../../data'
+
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 3)
 import SinkIcon from '../../parts/SinkIcon.vue'
 
 const columns: ColumnDef<Order>[] = [
@@ -20,7 +23,7 @@ const open = shallowRef<readonly string[]>(['o2'])
 		<div class="sink-frame">
 			<Table
 				v-model:expanded="open"
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:has-detail="hasDetail"
 				sticky-header

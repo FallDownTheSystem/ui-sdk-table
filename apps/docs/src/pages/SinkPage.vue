@@ -37,6 +37,8 @@ const TONES: readonly TileTone[] = [
 	'clay',
 	'ink',
 	'navy',
+	'pine',
+	'wine',
 ]
 const tone = TONES.find((name) => name === query.get('tone'))
 const selected = shallowRef(list('uses'))

@@ -5,6 +5,9 @@ import { Table, type ColumnDef, type TableChangeDetails } from 'ui-sdk-table-vue
 import { shallowRef } from 'vue'
 import { euro, orders, type Order } from '../../data'
 
+// A few orders, so the table stands whole in its tile.
+const rows = orders.slice(0, 4)
+
 const NAME = 'Orders for the agent'
 
 const columns: ColumnDef<Order>[] = [
@@ -13,7 +16,7 @@ const columns: ColumnDef<Order>[] = [
 	{ id: 'total', header: 'Total', sortable: true, format: 'currency', formatOptions: euro },
 ]
 const log = shallowRef<string[]>(['The agent has done nothing yet.'])
-const say = (line: string) => (log.value = [line, ...log.value].slice(0, 4))
+const say = (line: string) => (log.value = [line, ...log.value].slice(0, 2))
 
 // The agent of UI SDK sees every component of the page that has a name, and the actions of each.
 const agent = createAgent()
@@ -44,7 +47,7 @@ function changed(key: string, details: TableChangeDetails) {
 		</div>
 		<div class="sink-frame">
 			<Table
-				:rows="orders"
+				:rows="rows"
 				:columns="columns"
 				:aria-label="NAME"
 				sticky-header

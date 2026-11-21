@@ -21,7 +21,7 @@ const columns: ColumnDef<Product>[] = [
 	{ id: 'stock', header: 'Stock', format: 'integer' },
 ]
 const controller = createTableController()
-const rows = shallowRef(products)
+const rows = shallowRef(products.slice(0, 3))
 const said = shallowRef('Or press Ctrl+V on a cell.')
 
 // Three rows of two cells, as a spreadsheet writes them: tabs between cells, line ends between rows.

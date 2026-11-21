@@ -8,9 +8,6 @@ const runners: Runner[] = [
 	{ id: 'r2', name: 'Onni Aalto', club: 'Viri', time: 33.48 },
 	{ id: 'r3', name: 'Helmi Virta', club: 'Kaleva', time: 35.02 },
 	{ id: 'r4', name: 'Eero Niemi', club: 'Pyrintö', time: 32.57 },
-	{ id: 'r5', name: 'Aino Korpi', club: 'Viri', time: 36.4 },
-	{ id: 'r6', name: 'Lauri Salo', club: 'Pyrintö', time: 34.55 },
-	{ id: 'r7', name: 'Maija Ranta', club: 'Kaleva', time: 33.9 },
 ]
 const columns: ColumnDef<Runner>[] = [
 	{ id: 'name', header: 'Runner', sortable: true },

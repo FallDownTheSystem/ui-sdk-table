@@ -43,7 +43,6 @@ function onCellEdit(edits: readonly CellEdit<Line>[], details: TableEditDetails)
 
 <template>
 	<div class="demo">
-		<p class="display">Budget 2026</p>
 		<div class="sink-frame">
 			<Table
 				:rows="rows"
