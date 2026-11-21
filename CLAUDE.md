@@ -49,6 +49,27 @@ Follow the `ui-sdk` skill. Read `node_modules/@ui-sdk/vue/docs/llms.txt`; search
 - An unknown column id throws an error that lists the valid ids. People and agents both read these messages.
 - `docs/benchmarks.md` holds the 50,000-row numbers. Run the measurement again when you change a stage, and add a column to the table.
 
+## Editing, range, copy and paste (`packages/core/src/edit`, `behaviors/edit.ts`, `behaviors/range.ts`)
+
+- The table reports an edit through `onCellEdit(edits, details)` and never writes a row. `applyEdits` is a helper for the owner of the rows.
+- A value goes through `resolveValue`: `parse` of the column or `parseText`, then the `schema` of the column (any Standard Schema). A refusal keeps the editor open with its message.
+- A check can answer with a promise. `saveCell` then gives back a promise of a function that reports, and only `createCellEdit` runs it, while the edit still waits. Do not report an edit from inside the promise.
+- At the answer, read the row again with `model.rowById`. The owner can replace the row objects during a check.
+- A paste is all or nothing. Refuse the whole paste before any cell changes.
+- A range from the state can hold header rows. `selectedCells()` cuts it to the body rows; use it, not `range.bounds`, for a copy, a paste or an edit.
+
+## Server mode (`manualSort`, `manualFilter`, `manualPage`)
+
+- A manual stage returns its input array itself. The sort, filter and page states stay and are requests to the owner.
+- With `manualPage`, the pages come from `rowCount`. Without it, count the rows that the server sent (`source().rows`), never a later stage: a group or a pinned row makes the list shorter.
+- A step to the page that the table is on reports no change, so a listener that loads rows does not load them twice.
+
+## Export (`packages/core/src/export`, entry `ui-sdk-table-core/export`)
+
+- `exportData` collects cells as plain data; the writers (`toCsv`, `toXlsx`) are a separate entry, so a table without an export does not carry them.
+- The text of a cell in a file is the text of the screen. An Excel cell is a number or a date with a pattern only when a spreadsheet shows it as the screen does; when in doubt, `numberWriter` or `dateSection` returns `null` and the cell is text.
+- `ssf` (a dev dependency) reads patterns in the tests. A new pattern rule needs a test that formats the written value with the written pattern and compares it with the screen.
+
 ## Commands
 
 ```bash
