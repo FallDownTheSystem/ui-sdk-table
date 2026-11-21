@@ -14,6 +14,8 @@ export type {
 	FormatOptionsByName,
 	NumberFormatOptions,
 	PercentageFormatOptions,
+	PeriodFormatOptions,
+	PeriodUnit,
 	RelativeTimeFormatOptions,
 	RelativeTimeUnit,
 	RoundingMode,

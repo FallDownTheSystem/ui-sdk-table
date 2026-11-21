@@ -11,6 +11,7 @@ import type {
 export const DEFAULT_LABELS = {
 	booleanTrue: 'Yes',
 	booleanFalse: 'No',
+	quarter: 'Q{quarter} {year}',
 } as const
 
 /** What a renderer needs to draw a link; every field is plain text, never markup. */

@@ -12,6 +12,7 @@ export type FormatName =
 	| 'boolean'
 	| 'truncate'
 	| 'relativeTime'
+	| 'period'
 	| 'text'
 
 export interface CommonFormatOptions {
@@ -121,6 +122,17 @@ export interface TruncateFormatOptions extends CommonFormatOptions {
 	truncateSuffix?: string
 }
 
+export type PeriodUnit = 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year' | 'weekday'
+
+export interface PeriodFormatOptions extends CommonFormatOptions {
+	/** Which period the value is: the first day of a day, week, month, quarter or year, the moment of an hour, or a number of a day of the week. Defaults to `day`. */
+	unit?: PeriodUnit
+	/** With `unit: 'weekday'`: the type of `WEEKDAY` that gave the number, 1 (Sunday is 1, the default), 2 (Monday is 1), 3 (Monday is 0) or 11 to 17. */
+	weekdays?: number
+	/** With `unit: 'hour'`: the zone of the clock that the hour is shown in. */
+	timeZone?: string
+}
+
 export interface FormatOptionsByName {
 	integer: NumberFormatOptions
 	decimal: NumberFormatOptions
@@ -135,6 +147,7 @@ export interface FormatOptionsByName {
 	boolean: BooleanFormatOptions
 	truncate: TruncateFormatOptions
 	relativeTime: RelativeTimeFormatOptions
+	period: PeriodFormatOptions
 	text: CommonFormatOptions
 }
 
@@ -147,6 +160,8 @@ export type FormatDefaults = { [N in FormatName]?: FormatOptionsByName[N] }
 export interface FormatLabels {
 	booleanTrue: string
 	booleanFalse: string
+	/** The text of a quarter of the format `period`, with `{quarter}` and `{year}` in it: `Q{quarter} {year}`. */
+	quarter: string
 }
 
 export interface FormatContext {

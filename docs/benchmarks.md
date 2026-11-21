@@ -100,6 +100,43 @@ What the numbers show:
 - A change of the function of a total runs the aggregate stage again and no other stage: about 5 ms for 50,000 rows, and about 21 ms with the totals of 25 groups.
 - A table without cell formats pays one test for each text. The export of 250,000 texts costs the same as before the formats (85 to 93 ms against 90 to 92 ms). With formats in the table, each text finds its format by row id and column id first: about 25 to 55 ms more for 250,000 texts, which is 0.1 to 0.2 microseconds for a cell. The format of a column and the format of a cell are merged one time for each pair of objects, not for each cell.
 
+## Formulas, 50,000 rows
+
+Run it with:
+
+```bash
+BENCH=1 vp test run packages/core/src/formulas/formulas.perf --silent=false
+BENCH=1 vp test run packages/core/src/proofs/formula-cost.perf --silent=false
+```
+
+Each value is the median of 9 runs (5 for a parse), in milliseconds, on the cloud machine on 2026-11-21. The plan of the formulas estimated its numbers with a sketch in plain `node`; the sketch had no row model and read a property of a row.
+
+| Operation | Estimate of the plan | Measured |
+| --- | --- | --- |
+| One shared formula over 50,000 rows (`=[price]*[qty]`) | 3 | 17.6 |
+| The same with `IF` and `ROUND` | 3 | 24.9 |
+| `IFS` with 3 cases to a text | not estimated | 13.0 |
+| Parse of 50,000 different formulas | 56 to 62 | 155 |
+| First sort by a plain column | not estimated | 62.4 |
+| First sort by a computed column, a new column object | under 10 more than a plain column | 96.9 (34.5 more) |
+| Sort again by the computed column, its values kept | not estimated | 65.0 |
+| `WEEKOF([created], 2)` over 50,000 moments in a zone, first read | under 30 | 62.0 |
+| The same again, the values kept | under 5 | 1.8 |
+| Sort and group by `WEEKOF`, a new column that computes every row | not estimated | 107 |
+| Sort and group by `WEEKOF`, the values kept | not estimated | 40.6 |
+| One report of 11 cells, an edit and 10 dependents (P7, before the engine) | under 2 more than one edit | 0.26, against 0.20 for one edit |
+| One report of 100,000 cells through a paste (P7) | under 100 | 162 |
+| 50,000 same-row formulas after 50,000 changed values, read through the values of the turn (P7) | part of the above | 34.9 |
+| A chain of 50,000 cells, one edit at the top, the order only (P7) | under 90 | 21.7 |
+| One report of the 50,000 cells of that chain (P7) | part of the above | 68.9 |
+
+What the numbers show:
+
+- A cell reads its column through `cellValue` and the closure of each node, where the sketch read `row.price`: about six times the sketch for the shortest formula. The first sort by a computed column computes each row once, so it costs one pass of the formula more than a plain sort, and a sort again reads the kept values.
+- The first version of the engine cut every comparison to 15 digits with `toPrecision`; `IFS` was 70 ms and `IF` with `ROUND` 62 ms. A comparison now cuts only two numbers that are closer than 1e-13 of their size, which gives the same answers.
+- A date function first read the zone of its column with `timeZoneOf` for each row, which asks `Intl` whether the zone exists: 386 ms for the first read of 50,000 moments. The zone is now kept for each column object, and the offset of the zone for each day of UTC (`formulas/zone.ts`), so a row reads `Intl` only on a day that the clock changes.
+- A report of 100,000 cells through a paste reads each text with `parseText`; a report of dependents will not. The budgets of the report are written again before slice 5, with the real path of dependents.
+
 ## Size of the build
 
 `vp pack src/index.ts src/export/index.ts --platform neutral --minify` in `packages/core`, without `@ui-sdk/core`, which is a peer.
@@ -109,6 +146,17 @@ What the numbers show:
 | `4d4e397`, before the sheet behaviors | 116.0 kB | 40.9 kB |
 | `6bd796c`, with the writer, the history, the sheet keys, clear and cut | 128.3 kB | 45.2 kB |
 | With row numbers, the fill, the summary, the totals at run time and the cell formats | 154.4 kB | 53.9 kB |
+
+The formula engine is the entry `ui-sdk-table-core/formulas` (`vp pack src/index.ts src/export/index.ts src/formulas/index.ts --platform neutral --minify`). Measured on `f96f84c` and on the branch of the formulas with the engine of its own row (slice 1):
+
+| Code | Main entry, minified | Main entry, gzip | Formulas entry, minified | Formulas entry, gzip |
+| --- | --- | --- | --- | --- |
+| `master` at `f96f84c`, without the entry | 133.29 kB | 45.25 kB | none | none |
+| Slice 1, built without the entry | 133.29 kB, the same bytes | 45.25 kB | none | none |
+| Slice 1, built with the entry | 131.29 kB, and a shared chunk of the row helpers of 2.15 kB | 44.72 kB, and 0.99 kB | 18.61 kB | 6.68 kB |
+| Slice 2, with the date functions, built with the entry | 131.29 kB, the row helpers 2.17 kB | 44.71 kB, and 1.01 kB | 25.38 kB | 9.05 kB |
+
+The main entry holds no text of the engine. The format `period` is in the main entry, as the plan says: the chunk of the formats, which the main entry and the export entry share, grows from 12.59 kB to 13.76 kB (4.66 kB to 5.09 kB compressed). The plan estimated about 20 kB for the entry with about 45 functions; slice 2 has 51 of them in 25.38 kB.
 
 The sheet behaviors are options of the table primitive and not plugins, so a table without them carries them: 38.4 kB minified, 13.0 kB compressed. The plan of the sheet behaviors estimated under 6 kB; that estimate was wrong by a factor of six. `definePrimitive` has static `state`, `slots` and `selects`, so a behavior cannot add a slot or a state key from outside, and a split into plugins is no small change. The export writers stay in their own entry (13.4 kB), which a table without an export does not load.
 

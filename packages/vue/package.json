@@ -11,10 +11,11 @@
 	"sideEffects": false,
 	"exports": {
 		".": "./src/index.ts",
-		"./export": "./src/export.ts"
+		"./export": "./src/export.ts",
+		"./formulas": "./src/formulas.ts"
 	},
 	"scripts": {
-		"build": "vp pack src/index.ts src/export.ts --platform neutral"
+		"build": "vp pack src/index.ts src/export.ts src/formulas.ts --platform neutral"
 	},
 	"dependencies": {
 		"ui-sdk-table-core": "workspace:*"

@@ -268,3 +268,36 @@ Last full run of the library (commit `05b2e0b`):
 9. `.claude/skills/vue-virtual-scroller/` in the app is still there and describes a package that the app no longer has.
 
 **Not verified, added.** Firefox and Safari; the Command keys of a Mac; what a browser with its own menus does with Ctrl+D and Ctrl+R; a touch drag of the fill handle; a screen reader on row numbers and footer lists; an xlsx file with cell formats opened in Excel; the published pages in a browser after the last deploy (the deploy passed and the site answers).
+
+## After the sheet: column letters, the sink page, the first part of the formulas
+
+All of this is on `master` of the library at `0305a78` and of the app at `65f3f65`. Each branch passed `pnpm check`, `pnpm type-check`, `pnpm exec vp test run`, `pnpm test:e2e` and `pnpm build` in a second checkout before its merge.
+
+**Column letters** (`f96f84c`). The option `columnLetters`, off by default and not part of `sheet`, puts a row of letters (A, B, C, then AA) above the header rows. A press on a letter selects its column, Shift the columns from the active cell, a drag those columns, and the corner every cell. Space, Control+Space and Enter select on a letter, and Shift with an arrow adds the next column. `lettersByColumn` of `sheet/chrome.ts` is the one rule for the letter of a column. The work also fixed a fault of before: with header groups and a sticky header, only the last header row stuck.
+
+**The app** (pull request 52, merged as `65f3f65`). `DataTable` has the prop `columnLetters`; the Budget sheet of `/data-sheet` shows the letters, and the example with 50,000 rows has a switch for them. Checks at `9ac8cae`: `vp check`, type-check, ESLint with 0 errors, 91 unit tests, the audit with 0 errors, the build, and 81 Playwright tests. The Dependabot pull requests 38, 39 and 40 were closed: `master` had their versions already.
+
+**The sink page** (`d7a20a8`, `31813e2`). Geist, Geist Mono and Geist Serif from the npm package `geist`, loaded by the sink page only. A table has no fill of its own and shows the colour of its card; a part that sticks takes the colour of the card. The tones have three weights (neutral, soft, bold). In the second round, which the owner directed himself, a tile became a scene: a whole table with room around it, a serif heading on each tile, and a group `style` with four looks of the same table. The page has 60 tiles.
+
+**Formulas, slices 0 to 2 of the plan** (`0305a78`). The plan is not in the repository; its decisions are in `docs/ui-sdk-api-notes.md`, section 11, with the proofs.
+- The entry `ui-sdk-table-core/formulas` holds an engine of our own, with no dependency: about 45 functions, 25.4 kB minified. The main entry did not grow.
+- `formulaColumn()` makes a computed column from a formula such as `=[price]*[qty]`. It reads its own row only. Sort, filter, groups, totals and export take it as any column.
+- The period functions `DAYOF`, `WEEKOF`, `MONTHOF`, `QUARTEROF`, `YEAROF` and `HOUROF` give the first day of the period, and the new format `period` writes its text.
+- A function whose name Excel has behaves as in Excel; the differences are listed in section 11 of the notes. The locale never changes what a formula computes. It changes what a person types and reads: in a locale with a decimal comma, `=IF([Price]>1,5; "high"; "low")` is stored as `=IF([price]>1.5, "high", "low")`.
+- Measured with 50,000 rows on the cloud machine: a shared formula 17.6 ms, the first sort by a computed column 34.5 ms more than by a plain one, `WEEKOF` in a zone 62 ms at the first read and 1.8 ms after. `docs/benchmarks.md` has the tables.
+
+**Set without an answer of the owner, added.** Assumption 6 of the list above ("No formula engine") no longer holds.
+7. In a locale with a decimal comma, only `;` separates the arguments of a function.
+8. `WEEKOF(d)` starts the week on Sunday, as `WEEKNUM` of Excel does, and `WEEKOF(d, 2)` on Monday. The owner asked for the rule of Excel; the default day follows from it.
+9. A moment in a column without a `timeZone` is read in the zone of the machine.
+10. In an Excel file, a period is a text cell.
+
+**Open items, added.**
+10. **A fault of `cellFormats` and `columnAggregates` that a proof of the formulas found.** With a key that the owner holds, a change back to the value of the last render in the same turn is lost: an undo of a format in the turn of the format throws, and the owner keeps the format. A person cannot do this; code can. The fix is the first commit of the next part of the formulas.
+11. **Formulas, still to build:** column formulas at run time, addresses and ranges, cell formulas with their dependents, the check after new rows, fill and paste, the reads for an agent and a formula bar, and tiles in the sink.
+12. **Control+A on a body cell and `selectAllCells()`** still include a checkbox column; the corner of the letters does not.
+13. **From right to left, a range draws its inner line between its columns.** The fault is older than the letters.
+14. **The count of cells in the selection summary of the app** has no thousands separator ("50000 of 50000 cells with a value").
+15. Open item 7 above is out of date: the sink page was restyled and has 60 tiles.
+
+**Not verified, added.** The letters and the formulas in Firefox and Safari, apart from the three proofs that ran in all three browsers; touch; a screen reader; `=` on a real Finnish keyboard; an Excel file opened in Excel; every number on another machine than the cloud machine.
