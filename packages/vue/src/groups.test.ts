@@ -343,6 +343,39 @@ describe('useTableView', () => {
 		wrapper.unmount()
 		expect(view?.value).toBe(last)
 	})
+
+	test('a table that comes in place of another, with the same controller, keeps the view going', async () => {
+		const controller = createTableController()
+		const key = ref('all')
+		const one = people.slice(0, 1)
+		let view: ReturnType<typeof useTableView> | undefined
+		const Page = defineComponent({
+			setup() {
+				view = useTableView(controller)
+				// A new key mounts a new table, as a page does to start a table from its defaults.
+				return () => [
+					h('output', `${view?.value?.dataRowCount ?? 'no table'}`),
+					h(Table<Person>, {
+						key: key.value,
+						rows: key.value === 'all' ? people : one,
+						columns,
+						controller,
+					}),
+				]
+			},
+		})
+		const wrapper = mount(Page)
+		await nextTick()
+		expect(wrapper.get('output').text()).toBe('3')
+
+		key.value = 'one'
+		await nextTick()
+		await nextTick()
+		expect(wrapper.get('output').text()).toBe('1')
+		controller.setSearch('nobody')
+		await nextTick()
+		expect(wrapper.get('output').text()).toBe('0')
+	})
 })
 
 describe('useTableSearch', () => {

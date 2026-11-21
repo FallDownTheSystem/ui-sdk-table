@@ -2,7 +2,7 @@ import { createController } from '@ui-sdk/core'
 import type { TableController } from 'ui-sdk-table-core'
 
 type Listener = (changed: readonly string[]) => void
-type Waiting = { listener: Listener; stop?: () => void }
+type Entry = { listener: Listener; stop?: () => void }
 
 const ARRIVED = Symbol('table arrived')
 
@@ -14,37 +14,44 @@ const ARRIVED = Symbol('table arrived')
  * `subscribe` is the one method that is safe to call early: its listener
  * waits for the table. When the table arrives, the listener runs once with
  * no key, so it can read `getView` for the first time, and then after each
- * change. The answer is the function that stops it, at any time.
+ * change. The answer is the function that stops it, at any time. A table
+ * that comes in place of another (a new `key`) takes over every listener.
  */
 export function createTableController(): TableController {
 	const inner = createController<TableController>()
-	const waiting = new Set<Waiting>()
+	// Every listener, since a listener of UI SDK belongs to one table and ends with it.
+	const entries = new Set<Entry>()
 	// Whether a table ever arrived.
 	let met = false
 
+	// The controller answers with the stop function when it has a table, else with nothing.
+	function connect(entry: Entry): boolean {
+		const stop: unknown = inner.subscribe(entry.listener)
+		if (typeof stop !== 'function') return false
+		entry.stop = stop as () => void
+		return true
+	}
+
 	function subscribe(listener: Listener): () => void {
 		if (typeof listener !== 'function') throw new Error('`subscribe` takes a function.')
+		const entry: Entry = { listener }
+		entries.add(entry)
 		// Before the first table, the listener only waits. The controller of UI SDK
 		// is not asked then: in development it warns about each method that is
 		// called before a component is there, and a wait is no mistake.
-		// With a table, the controller answers with the stop function; without one, with nothing.
-		const stop: unknown = met ? inner.subscribe(listener) : undefined
-		if (typeof stop === 'function') return stop as () => void
-		const entry: Waiting = { listener }
-		waiting.add(entry)
+		if (met) connect(entry)
 		return () => {
-			waiting.delete(entry)
+			entries.delete(entry)
 			entry.stop?.()
 		}
 	}
 
 	function arrived(): void {
 		met = true
-		for (const entry of waiting) {
-			const stop: unknown = inner.subscribe(entry.listener)
-			if (typeof stop !== 'function') return
-			waiting.delete(entry)
-			entry.stop = stop as () => void
+		for (const entry of entries) {
+			entry.stop?.()
+			entry.stop = undefined
+			if (!connect(entry)) return
 			entry.listener([])
 		}
 	}
