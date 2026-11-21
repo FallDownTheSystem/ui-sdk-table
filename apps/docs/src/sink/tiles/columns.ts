@@ -26,7 +26,7 @@ export const tiles: TileCopy[] = [
 	{
 		id: 'columns-hide',
 		title: 'Hide all, then reset.',
-		blurb: 'The name cannot be hidden, and the reset knows where the table started.',
+		blurb: 'The customer cannot be hidden, and the reset knows where the table started.',
 		tone: 'ink',
 	},
 	{

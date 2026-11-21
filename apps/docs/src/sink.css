@@ -1877,9 +1877,40 @@ input {
 	gap: 4px;
 }
 
+/*
+ * A choice beside a table is quieter than a name under the tile: a soft pill
+ * on the veil of the card, and a chosen one is a tint of the accent with a
+ * line of it and a check, not a block of ink.
+ */
 .facet .tile-use {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	block-size: 26px;
+	padding: 0 10px;
+	border-color: var(--tile-rule);
+	border-radius: 999px;
+	background: var(--tile-control);
 	font-family: var(--sans);
 	font-size: 12px;
+}
+
+.facet .tile-use[data-pressed] {
+	border-color: color-mix(in oklab, var(--tile-accent) 55%, var(--tile-bg));
+	background: var(--tile-selected);
+	color: var(--tile-ink);
+}
+
+.facet .tile-use[data-pressed]::before {
+	content: '✓';
+	font-size: 11px;
+	line-height: 1;
+}
+
+.facet .tile-use:disabled,
+.facet .tile-use[data-disabled] {
+	border-style: dashed;
+	cursor: default;
 }
 
 .facet-count {
