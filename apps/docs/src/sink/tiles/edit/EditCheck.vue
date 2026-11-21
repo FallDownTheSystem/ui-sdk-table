@@ -6,10 +6,10 @@ import { check } from '../../data'
 type Account = { id: string; handle: string; owner: string }
 
 const rows = shallowRef<Account[]>([
-	{ id: 'a1', handle: 'aino', owner: 'Ada Adams' },
-	{ id: 'a2', handle: 'eero', owner: 'Ben Niemi' },
-	{ id: 'a3', handle: 'helmi', owner: 'Cleo Virta' },
-	{ id: 'a4', handle: 'onni', owner: 'Ivy Ellis' },
+	{ id: 'a1', handle: 'ada', owner: 'Ada Adams' },
+	{ id: 'a2', handle: 'ben', owner: 'Ben Nolan' },
+	{ id: 'a3', handle: 'cleo', owner: 'Cleo Vance' },
+	{ id: 'a4', handle: 'ivy', owner: 'Ivy Ellis' },
 ])
 
 // Only a server knows which names are taken. The editor waits for its answer.
@@ -37,7 +37,7 @@ const columns: ColumnDef<Account>[] = [
 
 <template>
 	<div class="demo">
-		<p class="demo-note">Rename "eero" to "aino", then to "eemeli".</p>
+		<p class="demo-note">Rename "ben" to "ada", then to "benjamin".</p>
 		<div class="sink-frame">
 			<Table
 				:rows="rows"
