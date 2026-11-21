@@ -353,18 +353,18 @@ test('the search field shows each letter at once, and the table filters once aft
 	})
 	const said = () => page.evaluate(() => (window as unknown as { said: number }).said)
 
-	await field.pressSequentially('saara', { delay: 20 })
-	await expect(field).toHaveValue('saara')
+	await field.pressSequentially('jack', { delay: 20 })
+	await expect(field).toHaveValue('jack')
 	await expect(state).toHaveText('Waiting')
 	await expect(changes).toHaveText('0 filter changes')
 	await expect(found).toHaveText('60 people')
-	// After the pause: one change of the filter for the five letters.
+	// After the pause: one change of the filter for the four letters.
 	await expect(state).toHaveText('Ready')
 	await expect(changes).toHaveText('1 filter changes')
 	await expect(found).not.toHaveText('60 people')
-	await expect(field).toHaveValue('saara')
+	await expect(field).toHaveValue('jack')
 	await expect(field).toBeFocused()
-	// One announcement for the five letters, after the pause.
+	// One announcement for the four letters, after the pause.
 	expect(await said()).toBe(1)
 	await page.getByRole('button', { name: 'Open all groups' }).click()
 	for (const name of await dataRows(table).locator('td[data-column="name"]').allInnerTexts()) {
@@ -385,7 +385,7 @@ test('the search field shows each letter at once, and the table filters once aft
 	await expect(changes).toHaveText('2 filter changes')
 
 	// Enter does not wait for the pause.
-	await field.pressSequentially('eero', { delay: 20 })
+	await field.pressSequentially('ben', { delay: 20 })
 	await page.keyboard.press('Enter')
 	await expect(state).toHaveText('Ready')
 	await expect(changes).toHaveText('3 filter changes')
@@ -404,7 +404,7 @@ test('the search field shows each letter at once, and the table filters once aft
 	await expect(field).toHaveValue('')
 
 	// The clear button acts at once too.
-	await field.pressSequentially('onni', { delay: 20 })
+	await field.pressSequentially('ivy', { delay: 20 })
 	await page.getByRole('button', { name: 'Clear the search' }).click()
 	await expect(field).toHaveValue('')
 	await expect(state).toHaveText('Ready')
