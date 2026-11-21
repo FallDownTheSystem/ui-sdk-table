@@ -30,6 +30,10 @@ export type TableMessages = {
 	editCell: (details: { column: string }) => string
 	/** Why a text is refused in a column of numbers. */
 	notNumber: (text: string) => string
+	/** Why a text is refused in a cell that holds a date. */
+	notDate: (text: string) => string
+	/** Why a text is refused in a cell that holds true or false. */
+	notBoolean: (text: string) => string
 	/** Why a value is refused when its schema gives no message. */
 	invalidValue: () => string
 	/** Why an edit is refused when a listener of `onCellEdit` cancels it. */
@@ -44,6 +48,12 @@ export type TableMessages = {
 	pasteRefused: (details: { column: string; text: string; message: string }) => string
 	/** Why a paste did nothing: no cell under it can be edited. */
 	pasteNowhere: () => string
+	/** Why a paste did nothing: the text has more rows or columns than the table has from the first cell on. */
+	pasteTooLarge: (details: { rows: number; columns: number }) => string
+	/** Why a paste did nothing: a row under it is a group row or a detail row, which holds no values. */
+	pasteOverRow: () => string
+	/** Why an edit was not saved: its row left the table while the value was checked. */
+	editRowGone: () => string
 }
 
 export const defaultMessages: TableMessages = {
@@ -64,6 +74,9 @@ export const defaultMessages: TableMessages = {
 	},
 	editCell: ({ column }) => `Edit ${column}`,
 	notNumber: (text) => `"${text}" is not a number.`,
+	notDate: (text) =>
+		`"${text}" is not a date. Write it as 2026-01-31, with a time after it or not.`,
+	notBoolean: () => 'The value must be "true" or "false".',
 	invalidValue: () => 'This value is not valid.',
 	editRefused: () => 'The change was not saved.',
 	cellsSelected: ({ rows, columns }) =>
@@ -75,4 +88,8 @@ export const defaultMessages: TableMessages = {
 	pasteRefused: ({ column, text, message }) =>
 		`Nothing was pasted. ${column} refuses "${text}": ${message}`,
 	pasteNowhere: () => 'Nothing was pasted. No cell here can be edited.',
+	pasteTooLarge: ({ rows, columns }) =>
+		`Nothing was pasted. The text has ${rows} ${rows === 1 ? 'row' : 'rows'} and ${columns} ${columns === 1 ? 'column' : 'columns'}, and the table has fewer from this cell on.`,
+	pasteOverRow: () => 'Nothing was pasted. A row here holds no values.',
+	editRowGone: () => 'The change was not saved. The row is not in the table any more.',
 }

@@ -229,7 +229,7 @@ test('the start and the end of an edit render one cell, not the table', async ()
 	expect(renders).toBe(0)
 })
 
-test('`v-model:cell-range` follows the range, and a copy and a paste go through it', async () => {
+test('`v-model:cell-range` follows the range, and a copy and a paste of the controller go through it', async () => {
 	const range = shallowRef<CellRange | null>(null)
 	const api = createTableController()
 	const { wrapper, rows, cell } = setup({
@@ -339,4 +339,99 @@ test('an agent edits a cell with `editCell`, and reads why a value is refused', 
 	)
 	expect(rows.value[1]?.score).toBe(64)
 	expect(edits).toHaveLength(1)
+})
+
+test('rows that the owner replaces while a value is checked get the edit, on the rows of now', async () => {
+	let answer: () => void = () => {}
+	const slow: StandardSchemaV1 = {
+		'~standard': {
+			version: 1,
+			vendor: 'test',
+			validate: (value) => new Promise((resolve) => (answer = () => resolve({ value }))),
+		},
+	}
+	const { rows, edits, cell } = setup({
+		columns: [{ id: 'name', header: 'Name', schema: slow }, ...columns.slice(1)],
+	})
+	;(cell(1, 1).element as HTMLElement).focus()
+	await cell(1, 1).trigger('keydown', { key: 'Enter' })
+	await nextTick()
+	await cell(1, 1).get('input').setValue('Anna')
+	await cell(1, 1).get('input').trigger('keydown', { key: 'Enter' })
+	await nextTick()
+	expect(cell(1, 1).get('input').attributes('aria-busy')).toBe('true')
+	expect(cell(1, 1).get('input').attributes('readonly')).toBe('')
+
+	// A refresh from a server: the same ids, other objects, and a new score.
+	rows.value = people().map((row) => (row.id === 'a' ? { ...row, score: 71 } : row))
+	await nextTick()
+	answer()
+	await new Promise((resolve) => setTimeout(resolve))
+	await nextTick()
+
+	expect(edits).toHaveLength(1)
+	// The edit names the row object of now, so `applyEdits` finds it.
+	expect(edits[0]?.edits[0]?.row).toMatchObject({ id: 'a', score: 71 })
+	expect(edits[0]?.edits[0]?.previous).toBe('Aino')
+	expect(rows.value[0]).toMatchObject({ name: 'Anna', score: 71 })
+	expect(cell(1, 1).find('input').exists()).toBe(false)
+	expect(cell(1, 1).text()).toBe('Anna')
+})
+
+test('an editor from a slot knows that its value is checked, and closes when the person presses another cell', async () => {
+	let answer: () => void = () => {}
+	const slow: StandardSchemaV1 = {
+		'~standard': {
+			version: 1,
+			vendor: 'test',
+			validate: (value) => new Promise((resolve) => (answer = () => resolve({ value }))),
+		},
+	}
+	const { edits, cell } = setup(
+		{ columns: [columns[0], { id: 'team', header: 'Team', schema: slow }, ...columns.slice(2)] },
+		{
+			'edit-team': (props: EditorSlotProps<Person>) =>
+				h(
+					'select',
+					{
+						'aria-label': 'Team',
+						value: props.value,
+						disabled: props.checking,
+						onChange: (event: Event) =>
+							props.save((event.target as HTMLSelectElement).value, event),
+					},
+					TEAMS.map((team) => h('option', { value: team }, team)),
+				),
+		},
+	)
+	;(cell(1, 2).element as HTMLElement).focus()
+	await cell(1, 2).trigger('keydown', { key: 'Enter' })
+	await nextTick()
+	expect(cell(1, 2).get('select').attributes('disabled')).toBeUndefined()
+
+	// A press on another cell: the pointer goes down, and focus comes to the cell.
+	await cell(2, 1).trigger('pointerdown', { button: 0 })
+	;(cell(2, 1).element as HTMLElement).focus()
+	await nextTick()
+	expect(cell(1, 2).find('select').exists()).toBe(false)
+	expect(edits).toHaveLength(0)
+	expect(document.activeElement).toBe(cell(2, 1).element)
+	// The keys of the table work again.
+	await cell(2, 1).trigger('keydown', { key: 'Enter' })
+	await nextTick()
+	expect(cell(2, 1).find('input').exists()).toBe(true)
+	await cell(2, 1).get('input').trigger('keydown', { key: 'Escape' })
+	await nextTick()
+
+	;(cell(3, 2).element as HTMLElement).focus()
+	await cell(3, 2).trigger('keydown', { key: 'Enter' })
+	await nextTick()
+	await cell(3, 2).get('select').setValue('Sales')
+	await nextTick()
+	expect(cell(3, 2).get('select').attributes('disabled')).toBe('')
+	answer()
+	await new Promise((resolve) => setTimeout(resolve))
+	await nextTick()
+	expect(cell(3, 2).find('select').exists()).toBe(false)
+	expect(edits.map((edit) => edit.edits[0]?.value)).toEqual(['Sales'])
 })

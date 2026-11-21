@@ -38,19 +38,36 @@ function schema(check: (value: unknown) => string | undefined): StandardSchemaV1
 	}
 }
 
+// A check that only a server can do, such as "is this name free". A schema
+// can answer with a promise, and the editor waits for it.
+const slow = shallowRef(false)
+const SLOW_MS = 600
+const nameSchema: StandardSchemaV1 = {
+	'~standard': {
+		version: 1,
+		vendor: 'demo',
+		validate: (value) => {
+			const text = typeof value === 'string' ? value.trim() : ''
+			if (text.length < 2) return { issues: [{ message: 'A name has 2 characters or more.' }] }
+			if (!slow.value) return { value }
+			return new Promise((resolve) =>
+				setTimeout(
+					() =>
+						resolve(
+							rows.value.some((row) => row.name === text)
+								? { issues: [{ message: `Another person has the name ${text}.` }] }
+								: { value },
+						),
+					SLOW_MS,
+				),
+			)
+		},
+	},
+}
+
 const columns: ColumnDef<Person>[] = [
 	{ id: 'id', header: 'Id', width: 70, editable: false },
-	{
-		id: 'name',
-		header: 'Name',
-		width: 200,
-		sortable: true,
-		schema: schema((value) =>
-			typeof value === 'string' && value.trim().length >= 2
-				? undefined
-				: 'A name has 2 characters or more.',
-		),
-	},
+	{ id: 'name', header: 'Name', width: 200, sortable: true, schema: nameSchema },
 	{
 		id: 'team',
 		header: 'Team',
@@ -148,6 +165,7 @@ const focusOnMount = (el: unknown) => {
 	<div class="toolbar">
 		<label><input v-model="selectable" type="checkbox" /> Row selection</label>
 		<label><input v-model="locked" type="checkbox" /> Refuse every edit</label>
+		<label><input v-model="slow" type="checkbox" /> Check names on a slow server</label>
 		<button type="button" @click="controller.editCell('e2', 'score', 99)">
 			Give row e2 the score 99
 		</button>

@@ -1,5 +1,6 @@
 import {
 	byCellRange,
+	cellsToText,
 	createCellRange,
 	textToCells,
 	type CellBounds,
@@ -10,7 +11,7 @@ import {
 	type PrimitiveContext,
 } from '@ui-sdk/core'
 
-export { byCellRange, textToCells }
+export { byCellRange, cellsToText, textToCells }
 export type { CellBounds, CellRange, CellRangeReason }
 
 export type TableRange<State> = {
@@ -33,8 +34,6 @@ export type TableRange<State> = {
 	keydown(event: KeyboardEvent): boolean
 	/** Starts a range on a press, and paints it while the pointer drags. Shift stretches the range. */
 	pointerdown(event: PointerEvent, cell: GridCell): void
-	/** The text of the range, with tabs between cells and line breaks between rows. */
-	text(state: State, read: (cell: GridCell) => string): string
 }
 
 /**
@@ -96,6 +95,13 @@ export function createTableRange<State extends object>(
 			a.end.row === b.end.row &&
 			a.end.col === b.end.col)
 
+	// The last range that was asked for. A caller that controls the range may
+	// not have passed it back yet when a drag ends, so the end of a drag reads
+	// this value and not the state.
+	let asked: { range: CellRange | null } | undefined
+	let steps = 0
+	let stop: (() => void) | undefined
+
 	const range = createCellRange(context, {
 		key: options.key,
 		grid: options.grid,
@@ -105,10 +111,24 @@ export function createTableRange<State extends object>(
 		message: options.message,
 		set: (next, details) => {
 			const kept = inBody(next)
-			if (same(kept, current())) return false
-			return options.set(kept, details)
+			if (same(kept, asked ? asked.range : current())) return false
+			const accepted = options.set(kept, details)
+			if (accepted) {
+				asked = { range: kept }
+				steps++
+			}
+			return accepted
 		},
 	})
+
+	// A table that goes away in the middle of a drag must not hear its end.
+	context.onDestroy(() => stop?.())
+	// The state is the truth again once it holds what was asked for, or anything else.
+	context.onDestroy(
+		context.store.subscribe(() => {
+			if (!stop) asked = undefined
+		}),
+	)
 
 	return {
 		bounds: (state) => range.bounds(state),
@@ -120,21 +140,28 @@ export function createTableRange<State extends object>(
 		keydown: (event) =>
 			onBody(options.grid.active()) ? range.keydown(event) : options.grid.keydown(event),
 		pointerdown(event, cell) {
+			stop?.()
 			const before = current()
+			asked = undefined
 			range.pointerdown(event, cell)
 			if (!options.commit || event.shiftKey) return
 			const page = event.target instanceof Node ? event.target.ownerDocument : null
 			if (!page) return
+			// The press itself can drop a range. Only what comes after it is a drag.
+			steps = 0
 			const end = (up: Event) => {
+				stop?.()
+				const now = asked ? asked.range : current()
+				asked = undefined
+				if (steps > 0 && !same(now, before)) options.commit?.(now, { reason: 'drag', event: up })
+			}
+			stop = () => {
+				stop = undefined
 				page.removeEventListener('pointerup', end, true)
 				page.removeEventListener('pointercancel', end, true)
-				const now = current()
-				// A press without a move drops the range, and that is not a drag.
-				if (now && !same(now, before)) options.commit?.(now, { reason: 'drag', event: up })
 			}
 			page.addEventListener('pointerup', end, true)
 			page.addEventListener('pointercancel', end, true)
 		},
-		text: (state, read) => range.text(state, read),
 	}
 }

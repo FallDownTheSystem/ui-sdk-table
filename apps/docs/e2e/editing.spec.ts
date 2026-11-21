@@ -416,3 +416,204 @@ test('code outside the table edits a cell and selects cells', async ({ page }) =
 	await page.getByRole('button', { name: 'Clear the cells' }).click()
 	await expect(selected(table)).toHaveCount(0)
 })
+
+test('a check that takes time: the editor waits, Escape takes the edit back, and focus elsewhere stays', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await page.getByRole('checkbox', { name: 'Check names on a slow server' }).check()
+	const name = cell(table, 2, 2)
+	await name.click()
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('Anna Aalto')
+	await page.keyboard.press('Enter')
+	const input = editor(table)
+	await expect(input).toHaveAttribute('aria-busy', 'true')
+	await expect(name).toHaveAttribute('data-checking', '')
+	// The text cannot change while it is checked, so the value that is saved is the value on screen.
+	await page.keyboard.type('xyz')
+	await page.keyboard.press('Enter')
+	await expect(input).toHaveValue('Anna Aalto')
+	await expect(input).toBeFocused()
+	await expect(editor(table)).toHaveCount(0)
+	await expect(name).toHaveText('Anna Aalto')
+	await expect(name).toBeFocused()
+	await expect(log(page)).toHaveText(['enter-key: e1.name="Anna Aalto"'])
+
+	// Escape while the check runs: the answer comes to nobody.
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('Aune Aalto')
+	await page.keyboard.press('Enter')
+	await expect(editor(table)).toHaveAttribute('aria-busy', 'true')
+	await page.keyboard.press('Escape')
+	await expect(editor(table)).toHaveCount(0)
+	await expect(name).toBeFocused()
+	await page.waitForTimeout(900)
+	await expect(name).toHaveText('Anna Aalto')
+	await expect(log(page)).toHaveCount(1)
+
+	// A name that the server refuses: the reason shows, and the text can change again.
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('Eero Heikkinen')
+	await page.keyboard.press('Enter')
+	const reason = table.locator('[data-slot="table-edit-error"]')
+	await expect(reason).toHaveText('Another person has the name Eero Heikkinen.')
+	await expect(editor(table)).toBeFocused()
+	await expect(editor(table)).not.toHaveAttribute('readonly', '')
+	await page.keyboard.press('Escape')
+
+	// The person goes to another field while the check runs. Focus is theirs.
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('Aili Aalto')
+	await page.keyboard.press('Enter')
+	await expect(editor(table)).toHaveAttribute('aria-busy', 'true')
+	const box = page.getByRole('checkbox', { name: 'Row selection' })
+	await box.focus()
+	await expect(name).toHaveText('Aili Aalto')
+	await expect(editor(table)).toHaveCount(0)
+	await expect(box).toBeFocused()
+	await expect(log(page).first()).toHaveText('enter-key: e1.name="Aili Aalto"')
+})
+
+test('Tab goes to the next cell also when the save moves the row', async ({ page }) => {
+	const table = await open(page)
+	await cell(table, 1, 4).click()
+	// The lowest score is first. Its row goes to the end with the highest score.
+	const first = await cell(table, 2, 1).innerText()
+	await cell(table, 2, 4).click()
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('100')
+	await page.keyboard.press('Tab')
+	await expect(cell(table, 11, 1)).toHaveText(first)
+	await expect(cell(table, 11, 4)).toHaveText('100')
+	await expect(cell(table, 11, 5)).toBeFocused()
+	await expect(editor(table)).toHaveCount(0)
+
+	// Back to the start with Shift+Tab: the cell before, in the row where it is now.
+	await page.keyboard.press('ArrowLeft')
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('0')
+	await page.keyboard.press('Shift+Tab')
+	await expect(cell(table, 2, 1)).toHaveText(first)
+	await expect(cell(table, 2, 3)).toBeFocused()
+	// The grid goes on from there.
+	await page.keyboard.press('ArrowDown')
+	await expect(cell(table, 3, 3)).toBeFocused()
+})
+
+test('Tab at the end of a row goes to the next row, and at the last cell it stays', async ({
+	page,
+}) => {
+	const table = await open(page)
+	// Joined is the last column with an editor. Active has a switch and no editor.
+	await cell(table, 2, 5).click()
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('2020-02-02')
+	await page.keyboard.press('Tab')
+	await expect(log(page).first()).toHaveText('tab-key: e1.joined="2020-02-02"')
+	await expect(cell(table, 2, 6)).toBeFocused()
+
+	await cell(table, 3, 2).click()
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('Eero Aalto')
+	await page.keyboard.press('Shift+Tab')
+	await expect(cell(table, 3, 1)).toBeFocused()
+
+	// The first and the last cell of the people have no neighbour on one side.
+	await cell(table, 11, 5).click()
+	await page.keyboard.press('ArrowRight')
+	await expect(cell(table, 11, 6)).toBeFocused()
+	await cell(table, 11, 5).click()
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('2021-01-01')
+	await page.keyboard.press('Tab')
+	await expect(cell(table, 11, 6)).toBeFocused()
+	await expect(editor(table)).toHaveCount(0)
+})
+
+test('an editor of a column closes when the person presses another cell, and the keys work', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const team = cell(table, 2, 3)
+	await team.click()
+	await page.keyboard.press('Enter')
+	await expect(team.getByRole('combobox')).toBeFocused()
+	await cell(table, 4, 2).click()
+	await expect(table.getByRole('combobox')).toHaveCount(0)
+	await expect(team).toHaveText('Billing')
+	await expect(cell(table, 4, 2)).toBeFocused()
+	await expect(log(page)).toHaveCount(0)
+	await page.keyboard.press('Enter')
+	await expect(editor(table)).toBeFocused()
+	await page.keyboard.press('Escape')
+
+	// The same with a key: the list is open, and the person presses a cell and types.
+	await team.dblclick()
+	await expect(team.getByRole('combobox')).toBeFocused()
+	await cell(table, 5, 4).click()
+	await page.keyboard.type('7')
+	await expect(editor(table)).toHaveValue('7')
+	await expect(table.getByRole('combobox')).toHaveCount(0)
+})
+
+test('a refused value keeps the active cell and paints no range when another cell is pressed', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const score = cell(table, 3, 4)
+	await score.click()
+	await page.keyboard.press('Enter')
+	await page.keyboard.type('250')
+	await page.keyboard.press('Enter')
+	await expect(editor(table)).toHaveAttribute('aria-invalid', 'true')
+
+	const from = await cell(table, 6, 2).boundingBox()
+	const to = await cell(table, 8, 3).boundingBox()
+	if (!from || !to) throw new Error('The cells have no box.')
+	await page.mouse.move(from.x + 10, from.y + 10)
+	await page.mouse.down()
+	await page.mouse.move(to.x + 10, to.y + 10, { steps: 4 })
+	await page.mouse.up()
+	await expect(editor(table)).toBeFocused()
+	await expect(editor(table)).toHaveValue('250')
+	await expect(score).toHaveAttribute('tabindex', '0')
+	await expect(cell(table, 6, 2)).toHaveAttribute('tabindex', '-1')
+	await expect(range(page)).toHaveText('none')
+	await expect(selected(table)).toHaveCount(0)
+
+	await page.keyboard.press('Escape')
+	await expect(score).toBeFocused()
+	await page.keyboard.press('ArrowDown')
+	await expect(cell(table, 4, 4)).toBeFocused()
+})
+
+test('Shift+Space and Control+Space take rows and columns of the range, and rows of the table when rows can be selected', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await cell(table, 3, 3).click()
+	await page.keyboard.press('Shift+ArrowDown')
+	await page.keyboard.press('Shift+Space')
+	await expect(range(page)).toHaveText('{"anchor":{"row":2,"col":0},"end":{"row":3,"col":5}}')
+	await expect(selected(table)).toHaveCount(12)
+	await page.keyboard.press('Escape')
+	await page.keyboard.press('Control+Space')
+	await expect(range(page)).toHaveText('{"anchor":{"row":1,"col":2},"end":{"row":10,"col":2}}')
+	await expect(selected(table)).toHaveCount(10)
+	await expect(cell(table, 3, 3)).toBeFocused()
+	await page.keyboard.press('Escape')
+
+	// With row selection, Space is for the row, and a cell outside a range says nothing.
+	await page.getByRole('checkbox', { name: 'Row selection' }).check()
+	await cell(table, 3, 3).click()
+	await page.keyboard.press('Space')
+	const row = table.locator('tr[aria-rowindex="3"]')
+	await expect(row).toHaveAttribute('aria-selected', 'true')
+	await expect(range(page)).toHaveText('none')
+	await expect(table.locator('td[aria-selected]')).toHaveCount(0)
+	await page.keyboard.press('Shift+ArrowRight')
+	await expect(table.locator('td[aria-selected="true"]')).toHaveCount(2)
+	await expect(table.locator('td[aria-selected="false"]')).toHaveCount(0)
+	await expect(row).toHaveAttribute('aria-selected', 'true')
+})

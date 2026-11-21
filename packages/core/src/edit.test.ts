@@ -6,10 +6,12 @@ import {
 	checkValue,
 	parseCellKey,
 	parseText,
+	readNumberText,
 	sameValue,
 	type CellEdit,
 	type StandardSchemaV1,
 } from './edit'
+import { defaultMessages } from './messages'
 import type { ColumnDef } from './rows'
 import { table, type TableEditDetails, type TableOptions } from './table'
 
@@ -38,7 +40,11 @@ const columns: ColumnDef<Person>[] = [
 	{ id: 'score', header: 'Score', aggregate: 'sum', schema: atLeastZero },
 ]
 
-const notNumber = (text: string) => `"${text}" is not a number.`
+const texts = {
+	notNumber: defaultMessages.notNumber,
+	notDate: defaultMessages.notDate,
+	notBoolean: defaultMessages.notBoolean,
+}
 
 /** Markup for the rows of the table, in the way a renderer writes it. Grid row 0 is the header row. */
 function markup(ids: readonly string[]): string {
@@ -100,7 +106,7 @@ describe('values of an edit', () => {
 
 	test('a text becomes the kind of value that the cell holds', () => {
 		const row = { count: 3, done: true, when: new Date('2026-01-02T00:00:00Z'), note: 'x' }
-		const parse = (text: string, column: ColumnDef) => parseText(text, row, column, notNumber)
+		const parse = (text: string, column: ColumnDef) => parseText(text, row, column, texts)
 		expect(parse('12.5', { id: 'count' })).toEqual({ value: 12.5 })
 		expect(parse('  ', { id: 'count' })).toEqual({ value: null })
 		expect(parse('1o', { id: 'count' })).toEqual({ issues: ['"1o" is not a number.'] })
@@ -109,7 +115,13 @@ describe('values of an edit', () => {
 			issues: ['The value must be "true" or "false".'],
 		})
 		expect(parse('2026-03-04', { id: 'when' })).toEqual({ value: new Date('2026-03-04') })
-		expect(parse('soon', { id: 'when' })).toEqual({ issues: ['"soon" is not a date.'] })
+		expect(parse('soon', { id: 'when' })).toEqual({
+			issues: ['"soon" is not a date. Write it as 2026-01-31, with a time after it or not.'],
+		})
+		// `new Date('5')` is a day in 2001. No person means that.
+		expect(parse('5', { id: 'when' })).toHaveProperty('issues')
+		// An empty text empties a date as it empties a number.
+		expect(parse('', { id: 'when' })).toEqual({ value: null })
 		expect(parse('12', { id: 'note' })).toEqual({ value: '12' })
 		// A column of numbers with an empty cell still reads a number.
 		expect(parse('7', { id: 'empty', format: 'integer' })).toEqual({ value: 7 })
@@ -570,7 +582,7 @@ describe('cell range', () => {
 		}
 	})
 
-	test('Space selects the row when rows can be selected, and the rows of the range when not', async () => {
+	test('Space selects the row when rows can be selected, and with Shift or Control the rows or columns of the range when not', async () => {
 		const both = setup({ cellSelection: true, selection: 'multiple' })
 		try {
 			both.cell('a', 'name').focus()
@@ -697,7 +709,7 @@ describe('cell range', () => {
 		}
 	})
 
-	test('a range goes when other rows come to its places, and stays when the same rows come back', () => {
+	test('a range goes when other rows come to its places', () => {
 		const { view, rows } = setup({ cellSelection: true, columns: [...columns] })
 		try {
 			view.api.selectCells({ rowId: 'a', columnId: 'name' }, { rowId: 'b', columnId: 'team' })
@@ -740,4 +752,418 @@ describe('cell range', () => {
 			view.unmount()
 		}
 	})
+})
+
+describe('an edit whose check takes time', () => {
+	function slowSetup(options: Partial<TableOptions<Person>> = {}) {
+		// Every check that runs: two cells can wait at the same time.
+		const waiting: ((ok: boolean) => void)[] = []
+		const answer = (ok: boolean) => {
+			for (const resolve of waiting.splice(0)) resolve(ok)
+		}
+		const slow: StandardSchemaV1 = {
+			'~standard': {
+				version: 1,
+				vendor: 'test',
+				validate: (value) =>
+					new Promise((resolve) => {
+						waiting.push((ok) =>
+							resolve(ok ? { value } : { issues: [{ message: 'The name is taken.' }] }),
+						)
+					}),
+			},
+		}
+		const made = setup({
+			columns: [{ id: 'name', schema: slow }, { id: 'team' }, { id: 'score' }],
+			...options,
+		})
+		return { ...made, answer }
+	}
+
+	test('Escape while the check runs takes the edit back, and nothing is reported', async () => {
+		const { view, edits, cell, field, answer } = slowSetup()
+		try {
+			cell('a', 'name').focus()
+			await view.keys('Enter')
+			const input = field()
+			input.value = 'Zed'
+			await view.keys('Enter')
+			expect(view.state.editChecking).toBe(cellKey('a', 'name'))
+			expect(cell('a', 'name').hasAttribute('data-checking')).toBe(true)
+			await view.keys('Escape')
+			expect(view.state.editing).toBeNull()
+			expect(view.state.editChecking).toBeNull()
+			answer(true)
+			await view.settle()
+			expect(edits).toHaveLength(0)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a table that is gone before the answer reports nothing', async () => {
+		const { view, edits, cell, field, answer } = slowSetup()
+		cell('a', 'name').focus()
+		await view.keys('Enter')
+		field().value = 'Zed'
+		await view.keys('Enter')
+		// The listener for the refusal is there before the answer, as an owner has it.
+		const later = Promise.resolve(view.api.editCell('b', 'name', 'Yrjö')).then(
+			() => 'saved',
+			(error: unknown) => String(error),
+		)
+		view.unmount()
+		answer(true)
+		expect(await later).toBe(
+			'Error: The table was removed before the value was checked, so nothing was saved.',
+		)
+		await new Promise((resolve) => setTimeout(resolve))
+		expect(edits).toHaveLength(0)
+	})
+
+	test('a second save while the first is checked is not checked and not reported', async () => {
+		let checks = 0
+		let answer: () => void = () => {}
+		const slow: StandardSchemaV1 = {
+			'~standard': {
+				version: 1,
+				vendor: 'test',
+				validate: (value) => {
+					checks++
+					return new Promise((resolve) => (answer = () => resolve({ value })))
+				},
+			},
+		}
+		const { view, edits, cell } = setup({
+			columns: [{ id: 'name', schema: slow }, { id: 'team' }, { id: 'score' }],
+		})
+		try {
+			cell('a', 'name').focus()
+			view.api.startEdit('a', 'name')
+			view.api.saveEdit('One')
+			view.api.saveEdit('Two')
+			expect(checks).toBe(1)
+			answer()
+			await view.settle()
+			expect(edits.map((edit) => edit.edits[0]?.value)).toEqual(['One'])
+			expect(view.state.editing).toBeNull()
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('focus that went to another field stays there when the answer comes', async () => {
+		const { view, edits, cell, field, answer } = slowSetup()
+		const other = document.createElement('input')
+		document.body.append(other)
+		try {
+			cell('a', 'name').focus()
+			await view.keys('Enter')
+			field().value = 'Zed'
+			await view.keys('Enter')
+			other.focus()
+			answer(true)
+			await view.settle()
+			expect(edits).toHaveLength(1)
+			expect(view.state.editing).toBeNull()
+			expect(document.activeElement).toBe(other)
+
+			// The same for a refusal: the reason is kept, and focus is not pulled back.
+			cell('b', 'name').focus()
+			await view.keys('Enter')
+			const input = field()
+			input.value = 'Taken'
+			await view.keys('Enter')
+			other.focus()
+			answer(false)
+			await view.settle()
+			expect(view.state.editErrors).toEqual({ [cellKey('b', 'name')]: 'The name is taken.' })
+			expect(document.activeElement).toBe(other)
+		} finally {
+			other.remove()
+			view.unmount()
+		}
+	})
+
+	test('a schema that answers with a promise of another kind is waited for', async () => {
+		const thenable: StandardSchemaV1 = {
+			'~standard': {
+				version: 1,
+				vendor: 'test',
+				validate: (value) =>
+					({
+						// oxlint-disable-next-line unicorn/no-thenable -- the case is a promise that is no `Promise` of this page
+						then: (resolve: (result: { issues: { message: string }[] }) => void) =>
+							resolve({ issues: [{ message: `No ${String(value)}.` }] }),
+					}) as unknown as Promise<{ value: unknown }>,
+			},
+		}
+		const { view, edits } = setup({
+			columns: [{ id: 'name', schema: thenable }, { id: 'team' }, { id: 'score' }],
+		})
+		try {
+			await expect(view.api.editCell('a', 'name', 'Zed')).rejects.toThrow('No Zed.')
+			expect(edits).toHaveLength(0)
+		} finally {
+			view.unmount()
+		}
+	})
+})
+
+describe('edges of an edit', () => {
+	test('an error of the listener of `onCellEdit` is an error, and not a reason for the person', () => {
+		const { view } = setup({
+			onCellEdit: () => {
+				throw new TypeError('rows is undefined')
+			},
+		})
+		try {
+			expect(() => view.api.editCell('a', 'name', 'Zed')).toThrow(
+				new TypeError('rows is undefined'),
+			)
+			view.api.startEdit('a', 'name')
+			expect(() => view.api.saveEdit('Zed')).toThrow(new TypeError('rows is undefined'))
+			expect(view.state.editErrors).toEqual({})
+			expect(view.announced).toEqual([])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('`editCell` needs a value, and reads a number in the language of the table', () => {
+		const { view, edits } = setup({ locale: 'fi-FI' })
+		try {
+			expect(() =>
+				(view.api.editCell as (row: string, column: string) => void)('b', 'score'),
+			).toThrow('`editCell` takes the new value as its third argument.')
+			void view.api.editCell('b', 'score', '12,5')
+			expect(edits[0]?.edits[0]?.value).toBe(12.5)
+			// Minus zero shows as zero, so it is no other value.
+			expect(sameValue(-0, 0)).toBe(true)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a number text is read as code writes it, or with the signs of the language', () => {
+		expect(readNumberText('1234.5')).toBe(1234.5)
+		expect(readNumberText('1,234.5')).toBe(1234.5)
+		expect(readNumberText('1,234,567')).toBe(1234567)
+		expect(readNumberText('\u22125')).toBe(-5)
+		expect(readNumberText('1e3')).toBe(1000)
+		// English has no decimal comma, and a group has three digits.
+		expect(readNumberText('12,5')).toBeUndefined()
+		expect(readNumberText('12,5', 'fi-FI')).toBe(12.5)
+		expect(readNumberText('1 234,5', 'fi-FI')).toBe(1234.5)
+		expect(readNumberText('1\u00a0234,5', 'fi-FI')).toBe(1234.5)
+		expect(readNumberText('1.234,5', 'de-DE')).toBe(1234.5)
+		// The plain form wins in every language: the editor shows a number that way.
+		expect(readNumberText('1.234', 'de-DE')).toBe(1.234)
+		expect(readNumberText('12,34,567', 'en-IN')).toBe(1234567)
+		const none = ['Infinity', '0x10', '1 2', '1,2,3', '', '--1', '1.2.3']
+		expect(none.filter((text) => readNumberText(text) !== undefined)).toEqual([])
+	})
+
+	test('`startEdit` says why it cannot open a cell while another editor holds a refused value', async () => {
+		const { view, cell, field } = setup()
+		try {
+			cell('b', 'score').focus()
+			await view.keys('Enter')
+			const input = field()
+			input.value = '-1'
+			await view.keys('Enter')
+			expect(view.state.editing).toBe(cellKey('b', 'score'))
+			expect(() => view.api.startEdit('a', 'name')).toThrow(
+				'The editor of another cell is open, and its value was refused or is checked now.',
+			)
+			expect(document.activeElement).toBe(input)
+			expect(view.state.active).toEqual({ row: 2, col: 2 })
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a press on another cell leaves a refused editor open, with focus and the active cell', async () => {
+		const { view, cell, field } = setup({ cellSelection: true })
+		try {
+			cell('b', 'score').focus()
+			await view.keys('Enter')
+			const input = field()
+			input.value = '-1'
+			await view.keys('Enter')
+			const said = view.announced.length
+			const press = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })
+			cell('a', 'name').dispatchEvent(press)
+			expect(press.defaultPrevented).toBe(true)
+			expect(view.state.active).toEqual({ row: 2, col: 2 })
+			expect(view.state.cellRange).toBeNull()
+			expect(document.activeElement).toBe(input)
+			// The person heard the reason once, at the refusal.
+			expect(view.announced).toHaveLength(said)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('an editor that is no text field closes when the person goes to another cell', async () => {
+		const { view, edits, cell } = setup()
+		try {
+			cell('a', 'name').focus()
+			view.api.startEdit('a', 'name')
+			expect(view.state.editing).toBe(cellKey('a', 'name'))
+			// No text field joined: the renderer shows a control of its own.
+			cell('b', 'name').focus()
+			expect(view.state.editing).toBeNull()
+			expect(view.state.active).toEqual({ row: 2, col: 0 })
+			expect(edits).toHaveLength(0)
+
+			view.api.startEdit('a', 'name')
+			cell('c', 'name').focus()
+			await view.keys('Enter')
+			expect(view.state.editing).toBe(cellKey('c', 'name'))
+		} finally {
+			view.unmount()
+		}
+	})
+})
+
+describe('edges of a range and of a paste', () => {
+	test('`selectCells` takes focus with the active cell when focus is in the table', () => {
+		const { view, cell } = setup({ cellSelection: true })
+		const outside = document.createElement('button')
+		document.body.append(outside)
+		try {
+			cell('c', 'score').focus()
+			view.api.selectCells({ rowId: 'a', columnId: 'name' }, { rowId: 'a', columnId: 'team' })
+			expect(document.activeElement).toBe(cell('a', 'name'))
+			expect(cell('a', 'name').getAttribute('tabindex')).toBe('0')
+			expect(view.state.cellRange).toEqual({ anchor: { row: 1, col: 0 }, end: { row: 1, col: 1 } })
+
+			// Focus outside the table stays where the person put it.
+			outside.focus()
+			view.api.selectCells({ rowId: 'b', columnId: 'name' }, { rowId: 'c', columnId: 'name' })
+			expect(document.activeElement).toBe(outside)
+			expect(view.state.active).toEqual({ row: 2, col: 0 })
+		} finally {
+			outside.remove()
+			view.unmount()
+		}
+	})
+
+	test('a paste that does not fit, or that has values for a group row, changes nothing', () => {
+		const { view, edits } = setup({
+			cellSelection: true,
+			defaultGroupBy: ['team'],
+			defaultExpanded: ['group/team=Design', 'group/team=Platform'],
+		})
+		try {
+			// The rows: the Design group, a, c, the Platform group, b.
+			expect(view.api.rows().map((row) => row.id)).toEqual([
+				'group/team=Design',
+				'a',
+				'c',
+				'group/team=Platform',
+				'b',
+			])
+			view.api.selectCells({ rowId: 'c', columnId: 'name' })
+			expect(() => view.api.pasteCells('One\nTwo\nThree')).toThrow(
+				'Nothing was pasted. A row here holds no values.',
+			)
+			expect(edits).toHaveLength(0)
+			// An empty line for the group row, as a copy of these rows gives it.
+			void view.api.pasteCells('One\n\nThree')
+			expect(edits[0]?.edits.map((edit) => [edit.rowId, edit.value])).toEqual([
+				['c', 'One'],
+				['b', 'Three'],
+			])
+
+			view.api.selectCells({ rowId: 'b', columnId: 'name' })
+			expect(() => view.api.pasteCells('One\nTwo')).toThrow(
+				'Nothing was pasted. The text has 2 rows and 1 column, and the table has fewer from this cell on.',
+			)
+			view.api.selectCells({ rowId: 'b', columnId: 'score' })
+			expect(() => view.api.pasteCells('1\t2')).toThrow('The text has 1 row and 2 columns')
+			expect(edits).toHaveLength(1)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a range stays when a column outside it is hidden', () => {
+		const { view } = setup({ cellSelection: true })
+		try {
+			view.api.selectCells({ rowId: 'a', columnId: 'name' }, { rowId: 'b', columnId: 'team' })
+			const range = view.state.cellRange
+			view.api.setColumnVisibility('score', false)
+			expect(view.state.cellRange).toBe(range)
+			// A column of the range that goes away takes the range with it.
+			view.api.setColumnVisibility('team', false)
+			expect(view.state.cellRange).toBeNull()
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a range in the state of a table without cell selection selects no cells', () => {
+		const { view, edits } = setup({
+			defaultCellRange: { anchor: { row: 1, col: 0 }, end: { row: 3, col: 0 } },
+		})
+		try {
+			view.api.edit.start(cellKey('b', 'name'))
+			view.api.cancelEdit()
+			expect(view.state.active).toEqual({ row: 2, col: 0 })
+			expect(view.api.copyCells()).toBe('Eero')
+			void view.api.pasteCells('Zed')
+			expect(edits[0]?.edits.map((edit) => edit.rowId)).toEqual(['b'])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a controlled range that the owner did not pass back yet still reports the end of a drag', async () => {
+		const commits: unknown[] = []
+		const { view, cell } = setup({
+			cellSelection: true,
+			cellRange: null,
+			onCellRangeCommit: (value) => commits.push(value),
+		})
+		try {
+			await view.drag(cell('a', 'name'), { to: cell('c', 'team') })
+			expect(view.state.cellRange).toBeNull()
+			expect(commits).toEqual([{ anchor: { row: 1, col: 0 }, end: { row: 3, col: 1 } }])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('with row selection too, a cell outside the range says nothing about selection', () => {
+		const { view, cell } = setup({
+			cellSelection: true,
+			selection: 'multiple',
+			defaultSelected: ['c'],
+		})
+		try {
+			view.api.selectCells({ rowId: 'a', columnId: 'name' }, { rowId: 'a', columnId: 'team' })
+			expect(cell('a', 'name').getAttribute('aria-selected')).toBe('true')
+			expect(view.part('row', 'c')?.getAttribute('aria-selected')).toBe('true')
+			expect(cell('c', 'name').hasAttribute('aria-selected')).toBe(false)
+		} finally {
+			view.unmount()
+		}
+	})
+})
+
+test('a range from the owner that starts in the header selects its body cells only', () => {
+	const { view, edits, cell } = setup({
+		cellSelection: true,
+		defaultCellRange: { anchor: { row: 0, col: 0 }, end: { row: 2, col: 0 } },
+	})
+	try {
+		expect(cell('a', 'name').getAttribute('aria-selected')).toBe('true')
+		expect(view.api.copyCells()).toBe('Aino\nEero')
+		void view.api.pasteCells('Zed')
+		expect(edits[0]?.edits.map((edit) => edit.rowId)).toEqual(['a', 'b'])
+	} finally {
+		view.unmount()
+	}
 })

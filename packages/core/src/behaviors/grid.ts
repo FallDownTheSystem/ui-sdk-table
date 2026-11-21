@@ -63,6 +63,8 @@ export type TableGrid = GridFocus & {
 	 * holds the tab stop.
 	 */
 	bindRoot(root: HTMLElement): () => void
+	/** Whether focus is in the table: on a cell or on a control inside one. */
+	hasFocus(): boolean
 	/**
 	 * Moves the active cell onto a cell that exists. Call it when the number
 	 * of rows or columns changed, or when cells joined or split.
@@ -114,6 +116,7 @@ export function createTableGrid<State extends object>(
 	// move down goes on in the column where the person started.
 	let line: GridCell | undefined
 	let reached: GridCell | undefined
+	let bound: HTMLElement | undefined
 
 	function target(event: KeyboardEvent, rtl: boolean): GridCell | undefined {
 		const active = grid.active()
@@ -214,7 +217,9 @@ export function createTableGrid<State extends object>(
 			}
 			return keydown(event)
 		},
+		hasFocus: () => !!bound && bound.contains(bound.ownerDocument.activeElement),
 		bindRoot(root) {
+			bound = root
 			let tabbing = false
 			let pressing = false
 			// A cell of this table, and not of a table or a calendar inside one of its cells.
@@ -299,6 +304,7 @@ export function createTableGrid<State extends object>(
 			root.addEventListener('pointerdown', onPointerdown, true)
 			page.addEventListener('keydown', onDocumentKeydown, true)
 			return () => {
+				if (bound === root) bound = undefined
 				stopWatch()
 				if (check) view?.cancelAnimationFrame(check)
 				root.removeEventListener('keydown', onKeydown)

@@ -230,6 +230,8 @@ export type EditorSlotProps<Row> = {
 	text: string
 	/** Why the last value was refused. */
 	error: string | undefined
+	/** A check that takes time runs for a saved value. A save does nothing until it answers. */
+	checking: boolean
 	/**
 	 * Saves a value, with the check of the column, and closes the editor. A
 	 * value that is refused keeps the editor open, and `error` says why.
@@ -488,9 +490,11 @@ const TableImpl = defineComponent(
 								{
 									// The state of the cell part says whether its editor is open,
 									// so the start and the end of an edit render one cell.
-									default: (cell: { state: { editing: boolean; error?: string } }) =>
+									default: (cell: {
+										state: { editing: boolean; checking: boolean; error?: string }
+									}) =>
 										cell.state.editing
-											? editor(node, column, cell.state.error)
+											? editor(node, column, cell.state.error, cell.state.checking)
 											: content(column, col, state),
 								},
 							),
@@ -499,7 +503,12 @@ const TableImpl = defineComponent(
 			)
 		}
 
-		function editor(node: DataRow<unknown>, column: ColumnDef, error: string | undefined) {
+		function editor(
+			node: DataRow<unknown>,
+			column: ColumnDef,
+			error: string | undefined,
+			checking: boolean,
+		) {
 			const id = cellKey(node.id, column.id)
 			const slot = slots[`edit-${column.id}`] ?? slots.editor
 			if (slot) {
@@ -510,6 +519,7 @@ const TableImpl = defineComponent(
 					value: cellValue(node.row, column),
 					text: editText(node.row, column),
 					error,
+					checking,
 					save: (value: unknown, event?: Event) => api.saveEdit(value, event),
 					cancel: () => api.cancelEdit(),
 				})

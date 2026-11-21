@@ -27,6 +27,19 @@ function read(result: StandardSchemaResult<unknown>): Checked {
 }
 
 /**
+ * Whether a value is a promise. A promise from another window or from a
+ * library of its own is not an instance of `Promise` here, so the test is
+ * the `then` method.
+ */
+export function isThenable<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		typeof (value as { then?: unknown }).then === 'function'
+	)
+}
+
+/**
  * Checks a value with a schema. Without a schema, every value passes. The
  * answer is a promise only when the schema itself answers with one.
  */
@@ -36,5 +49,5 @@ export function checkValue(
 ): Checked | Promise<Checked> {
 	if (!schema) return { value }
 	const result = schema['~standard'].validate(value)
-	return result instanceof Promise ? result.then(read) : read(result)
+	return isThenable(result) ? Promise.resolve(result).then(read) : read(result)
 }

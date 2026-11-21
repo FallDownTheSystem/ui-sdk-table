@@ -13,11 +13,12 @@ import {
 	type ChangeDetails,
 	type CommitDetails,
 } from '@ui-sdk/core'
-import { createCellEdit, type SaveResult } from './behaviors/edit'
+import { createCellEdit, type LateSave, type SaveResult } from './behaviors/edit'
 import { createTableGrid, GRID_KEYS, type GridArea, type GridCell } from './behaviors/grid'
 import { createColumnPins } from './behaviors/pin'
 import {
 	byCellRange,
+	cellsToText,
 	createTableRange,
 	textToCells,
 	type CellBounds,
@@ -45,10 +46,12 @@ import {
 import {
 	cellKey,
 	editText,
+	isThenable,
 	parseCellKey,
 	resolveValue,
 	sameValue,
 	type CellEdit,
+	type ParseTexts,
 	type Checked,
 } from './edit'
 import { collectExport, type ExportData, type ExportOptions } from './export/data'
@@ -360,6 +363,8 @@ type TableState = {
 	cellRange: CellRange | null
 	/** The id of the cell that is edited (`cellKey`), or `null`. */
 	editing: string | null
+	/** The id of the cell whose new value is checked now, or `null`. */
+	editChecking: string | null
 	/** Why the text of the editor was refused, by cell id. One entry at most. */
 	editErrors: Readonly<Record<string, string>>
 	/** The rows of the list that the row window renders. */
@@ -418,6 +423,7 @@ const QUIET = {
 	rowWindow: [],
 	cellRange: [],
 	editing: [],
+	editChecking: [],
 	editErrors: [],
 } as const
 
@@ -571,6 +577,7 @@ export const table = definePrimitive({
 			columnResize: null,
 			cellRange: options.cellRange ?? options.defaultCellRange ?? null,
 			editing: null,
+			editChecking: null,
 			editErrors: NO_ERRORS,
 			active: null,
 			revision: 0,
@@ -1043,6 +1050,12 @@ export const table = definePrimitive({
 		const inBody = (row: number) =>
 			row >= headerRowCount() && row < headerRowCount() + bodyRows().length
 
+		const parseTexts = (): ParseTexts => ({
+			notNumber: message('notNumber'),
+			notDate: message('notDate'),
+			notBoolean: message('notBoolean'),
+		})
+
 		const editReason = (reason: string): TableEditReason =>
 			reason === 'enter-key' || reason === 'tab-key' || reason === 'focus-out' || reason === 'paste'
 				? reason
@@ -1064,16 +1077,20 @@ export const table = definePrimitive({
 			input: { text: string } | { value: unknown },
 			reason: string,
 			event?: Event,
-		): SaveResult | Promise<SaveResult> {
+		): SaveResult | LateSave {
 			const finish = (checked: Checked): SaveResult => {
 				if ('issues' in checked) return checked.issues[0] ?? message('invalidValue')()
-				const previous = cellValue(node.row, column)
+				// The rows can be other objects after a check that took time: the
+				// caller looks for the row object of the edit in its rows of now.
+				const now = model.rowById(node.id)
+				if (!now) return message('editRowGone')()
+				const previous = cellValue(now.row, column)
 				if (sameValue(previous, checked.value)) return true
 				const edits = [
 					{
-						rowId: node.id,
+						rowId: now.id,
 						columnId: column.id,
-						row: node.row,
+						row: now.row,
 						column,
 						value: checked.value,
 						previous,
@@ -1081,15 +1098,29 @@ export const table = definePrimitive({
 				]
 				return report(edits, reason, event) ? message('editRefused')() : true
 			}
+			// A `parse` or a schema that throws refuses the value with its own words.
+			// Only the check is inside: an error of a listener of `onCellEdit` is an
+			// error of the page, and the person must not read it as a reason.
 			const failed = (error: unknown) => (error instanceof Error ? error.message : String(error))
+			let checked: Checked | Promise<Checked>
 			try {
-				const checked = resolveValue(input, node.row, column, message('notNumber'))
-				return checked instanceof Promise ? checked.then(finish).catch(failed) : finish(checked)
+				checked = resolveValue(input, node.row, column, parseTexts(), options().locale)
 			} catch (error) {
-				// A `parse` or a schema that throws refuses the value with its own words.
 				return failed(error)
 			}
+			if (!isThenable(checked)) return finish(checked)
+			return Promise.resolve(checked).then(
+				(answer) => () => finish(answer),
+				(error: unknown) => () => failed(error),
+			)
 		}
+
+		// A check that takes time can answer after the table is gone. Nothing is reported then.
+		let destroyed = false
+		context.onDestroy(() => {
+			destroyed = true
+		})
+		const GONE = 'The table was removed before the value was checked, so nothing was saved.'
 
 		/** The cell after or before a cell, in reading order, inside the rows of the body. */
 		function nextCell(from: GridCell, back: boolean): GridCell | undefined {
@@ -1107,6 +1138,7 @@ export const table = definePrimitive({
 
 		const edit = createCellEdit(context, {
 			key: 'editing',
+			checking: 'editChecking',
 			errors: 'editErrors',
 			text: (id) => {
 				const cell = cellOf(id)
@@ -1132,7 +1164,22 @@ export const table = definePrimitive({
 				const back = details.event instanceof KeyboardEvent && details.event.shiftKey
 				const tab = details.saved && details.reason === 'tab-key'
 				const to = tab ? (nextCell(at, back) ?? at) : at
+				const next = cellIdAt(to.row, to.col)
 				grid.focus(to, { reason: tab ? 'list-navigation' : 'imperative', event: details.event })
+				if (next === undefined || next === id) return
+				// The save can move the row, for example in a sorted table. The
+				// renderer then moves its element, focus is lost, and the text field
+				// that goes away gives focus back to the cell it was in. The person
+				// pressed Tab, so focus belongs on the next cell of the row.
+				return () => {
+					const want = placeOf(next)
+					const edited = placeOf(id)
+					const active = state().active
+					if (!want || !edited || !active || !grid.hasFocus()) return
+					if (active.row === edited.row && active.col === edited.col) {
+						grid.focus(want, { reason: 'imperative' })
+					}
+				}
 			},
 		})
 
@@ -1159,9 +1206,18 @@ export const table = definePrimitive({
 
 		/** The selected cells: the range, or the active cell alone. `undefined` outside the rows of the body. */
 		function selectedCells(): CellBounds | undefined {
-			const bounds = range.bounds(state())
-			if (!bounds || !inBody(bounds.top) || !inBody(bounds.bottom)) return undefined
-			return bounds
+			const active = state().active
+			// A range in the state of a table without cell selection marks no cell, so it selects none.
+			const bounds = cellSelection()
+				? range.bounds(state())
+				: active && { top: active.row, bottom: active.row, left: active.col, right: active.col }
+			if (!bounds) return undefined
+			// A range from the owner can start in the header rows or end in the footer
+			// row. Only its body cells show as selected, so only those are selected.
+			const first = headerRowCount()
+			const top = Math.max(bounds.top, first)
+			const bottom = Math.min(bounds.bottom, first + bodyRows().length - 1)
+			return top > bottom ? undefined : { ...bounds, top, bottom }
 		}
 
 		/**
@@ -1170,16 +1226,19 @@ export const table = definePrimitive({
 		 * the same columns gives the same values.
 		 */
 		function copyText(): string {
-			if (!selectedCells()) return ''
+			const bounds = selectedCells()
+			if (!bounds) return ''
 			const head = headerRowCount()
 			const rows = bodyRows()
-			const leaves = layout().leaves
-			return range.text(state(), ({ row, col }) => {
+			const leaves = layout().leaves.slice(bounds.left, bounds.right + 1)
+			const lines: string[][] = []
+			for (let row = bounds.top; row <= bounds.bottom; row++) {
 				const flat = rows[row - head]
-				const column = leaves[col]
-				if (!flat || !column || flat.node.kind !== 'row' || flat.detail) return ''
-				return editText(flat.node.row, column)
-			})
+				// A group row or a detail row holds no values, and gives an empty line.
+				const values = flat && flat.node.kind === 'row' && !flat.detail ? flat.node.row : undefined
+				lines.push(leaves.map((column) => (values === undefined ? '' : editText(values, column))))
+			}
+			return cellsToText(lines)
 		}
 
 		/**
@@ -1197,14 +1256,23 @@ export const table = definePrimitive({
 			const head = headerRowCount()
 			const rows = bodyRows()
 			const leaves = layout().leaves
-			const bottom = single
-				? bounds.bottom
-				: Math.min(head + rows.length - 1, bounds.top + block.length - 1)
-			const right = single ? bounds.right : Math.min(leaves.length - 1, bounds.left + width - 1)
+			const bottom = single ? bounds.bottom : bounds.top + block.length - 1
+			const right = single ? bounds.right : bounds.left + width - 1
+			// All or nothing: a text that is cut at the edge of the table is half a paste.
+			if (bottom > head + rows.length - 1 || right > leaves.length - 1) {
+				throw new Error(message('pasteTooLarge')({ rows: block.length, columns: width }))
+			}
 			const targets: { node: DataRow<unknown>; column: ColumnDef; text: string }[] = []
 			for (let row = bounds.top; row <= bottom; row++) {
 				const flat = rows[row - head]
-				if (!flat || flat.node.kind !== 'row' || flat.detail) continue
+				if (!flat || flat.node.kind !== 'row' || flat.detail) {
+					// A group row or a detail row holds no values. A copy gives an
+					// empty line for it, and such a line passes. A line with values
+					// has no place here, and the lines after it would be one row off.
+					const line = single ? [] : (block[row - bounds.top] ?? [])
+					if (line.some((value) => value !== '')) throw new Error(message('pasteOverRow')())
+					continue
+				}
 				for (let col = bounds.left; col <= right; col++) {
 					const column = leaves[col]
 					const value = single ? block[0]?.[0] : block[row - bounds.top]?.[col - bounds.left]
@@ -1214,10 +1282,14 @@ export const table = definePrimitive({
 			}
 			if (!targets.length) throw new Error(message('pasteNowhere')())
 			const finish = (checked: readonly Checked[]): void => {
+				if (destroyed) throw new Error(GONE)
 				const edits: CellEdit[] = []
 				checked.forEach((result, index) => {
 					const target = targets[index]
 					if (!target) return
+					// The rows can be other objects after a check that took time.
+					const node = model.rowById(target.node.id)
+					if (!node) throw new Error(message('editRowGone')())
 					if ('issues' in result) {
 						throw new Error(
 							message('pasteRefused')({
@@ -1227,12 +1299,12 @@ export const table = definePrimitive({
 							}),
 						)
 					}
-					const previous = cellValue(target.node.row, target.column)
+					const previous = cellValue(node.row, target.column)
 					if (sameValue(previous, result.value)) return
 					edits.push({
-						rowId: target.node.id,
+						rowId: node.id,
 						columnId: target.column.id,
-						row: target.node.row,
+						row: node.row,
 						column: target.column,
 						value: result.value,
 						previous,
@@ -1253,11 +1325,18 @@ export const table = definePrimitive({
 				announce(message('cellsPasted')({ cells: edits.length }))
 			}
 			const checks = targets.map((target) =>
-				resolveValue({ text: target.text }, target.node.row, target.column, message('notNumber')),
+				resolveValue(
+					{ text: target.text },
+					target.node.row,
+					target.column,
+					parseTexts(),
+					options().locale,
+				),
 			)
-			return checks.some((check) => check instanceof Promise)
-				? Promise.all(checks.map((check) => Promise.resolve(check))).then(finish)
-				: finish(checks as Checked[])
+			const ready = checks.filter((check): check is Checked => !isThenable(check))
+			return ready.length === checks.length
+				? finish(ready)
+				: Promise.all(checks.map((check) => Promise.resolve(check))).then(finish)
 		}
 
 		function onCopy(event: ClipboardEvent): void {
@@ -1265,7 +1344,10 @@ export const table = definePrimitive({
 			if (!bounds) return
 			// Without a range, a person who selected text with the pointer copies that text.
 			const page = event.target instanceof Node ? event.target.ownerDocument : null
-			if (!state().cellRange && page?.getSelection()?.isCollapsed === false) return
+			const ranged = cellSelection() && !!state().cellRange
+			if (!ranged && page?.getSelection()?.isCollapsed === false) return
+			// One cell of a group row or a detail row holds no value to copy.
+			if (!ranged && cellIdAt(bounds.top, bounds.left) === undefined) return
 			event.clipboardData?.setData('text/plain', copyText())
 			event.preventDefault()
 			const cells = (bounds.bottom - bounds.top + 1) * (bounds.right - bounds.left + 1)
@@ -1276,8 +1358,10 @@ export const table = definePrimitive({
 			const text = event.clipboardData?.getData('text/plain')
 			if (!text || !editing()) return
 			event.preventDefault()
-			const failed = (error: unknown) =>
+			const failed = (error: unknown) => {
+				if (destroyed) return
 				announce(error instanceof Error ? error.message : String(error), { priority: 'assertive' })
+			}
 			try {
 				const later = pasteText(text, event)
 				if (later) void later.catch(failed)
@@ -1420,8 +1504,6 @@ export const table = definePrimitive({
 				rows[current.end.row - head]?.id,
 				leaves[current.anchor.col]?.id,
 				leaves[current.end.col]?.id,
-				String(rows.length),
-				String(leaves.length),
 			]
 			const before = corners
 			corners = { range: current, ids }
@@ -1805,6 +1887,11 @@ export const table = definePrimitive({
 		const cellActions: Pick<TableController, CellActions> = {
 			editCell(rowId, columnId, value) {
 				const cell = requireEditable(rowId, columnId)
+				if (value === undefined) {
+					throw new Error(
+						'`editCell` takes the new value as its third argument. Pass `null` or an empty text to empty the cell.',
+					)
+				}
 				const input = typeof value === 'string' ? { text: value } : { value }
 				const finish = (result: SaveResult): void => {
 					if (result === true) return
@@ -1813,14 +1900,25 @@ export const table = definePrimitive({
 					)
 				}
 				const result = saveCell(cell.node, cell.column, input, 'imperative')
-				return result instanceof Promise ? result.then(finish) : finish(result)
+				if (typeof result === 'string' || result === true) return finish(result)
+				return result.then((save) => {
+					if (destroyed) throw new Error(GONE)
+					finish(save())
+				})
 			},
 			startEdit(rowId, columnId) {
 				requireEditable(rowId, columnId)
 				const at = requireCell({ rowId, columnId }, 'edit')
+				const id = cellKey(rowId, columnId)
+				// Before focus moves: an editor that stays open keeps focus.
+				if (!edit.release(id)) {
+					throw new Error(
+						'The editor of another cell is open, and its value was refused or is checked now. Call `cancelEdit` first, or give it a value that passes.',
+					)
+				}
 				// The row must be in the page for its editor, and focus is on a cell before an edit.
 				grid.focus(at, { reason: 'imperative' })
-				edit.start(cellKey(rowId, columnId), { reason: 'imperative' })
+				edit.start(id, { reason: 'imperative' })
 			},
 			cancelEdit() {
 				edit.cancel()
@@ -1833,11 +1931,14 @@ export const table = definePrimitive({
 				}
 				const anchor = requireCell(from, 'select')
 				const end = requireCell(to, 'select')
-				// The active cell is the start of a range. Focus stays where it is: a
-				// call from code must not take it from the person.
+				// The active cell is the start of a range. Focus that is outside the
+				// table stays there: a call from code must not take it from the
+				// person. Focus that is in the table goes with the active cell, or
+				// the next arrow key would start from a cell that the person is not on.
 				const active = state().active
 				if (active?.row !== anchor.row || active.col !== anchor.col) {
-					context.store.set({ active: anchor })
+					if (grid.hasFocus()) grid.focus(anchor, { reason: 'imperative' })
+					else context.store.set({ active: anchor })
 				}
 				range.select({ anchor, end }, { reason: 'imperative' })
 			},
@@ -1906,6 +2007,17 @@ export const table = definePrimitive({
 			hasEditing: editing,
 			cellSelection,
 			/**
+			 * What a cell says about the range. With row selection too, a cell
+			 * outside the range says nothing: a cell that says it is not selected
+			 * would deny what its selected row says.
+			 */
+			rangeAttrs: (current: TableState, cell: GridCell) => {
+				const attrs = range.cellAttrs(current, cell)
+				return options().selection && attrs['aria-selected'] === 'false'
+					? { ...attrs, 'aria-selected': undefined }
+					: attrs
+			},
+			/**
 			 * Saves a value for the cell that is edited, with the check of its
 			 * column, and closes the editor. For an editor that is not the text
 			 * field of the table, such as a list of choices.
@@ -1913,7 +2025,8 @@ export const table = definePrimitive({
 			saveEdit(value: unknown, event?: Event): void {
 				const id = state().editing
 				const cell = id === null ? undefined : cellOf(id)
-				if (!cell) return
+				// A second save while the first is checked would check a value that is never reported.
+				if (!cell || edit.checking()) return
 				edit.settle(saveCell(cell.node, cell.column, { value }, 'imperative', event), {
 					reason: 'imperative',
 					event,
@@ -2012,6 +2125,7 @@ export const table = definePrimitive({
 				rowWindow: [],
 				cellRange: [],
 				editing: [],
+				editChecking: [],
 				editErrors: [],
 			}),
 			// A resize changes the width of the table at each step, and the rows must
@@ -2243,6 +2357,7 @@ export const table = definePrimitive({
 				active: byCell,
 				cellRange: byCellRange,
 				editing: ({ props, api }) => api.cellIds(props),
+				editChecking: ({ props, api }) => api.cellIds(props),
 				editErrors: ({ props, api }) => api.cellIds(props),
 				expanded: [],
 			}),
@@ -2251,6 +2366,8 @@ export const table = definePrimitive({
 				return {
 					/** Whether the editor of the cell is open. The renderer then shows the editor in the cell. */
 					editing: id !== undefined && state.editing === id,
+					/** Whether the check of a new value runs. The editor then waits for the answer. */
+					checking: id !== undefined && state.editChecking === id,
 					/** Why the text of the editor was refused. */
 					error: id === undefined ? undefined : state.editErrors[id],
 				}
@@ -2277,11 +2394,12 @@ export const table = definePrimitive({
 				const editable = id !== undefined && api.canEditCell(id)
 				const ranged = !props.header && api.cellSelection() && api.inBody(props.row)
 				return {
-					...(ranged ? api.range.cellAttrs(state, props) : undefined),
+					...(ranged ? api.rangeAttrs(state, props) : undefined),
 					// In a grid, a cell can be edited unless it says that it cannot.
 					'aria-readonly': id !== undefined && api.hasEditing() && !editable ? 'true' : undefined,
 					'data-editable': editable ? '' : undefined,
 					'data-editing': id !== undefined && state.editing === id ? '' : undefined,
+					'data-checking': id !== undefined && state.editChecking === id ? '' : undefined,
 					tabindex: api.grid.tabIndex(state, props),
 					colspan: wide ? String(props.colspan) : undefined,
 					rowspan: (props.rowspan ?? 1) > 1 ? String(props.rowspan) : undefined,
@@ -2377,6 +2495,11 @@ export const table = definePrimitive({
 				// screen reader. The active cell must follow it, or the next arrow key
 				// starts from the wrong cell.
 				focus: (event, { api, props }) => {
+					// Focus came to this cell, so the person left an editor that is open
+					// in another cell. An editor that cannot end takes focus back, and
+					// the active cell stays with it.
+					const id = props.header ? undefined : api.cellIdAt(props.row, props.col)
+					if (!api.edit.release(id, event)) return
 					const active = api.grid.active()
 					if (active?.row === props.row && active.col === props.col) return
 					api.grid.focus(props, { reason: 'imperative', event })
@@ -2390,6 +2513,13 @@ export const table = definePrimitive({
 					const control =
 						target && target !== el && target.closest('a[href], button, input, select, textarea')
 					if (!control || !el?.contains(control)) {
+						// An editor in another cell whose value is refused keeps focus
+						// and the active cell: the person must see why before a move.
+						const own = props.header ? undefined : api.cellIdAt(props.row, props.col)
+						if (!api.edit.release(own, event)) {
+							event.preventDefault()
+							return
+						}
 						const ranged =
 							!props.header && event.button === 0 && api.cellSelection() && api.inBody(props.row)
 						// The cell is under the pointer, so focus must not scroll it: a row
@@ -2447,11 +2577,21 @@ export const table = definePrimitive({
 		 */
 		editor: slot<{ value: string }>({
 			props: { value: 'string' },
-			selects: selects({ ...SILENT, editErrors: ({ key }) => [key] }),
+			selects: selects({
+				...SILENT,
+				editErrors: ({ key }) => [key],
+				editChecking: ({ key }) => [key],
+			}),
 			attrs: (state, { id, key, api }) => {
 				const cell = parseCellKey(key)
 				const error = api.edit.error(state, key)
+				const checking = state.editChecking === key
 				return {
+					// While the value is checked, the text is the one that was sent. A
+					// change of it now would be lost without a word.
+					readonly: checking ? '' : undefined,
+					'aria-busy': checking ? 'true' : undefined,
+					'data-checking': checking ? '' : undefined,
 					'aria-label': api.message('editCell')({
 						column: cell ? api.columnLabel(cell.columnId) : '',
 					}),

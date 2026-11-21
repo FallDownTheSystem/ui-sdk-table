@@ -7,6 +7,14 @@ export type CellEditDetails = { reason: CellEditReason; event?: Event }
 /** `true` when the text was saved, or the message that says why it was refused. */
 export type SaveResult = true | string
 
+/**
+ * The second half of a save whose check took time: it reports the value and
+ * gives the result. It runs only when the edit is still wanted then. After
+ * Escape, after a move to another cell and after the end of the table, it
+ * never runs, so nothing is saved that the person took back.
+ */
+export type LateSave = Promise<() => SaveResult>
+
 export type CellEditor<State> = {
 	/** The id of the cell that is edited, or `null`. */
 	editing(state: State): string | null
@@ -32,10 +40,19 @@ export type CellEditor<State> = {
 	/** Ends the edit without a save and without a move of focus: the cell is gone. */
 	drop(): void
 	/**
+	 * Ends an edit that the person left for another cell: a text field saves
+	 * its text, and another editor closes. `keep` is a cell whose editor stays.
+	 * Returns false when an editor is still open after it: its text was
+	 * refused, or its check runs.
+	 */
+	release(keep?: string, event?: Event): boolean
+	/** Whether the check of a value runs, so a second save must wait. */
+	checking(): boolean
+	/**
 	 * Ends the edit with the result of a save that the caller made itself, for
 	 * an editor that is not a text field. A refusal keeps the editor open.
 	 */
-	settle(result: SaveResult | Promise<SaveResult>, details?: CellEditDetails): void
+	settle(result: SaveResult | LateSave, details?: CellEditDetails): void
 	/**
 	 * Handles focus that leaves the input: the text is saved. A text that is
 	 * refused keeps the editor open, and when focus went to another place in
@@ -56,24 +73,28 @@ export type CellEditor<State> = {
  * after an edit, so the end of an edit says where focus goes.
  */
 export function createCellEdit<State extends object>(
-	context: Pick<PrimitiveContext<any, State, any>, 'store'>,
+	context: Pick<PrimitiveContext<any, State, any>, 'store' | 'onDestroy'>,
 	options: {
 		/** The state key with the id of the cell that is edited, or `null`. */
 		key: keyof State & string
+		/** The state key with the id of the cell whose new value is checked now, or `null`. */
+		checking: keyof State & string
 		/** The state key with the reason of a refusal, by cell id: a record with one entry at most. */
 		errors: keyof State & string
 		/** The text that the editor of a cell starts with. */
 		text: (id: string) => string
 		canEdit: (id: string) => boolean
-		save: (id: string, text: string, details: CellEditDetails) => SaveResult | Promise<SaveResult>
+		save: (id: string, text: string, details: CellEditDetails) => SaveResult | LateSave
 		/** Runs when a text was refused, with the reason. */
 		refused?: (id: string, message: string) => void
 		/**
 		 * Runs after an edit ended, saved or not. Focus is still in the input
 		 * then, and this is the place to move it to a cell. `saved` is false
-		 * after Escape.
+		 * after Escape. A function that it returns runs once more after the
+		 * input left the page: the renderer can move focus when it takes the
+		 * input out, and that function puts it right again.
 		 */
-		done?: (id: string, details: CellEditDetails & { saved: boolean }) => void
+		done?: (id: string, details: CellEditDetails & { saved: boolean }) => void | (() => void)
 	},
 ): CellEditor<State> {
 	const { store } = context
@@ -94,6 +115,27 @@ export function createCellEdit<State extends object>(
 	let input: HTMLInputElement | HTMLTextAreaElement | undefined
 	// The check of a text that takes time. A second save waits for the first.
 	let pending: { id: string } | undefined
+	let afterLeave: (() => void) | undefined
+
+	function wait(next: { id: string } | undefined): void {
+		pending = next
+		const id = next?.id ?? null
+		if (store.get()[options.checking] !== id) {
+			store.set({ [options.checking]: id } as Partial<State>)
+		}
+	}
+
+	// An answer that comes after the table is gone must find no edit to end.
+	let gone = false
+	context.onDestroy(() => {
+		gone = true
+		pending = undefined
+		afterLeave = undefined
+	})
+
+	function finish(id: string, details: CellEditDetails & { saved: boolean }): void {
+		afterLeave = options.done?.(id, details) ?? undefined
+	}
 
 	function refuse(id: string, message: string): void {
 		setError(id, message)
@@ -118,25 +160,40 @@ export function createCellEdit<State extends object>(
 	})
 
 	/** Waits for a check that takes time. The editor stays open until the answer is there. */
-	function later(id: string, result: Promise<SaveResult>, details: CellEditDetails): void {
+	function later(id: string, result: LateSave, details: CellEditDetails): void {
 		const waiting = { id }
-		pending = waiting
+		wait(waiting)
+		// Where focus is when the wait starts. The answer moves focus only when
+		// it is still there: a person who went to another field stays in it.
+		const target = details.event?.target
+		const page = input?.ownerDocument ?? (target instanceof Node ? target.ownerDocument : null)
+		const held = page?.activeElement
+		const stayed = () => {
+			const now = page?.activeElement
+			return details.reason !== 'focus-out' && (!now || now === held || now === page?.body)
+		}
 		void result
-			.catch((error: unknown) => (error instanceof Error ? error.message : String(error)))
-			.then((answer) => {
+			.catch(
+				(error: unknown) => (): SaveResult =>
+					error instanceof Error ? error.message : String(error),
+			)
+			.then((save) => {
+				// Escape, a move to another cell or the end of the table took the edit back.
 				if (pending !== waiting) return
-				pending = undefined
-				// The person ended the edit or went to another cell while the check ran.
+				wait(undefined)
 				if (editingId() !== id) return
+				// An error of a listener is an error of the page, and not a reason for the person.
+				const answer = save()
 				if (answer !== true) {
 					refuse(id, answer)
-					if (details.reason !== 'focus-out') input?.focus()
+					if (stayed()) input?.focus()
 					return
 				}
 				// The value is saved, so the edit ends without a second save.
 				setError(id, undefined)
+				const move = stayed()
 				edit.cancel()
-				if (details.reason !== 'focus-out') options.done?.(id, { ...details, saved: true })
+				if (move) finish(id, { ...details, saved: true })
 			})
 	}
 
@@ -145,16 +202,17 @@ export function createCellEdit<State extends object>(
 		isEditing: (state, id) => edit.editing(state) === id,
 		error: (state, id) => (state[options.errors] as Readonly<Record<string, string>>)[id],
 		start(id, details = { reason: 'imperative' }) {
-			const open = editingId()
-			if (open === id) return false
+			if (editingId() === id) return false
 			// `createInlineEdit` drops the text of an open edit when another starts.
-			if (open !== null && !api.end('imperative')) return false
-			if (editingId() !== null) return false
+			if (!api.release(id, details.event)) return false
 			setError(id, undefined)
+			afterLeave = undefined
 			return edit.start(id, details)
 		},
 		keydown(event, id) {
-			if (editingId() !== null || !options.canEdit(id)) return false
+			if (!options.canEdit(id) || editingId() === id) return false
+			// An editor that the person left open in another cell ends before a key opens this one.
+			if (!api.release(id, event)) return false
 			return edit.keydown(event, id)
 		},
 		dblclick(event, id) {
@@ -180,6 +238,15 @@ export function createCellEdit<State extends object>(
 				el.removeEventListener('input', onInput)
 				if (input === el) input = undefined
 				leave()
+				const after = afterLeave
+				afterLeave = undefined
+				// `leave` gives focus back to the cell in a microtask when the input
+				// took focus with it. This runs after that, so it sees where focus is.
+				if (after) {
+					queueMicrotask(() => {
+						if (!gone) after()
+					})
+				}
 			}
 		},
 		inputKeydown(event) {
@@ -196,7 +263,7 @@ export function createCellEdit<State extends object>(
 			if (handled && editingId() === null) {
 				setError(id, undefined)
 				const reason = event.key === 'Tab' ? 'tab-key' : 'enter-key'
-				options.done?.(id, { reason, event, saved: true })
+				finish(id, { reason, event, saved: true })
 			}
 			// Tab stays in the table while the text is refused or checked.
 			if (event.key === 'Tab') event.preventDefault()
@@ -208,25 +275,44 @@ export function createCellEdit<State extends object>(
 			const ended = edit.end(reason, event)
 			if (ended) {
 				setError(id, undefined)
-				if (reason !== 'focus-out') options.done?.(id, { reason, event, saved: true })
+				if (reason !== 'focus-out') finish(id, { reason, event, saved: true })
 			}
 			return ended
 		},
 		cancel(event) {
 			const id = editingId()
 			if (id === null) return
-			pending = undefined
+			wait(undefined)
 			setError(id, undefined)
 			edit.cancel()
-			options.done?.(id, { reason: 'escape-key', event, saved: false })
+			finish(id, { reason: event ? 'escape-key' : 'imperative', event, saved: false })
 		},
 		drop() {
 			const id = editingId()
 			if (id === null) return
-			pending = undefined
+			wait(undefined)
 			setError(id, undefined)
 			edit.cancel()
 		},
+		release(keep, event) {
+			const id = editingId()
+			if (id === null || id === keep) return true
+			if (pending) return false
+			// A change of the text takes the reason away. So a reason that is still
+			// there says that this text was refused, and the person knows it.
+			if (errors()[id] !== undefined) return false
+			// An editor that is no text field has no text to save. It saves when
+			// the person chooses, so a person who left it chose nothing.
+			if (!input) {
+				api.drop()
+				return true
+			}
+			// As when focus leaves the field: the text is saved, and focus is not moved back.
+			if (!edit.end('focus-out', event)) return false
+			setError(id, undefined)
+			return true
+		},
+		checking: () => pending !== undefined,
 		settle(result, details = { reason: 'imperative' }) {
 			const id = editingId()
 			if (id === null || pending) return
@@ -234,7 +320,7 @@ export function createCellEdit<State extends object>(
 			else if (result === true) {
 				setError(id, undefined)
 				edit.cancel()
-				options.done?.(id, { ...details, saved: true })
+				finish(id, { ...details, saved: true })
 			} else later(id, result, details)
 		},
 		focusout(event, within) {
