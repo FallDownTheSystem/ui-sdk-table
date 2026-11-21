@@ -30,7 +30,7 @@ test('Enter opens the editor of a cell, Enter saves, and focus is back on the ce
 	await page.keyboard.press('Enter')
 	const input = editor(table)
 	await expect(input).toBeFocused()
-	await expect(input).toHaveValue('Aino Aalto')
+	await expect(input).toHaveValue('Ada Adams')
 	await expect(input).toHaveAccessibleName('Edit Name')
 	await expect(name).toHaveAttribute('data-editing', '')
 	// The row keeps its height while the editor is open.
@@ -38,15 +38,15 @@ test('Enter opens the editor of a cell, Enter saves, and focus is back on the ce
 	expect(await height(2)).toBe(await height(3))
 
 	// The value is selected, so typing replaces it. Arrow keys move in the text, not in the grid.
-	await page.keyboard.type('Anna Aalto')
+	await page.keyboard.type('Anna Adams')
 	await page.keyboard.press('ArrowLeft')
 	await page.keyboard.press('ArrowDown')
 	await expect(input).toBeFocused()
 	await page.keyboard.press('Enter')
 	await expect(editor(table)).toHaveCount(0)
-	await expect(name).toHaveText('Anna Aalto')
+	await expect(name).toHaveText('Anna Adams')
 	await expect(name).toBeFocused()
-	await expect(log(page).first()).toHaveText('enter-key: e1.name="Anna Aalto"')
+	await expect(log(page).first()).toHaveText('enter-key: e1.name="Anna Adams"')
 
 	// The grid goes on from the cell.
 	await page.keyboard.press('ArrowDown')
@@ -153,9 +153,9 @@ test('Tab saves and goes to the next cell, and focus that leaves the editor save
 	const table = await open(page)
 	await cell(table, 2, 2).click()
 	await page.keyboard.press('Enter')
-	await page.keyboard.type('Anna Aalto')
+	await page.keyboard.type('Anna Adams')
 	await page.keyboard.press('Tab')
-	await expect(log(page).first()).toHaveText('tab-key: e1.name="Anna Aalto"')
+	await expect(log(page).first()).toHaveText('tab-key: e1.name="Anna Adams"')
 	await expect(cell(table, 2, 3)).toBeFocused()
 	await expect(editor(table)).toHaveCount(0)
 
@@ -171,19 +171,19 @@ test('Tab saves and goes to the next cell, and focus that leaves the editor save
 	await expect(page.getByRole('button', { name: 'Clear the list' })).toBeFocused()
 
 	await cell(table, 4, 2).dblclick()
-	await page.keyboard.type('Hilla Laine')
+	await page.keyboard.type('Hilla Ellis')
 	await page.getByRole('heading', { name: 'Last edits' }).click()
 	await expect(editor(table)).toHaveCount(0)
-	await expect(cell(table, 4, 2)).toHaveText('Hilla Laine')
-	await expect(log(page).first()).toHaveText('focus-out: e3.name="Hilla Laine"')
+	await expect(cell(table, 4, 2)).toHaveText('Hilla Ellis')
+	await expect(log(page).first()).toHaveText('focus-out: e3.name="Hilla Ellis"')
 	// Focus stays where the person put it.
 	await expect(table.locator(':focus')).toHaveCount(0)
 
 	// A press on another cell saves the open editor and makes that cell active.
 	await cell(table, 5, 2).dblclick()
-	await page.keyboard.type('Ilmari Aalto')
+	await page.keyboard.type('Dan Adams')
 	await cell(table, 7, 4).click()
-	await expect(cell(table, 5, 2)).toHaveText('Ilmari Aalto')
+	await expect(cell(table, 5, 2)).toHaveText('Dan Adams')
 	await expect(editor(table)).toHaveCount(0)
 	await expect(cell(table, 7, 4)).toBeFocused()
 })
@@ -351,21 +351,21 @@ test('Ctrl+C copies the selected cells as text, and Ctrl+V pastes through the ch
 	await page.keyboard.press('Shift+ArrowRight')
 	await page.keyboard.press('Shift+ArrowRight')
 	await page.keyboard.press('Control+c')
-	expect(await clipboard(page)).toBe('Aino Aalto\tBilling\t20\nEero Heikkinen\tDesign\t37')
+	expect(await clipboard(page)).toBe('Ada Adams\tBilling\t20\nBen Brooks\tDesign\t37')
 
 	// Four rows down, the same block.
 	for (let press = 0; press < 4; press++) await page.keyboard.press('ArrowDown')
 	await expect(cell(table, 6, 2)).toBeFocused()
 	await page.keyboard.press('Control+v')
-	await expect(cell(table, 6, 2)).toHaveText('Aino Aalto')
+	await expect(cell(table, 6, 2)).toHaveText('Ada Adams')
 	await expect(cell(table, 6, 3)).toHaveText('Billing')
 	await expect(cell(table, 6, 4)).toHaveText('20')
-	await expect(cell(table, 7, 2)).toHaveText('Eero Heikkinen')
+	await expect(cell(table, 7, 2)).toHaveText('Ben Brooks')
 	await expect(cell(table, 7, 4)).toHaveText('37')
 	// One report for the whole paste, with the cells that changed.
 	await expect(log(page)).toHaveCount(1)
 	await expect(log(page).first()).toHaveText(
-		'paste: e5.name="Aino Aalto" e5.team="Billing" e5.score=20 e6.name="Eero Heikkinen" e6.team="Design" e6.score=37',
+		'paste: e5.name="Ada Adams" e5.team="Billing" e5.score=20 e6.name="Ben Brooks" e6.team="Design" e6.score=37',
 	)
 	// The cells of the paste are the range now.
 	await expect(range(page)).toHaveText('{"anchor":{"row":5,"col":1},"end":{"row":6,"col":3}}')
@@ -391,14 +391,14 @@ test('Ctrl+C copies the selected cells as text, and Ctrl+V pastes through the ch
 	// A copy with no range takes the active cell. Inside an editor, copy and paste are for its text.
 	await cell(table, 3, 2).click()
 	await page.keyboard.press('Control+c')
-	expect(await clipboard(page)).toBe('Eero Heikkinen')
+	expect(await clipboard(page)).toBe('Ben Brooks')
 	await cell(table, 4, 2).click()
 	await page.keyboard.press('Enter')
 	await page.keyboard.press('Control+a')
 	await page.keyboard.press('Control+v')
-	await expect(editor(table)).toHaveValue('Eero Heikkinen')
+	await expect(editor(table)).toHaveValue('Ben Brooks')
 	await page.keyboard.press('Escape')
-	await expect(cell(table, 4, 2)).toHaveText('Helmi Järvinen')
+	await expect(cell(table, 4, 2)).toHaveText('Cleo Carter')
 })
 
 test('code outside the table edits a cell and selects cells', async ({ page }) => {
@@ -425,7 +425,7 @@ test('a check that takes time: the editor waits, Escape takes the edit back, and
 	const name = cell(table, 2, 2)
 	await name.click()
 	await page.keyboard.press('Enter')
-	await page.keyboard.type('Anna Aalto')
+	await page.keyboard.type('Anna Adams')
 	await page.keyboard.press('Enter')
 	const input = editor(table)
 	await expect(input).toHaveAttribute('aria-busy', 'true')
@@ -433,46 +433,46 @@ test('a check that takes time: the editor waits, Escape takes the edit back, and
 	// The text cannot change while it is checked, so the value that is saved is the value on screen.
 	await page.keyboard.type('xyz')
 	await page.keyboard.press('Enter')
-	await expect(input).toHaveValue('Anna Aalto')
+	await expect(input).toHaveValue('Anna Adams')
 	await expect(input).toBeFocused()
 	await expect(editor(table)).toHaveCount(0)
-	await expect(name).toHaveText('Anna Aalto')
+	await expect(name).toHaveText('Anna Adams')
 	await expect(name).toBeFocused()
-	await expect(log(page)).toHaveText(['enter-key: e1.name="Anna Aalto"'])
+	await expect(log(page)).toHaveText(['enter-key: e1.name="Anna Adams"'])
 
 	// Escape while the check runs: the answer comes to nobody.
 	await page.keyboard.press('Enter')
-	await page.keyboard.type('Aune Aalto')
+	await page.keyboard.type('Aune Adams')
 	await page.keyboard.press('Enter')
 	await expect(editor(table)).toHaveAttribute('aria-busy', 'true')
 	await page.keyboard.press('Escape')
 	await expect(editor(table)).toHaveCount(0)
 	await expect(name).toBeFocused()
 	await page.waitForTimeout(900)
-	await expect(name).toHaveText('Anna Aalto')
+	await expect(name).toHaveText('Anna Adams')
 	await expect(log(page)).toHaveCount(1)
 
 	// A name that the server refuses: the reason shows, and the text can change again.
 	await page.keyboard.press('Enter')
-	await page.keyboard.type('Eero Heikkinen')
+	await page.keyboard.type('Ben Brooks')
 	await page.keyboard.press('Enter')
 	const reason = table.locator('[data-slot="table-edit-error"]')
-	await expect(reason).toHaveText('Another person has the name Eero Heikkinen.')
+	await expect(reason).toHaveText('Another person has the name Ben Brooks.')
 	await expect(editor(table)).toBeFocused()
 	await expect(editor(table)).not.toHaveAttribute('readonly', '')
 	await page.keyboard.press('Escape')
 
 	// The person goes to another field while the check runs. Focus is theirs.
 	await page.keyboard.press('Enter')
-	await page.keyboard.type('Aili Aalto')
+	await page.keyboard.type('Aili Adams')
 	await page.keyboard.press('Enter')
 	await expect(editor(table)).toHaveAttribute('aria-busy', 'true')
 	const box = page.getByRole('checkbox', { name: 'Row selection' })
 	await box.focus()
-	await expect(name).toHaveText('Aili Aalto')
+	await expect(name).toHaveText('Aili Adams')
 	await expect(editor(table)).toHaveCount(0)
 	await expect(box).toBeFocused()
-	await expect(log(page).first()).toHaveText('enter-key: e1.name="Aili Aalto"')
+	await expect(log(page).first()).toHaveText('enter-key: e1.name="Aili Adams"')
 })
 
 test('Tab goes to the next cell also when the save moves the row', async ({ page }) => {
@@ -515,7 +515,7 @@ test('Tab at the end of a row goes to the next row, and at the last cell it stay
 
 	await cell(table, 3, 2).click()
 	await page.keyboard.press('Enter')
-	await page.keyboard.type('Eero Aalto')
+	await page.keyboard.type('Ben Adams')
 	await page.keyboard.press('Shift+Tab')
 	await expect(cell(table, 3, 1)).toBeFocused()
 
@@ -645,8 +645,8 @@ test('the keys of a sheet do nothing in a table', async ({ page }) => {
 	// A cut without the sheet option is the browser's, and a cell holds no text to cut.
 	await page.keyboard.press('Control+x')
 	expect(await clipboard(page)).toBe('kept')
-	await expect(name).toHaveText('Aino Aalto')
-	await expect(cell(table, 3, 2)).toHaveText('Eero Heikkinen')
+	await expect(name).toHaveText('Ada Adams')
+	await expect(cell(table, 3, 2)).toHaveText('Ben Brooks')
 	await expect(selected(table)).toHaveCount(2)
 	await expect(log(page)).toHaveCount(0)
 	await expect(editor(table)).toHaveCount(0)

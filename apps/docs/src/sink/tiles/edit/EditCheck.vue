@@ -6,10 +6,10 @@ import { check } from '../../data'
 type Account = { id: string; handle: string; owner: string }
 
 const rows = shallowRef<Account[]>([
-	{ id: 'a1', handle: 'aino', owner: 'Aino Aalto' },
-	{ id: 'a2', handle: 'eero', owner: 'Eero Niemi' },
-	{ id: 'a3', handle: 'helmi', owner: 'Helmi Virta' },
-	{ id: 'a4', handle: 'onni', owner: 'Onni Laine' },
+	{ id: 'a1', handle: 'aino', owner: 'Ada Adams' },
+	{ id: 'a2', handle: 'eero', owner: 'Ben Niemi' },
+	{ id: 'a3', handle: 'helmi', owner: 'Cleo Virta' },
+	{ id: 'a4', handle: 'onni', owner: 'Ivy Ellis' },
 ])
 
 // Only a server knows which names are taken. The editor waits for its answer.

@@ -106,16 +106,16 @@ const columns: ColumnDef<Person>[] = [
 ]
 
 const NAMES = [
-	'Aino Aalto',
-	'Eero Heikkinen',
-	'Helmi Järvinen',
-	'Ilmari Korhonen',
-	'Kerttu Laine',
-	'Lauri Mäkinen',
-	'Maija Nieminen',
-	'Onni Virtanen',
-	'Saara Aalto',
-	'Väinö Laine',
+	'Ada Adams',
+	'Ben Brooks',
+	'Cleo Carter',
+	'Dan Drake',
+	'Eve Ellis',
+	'Finn Fisher',
+	'Gus Grant',
+	'Ivy Hayes',
+	'Jack Adams',
+	'Lily Ellis',
 ]
 
 const controller = createTableController()

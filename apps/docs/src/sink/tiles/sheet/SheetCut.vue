@@ -20,7 +20,7 @@ const columns: ColumnDef<Shift>[] = [
 const controller = createTableController()
 const view = useTableView(controller)
 const rows = shallowRef<Shift[]>([
-	{ id: 'd1', day: 'Mon', early: 'Aino', late: 'Bo' },
+	{ id: 'd1', day: 'Mon', early: 'Ada', late: 'Bo' },
 	{ id: 'd2', day: 'Tue', early: 'Cleo', late: 'Dag' },
 	{ id: 'd3', day: 'Wed', early: null, late: null },
 	{ id: 'd4', day: 'Thu', early: null, late: null },

@@ -220,6 +220,8 @@ input {
 	/* Lines carry no meaning of their own, so they are hairlines of the ink. */
 	--tile-rule: color-mix(in oklab, var(--tile-ink) 11%, var(--tile-bg));
 	--tile-chip: color-mix(in oklab, var(--tile-ink) 7%, var(--tile-bg));
+	/* A control on a card is a veil of the surface, so it takes the colour of its card. A popup stays opaque. */
+	--tile-control: color-mix(in oklab, var(--tile-surface) 45%, transparent);
 	/* How much of a colour a row or a cell mixes into the card under it. */
 	--mix-band: 4%;
 	--mix-hover: 6%;
@@ -423,18 +425,28 @@ input {
 	}
 }
 
-.tile:not([data-placed]):is([data-size='tall'], [data-size='large']) {
+.tile:not([data-placed]):is([data-size='tall'], [data-size='large'], [data-size='full']) {
 	grid-row: span 2;
+}
+
+.tile:not([data-placed])[data-size='full'] {
+	grid-column: 1 / -1;
 }
 
 .tile-stage {
 	position: relative;
 	display: flex;
 	flex: 1;
-	/* A demo stands in the middle of its stage, with air around it, as the demos of the original do. */
-	align-items: center;
+	/* A demo starts under the heading. Centred, it would move each time a filter makes its table shorter. */
+	align-items: flex-start;
 	min-block-size: 0;
-	padding: var(--stage-pad) var(--stage-pad) 16px;
+	padding: 14px var(--stage-pad);
+}
+
+/* The heading comes first: a person reads what a tile shows, then sees the table, then the longer word under it. */
+.tile-head {
+	position: relative;
+	padding: 20px 22px 0;
 }
 
 .tile-copy {
@@ -453,7 +465,6 @@ input {
 
 /* The heading of a tile says what it shows, large, in the serif of the page title. */
 .tile-title {
-	margin-block-end: 6px;
 	font-family: var(--serif);
 	font-size: 26px;
 	font-weight: 400;
@@ -614,6 +625,12 @@ input {
 	flex: 1;
 }
 
+/* A note beside the buttons stays on their line and cuts its end, so a new message never makes the bar higher. */
+.demo-bar > .demo-note {
+	flex: 1 1 0;
+	min-inline-size: 0;
+}
+
 .demo-bar > .end {
 	margin-inline-start: auto;
 }
@@ -632,18 +649,86 @@ input {
 	font-weight: 600;
 }
 
-.demo-log {
-	margin: 0;
-	padding: 0;
-	color: var(--tile-ink-2);
-	font: 11.5px/1.5 var(--mono);
-	list-style: none;
+/* The real example at the end of the page: a head with the sum of what is found, bars of controls, the table, its pages. */
+.app-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: end;
+	gap: 12px;
 }
 
-.demo-log li {
+.app-head > .end {
+	margin-inline-start: auto;
+}
+
+.demo-bar > .app-search {
+	flex: 0 1 280px;
+}
+
+.app-label {
+	color: var(--tile-ink-2);
+	font: 400 12px/1.3 var(--mono);
+}
+
+.app-owner {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.app-initials {
+	display: inline-grid;
+	place-items: center;
+	inline-size: 24px;
+	block-size: 24px;
+	border-radius: 50%;
+	background: var(--tile-chip);
+	font-size: 10.5px;
+	font-weight: 600;
+}
+
+/* The chance of a deal as a bar under its number; the page gives the share as `--chance`. */
+.app-chance {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.app-bar {
+	inline-size: 56px;
+	block-size: 6px;
+	border-radius: 3px;
+	background:
+		linear-gradient(to right, var(--tile-accent) calc(var(--chance, 0) * 100%), transparent 0),
+		var(--tile-chip);
+}
+
+/* What the agent called, in mono, and its answer in words. Two lines always, so the table under it stays put. */
+.agent-reply {
+	display: grid;
+	gap: 2px;
+	min-block-size: 44px;
+}
+
+.agent-reply p {
+	margin: 0;
+}
+
+.agent-call {
 	overflow: hidden;
+	color: var(--tile-ink-2);
+	font: 11.5px/1.5 var(--mono);
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.agent-answer {
+	font-size: 14px;
+	line-height: 1.4;
+}
+
+.agent-source {
+	color: var(--tile-ink-2);
 }
 
 /* The name of the scene of a table: a plain heading with a line of grey under it. */
@@ -731,7 +816,7 @@ input {
 	padding: 0 12px;
 	border: 1px solid var(--tile-edge);
 	border-radius: 10px;
-	background: var(--tile-surface);
+	background: var(--tile-control);
 	color: var(--tile-ink);
 	box-shadow: 0 1px 2px color-mix(in oklab, var(--tile-ink) 8%, transparent);
 	font-weight: 500;
@@ -818,7 +903,7 @@ input {
 	padding: 0 11px;
 	border: 1px solid var(--tile-edge);
 	border-radius: 10px;
-	background: var(--tile-surface);
+	background: var(--tile-control);
 	color: var(--tile-ink);
 	outline: none;
 }
@@ -886,7 +971,7 @@ input {
 	padding: 2px;
 	border: 1px solid var(--tile-edge);
 	border-radius: 999px;
-	background: var(--tile-surface);
+	background: var(--tile-control);
 	cursor: pointer;
 }
 
@@ -921,7 +1006,7 @@ input {
 	padding: 0;
 	border: 1px solid var(--tile-edge);
 	border-radius: 4px;
-	background: var(--tile-surface);
+	background: var(--tile-control);
 	color: var(--tile-accent-ink);
 	vertical-align: middle;
 	cursor: pointer;
@@ -977,7 +1062,7 @@ input {
 	inline-size: var(--segmented-control-indicator-width);
 	block-size: var(--segmented-control-indicator-height);
 	border-radius: 8px;
-	background: var(--tile-surface);
+	background: var(--tile-control);
 	box-shadow: var(--tile-shadow);
 }
 
@@ -1007,7 +1092,7 @@ input {
 /* Until the indicator is measured, the checked item draws its own ground. */
 [data-slot='segmented-control']:not(:has(> [data-slot='segmented-control-indicator'][style]))
 	[data-slot='segmented-control-item'][data-checked] {
-	background: var(--tile-surface);
+	background: var(--tile-control);
 }
 
 .tile [data-slot='slider'] {
@@ -1202,7 +1287,7 @@ input {
 
 .tile [data-slot='table'] :is(th, td) {
 	position: relative;
-	padding: 0 12px;
+	padding: 0 10px;
 	border-block-end: 1px solid var(--tile-rule);
 	/* No fill of its own: the card shows through, and a tint of the row comes in through `--row-fill`. */
 	background: var(--row-fill, transparent);
@@ -1235,9 +1320,14 @@ input {
 .tile [data-slot='table'] thead th {
 	color: var(--tile-ink-2);
 	font-weight: 500;
+	/* A press on a header sorts it or picks it up to move; it never starts a text selection. */
+	user-select: none;
 }
 
-.tile [data-slot='table'] thead tr:last-child > th {
+/* Every header cell that reaches the body, also one that spans down from a row above, draws the same line. */
+.tile [data-slot='table'] thead tr:last-child > th,
+.tile [data-slot='table'] thead tr:nth-last-child(2) > th[rowspan='2'],
+.tile [data-slot='table'] thead tr:nth-last-child(3) > th[rowspan='3'] {
 	border-block-end-color: color-mix(in oklab, var(--tile-ink) 32%, var(--tile-bg));
 }
 
@@ -1458,7 +1548,9 @@ input {
 	border-inline-start: 1px solid color-mix(in oklab, var(--tile-ink) 32%, var(--tile-bg));
 }
 
-.tile [data-slot='table-cell'][data-active]:focus-visible {
+.tile [data-slot='table-cell'][data-active]:focus-visible,
+/* In a sheet the active cell is the target of the next action, also after a click and while a button beside it has focus. */
+.tile [data-slot='table'][data-cell-selection] [data-slot='table-cell'][data-active] {
 	outline: 2px solid var(--tile-accent);
 	outline-offset: -2px;
 }
@@ -1481,7 +1573,8 @@ input {
 	color: var(--tile-ink);
 }
 
-.tile [data-slot='table-cell'][data-grabbed] {
+/* Above its neighbours, also in a header that sticks, whose cells all stand at the same level. */
+.tile [data-slot='table'] tr > [data-slot='table-cell'][data-grabbed] {
 	z-index: 4;
 	transform: translateX(var(--drag-x, 0));
 	cursor: grabbing;
@@ -2158,17 +2251,17 @@ input {
 	background: oklch(0.9 0.17 135);
 }
 
-/* Retro pixel art: a dark screen with a yellow frame, a pixel face, gold, silver and bronze for the first three. */
+/* Retro pixel art: an indigo night with a darker frame, lime pixel type and a lime header as a big pixel button. */
 .tile:has(.look-pixel) {
-	--tile-bg: oklch(0.17 0.035 265);
-	--tile-surface: oklch(0.23 0.045 265);
-	--tile-ink: oklch(0.97 0.02 120);
-	--tile-ink-2: oklch(0.85 0.08 200);
-	--tile-edge: oklch(0.86 0.17 95);
-	--tile-accent: oklch(0.88 0.19 135);
-	--tile-accent-ink: oklch(0.17 0.035 265);
+	--tile-bg: oklch(0.32 0.14 280);
+	--tile-surface: oklch(0.37 0.15 280);
+	--tile-ink: oklch(0.97 0.015 280);
+	--tile-ink-2: oklch(0.86 0.06 285);
+	--tile-edge: oklch(0.22 0.1 280);
+	--tile-accent: oklch(0.9 0.2 128);
+	--tile-accent-ink: oklch(0.22 0.1 280);
 	border-radius: 0;
-	box-shadow: inset 0 0 0 4px var(--tile-edge);
+	box-shadow: inset 0 0 0 6px var(--tile-edge);
 }
 
 .tile:has(.look-pixel) :is(.tile-title, .tile-use) {
@@ -2179,16 +2272,20 @@ input {
 .tile:has(.look-pixel) .tile-title {
 	font-size: 26px;
 	text-transform: uppercase;
+	color: var(--tile-accent);
+	text-shadow: 3px 3px 0 var(--tile-edge);
 }
 
 .tile:has(.look-pixel) .tile-use {
 	border-radius: 0;
+	border: 2px solid var(--tile-ink);
 }
 
 .tile .look-pixel [data-slot='table'] {
 	counter-reset: rank;
 	font: 400 16px/1 var(--pixel);
 	text-transform: uppercase;
+	box-shadow: 4px 4px 0 var(--tile-edge);
 }
 
 .tile .look-pixel [data-slot='table'] :is(th, td) {
@@ -2196,13 +2293,17 @@ input {
 }
 
 .tile .look-pixel [data-slot='table'] thead th {
-	background: var(--tile-edge);
-	color: var(--tile-bg);
+	background: var(--tile-accent);
+	color: var(--tile-accent-ink);
 }
 
 /* Every other line a step lighter, as the rows of an old screen. */
 .tile .look-pixel [data-slot='table'] tbody tr:nth-child(odd) > td {
 	background: var(--tile-surface);
+}
+
+.tile .look-pixel [data-slot='table'] tbody tr:nth-child(even) > td {
+	background: var(--tile-edge);
 }
 
 .tile .look-pixel [data-slot='table'] tbody tr {
@@ -2214,18 +2315,7 @@ input {
 	content: counter(rank) '. ';
 }
 
-.tile .look-pixel [data-slot='table'] tbody tr:nth-child(1) > td {
-	color: oklch(0.88 0.16 90);
-}
-
-.tile .look-pixel [data-slot='table'] tbody tr:nth-child(2) > td {
-	color: oklch(0.88 0.015 260);
-}
-
-.tile .look-pixel [data-slot='table'] tbody tr:nth-child(3) > td {
-	color: oklch(0.8 0.11 55);
-}
-
+.tile .look-pixel [data-slot='table'] tbody tr:nth-child(1) > td,
 .tile .look-pixel [data-slot='table'] tbody td[data-column='score'] {
 	color: var(--tile-accent);
 }

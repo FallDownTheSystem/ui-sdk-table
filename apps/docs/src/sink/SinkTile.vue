@@ -77,12 +77,14 @@ const placement = computed(() =>
 		:style="placement"
 		:aria-labelledby="`${tile.id}-title`"
 	>
+		<header class="tile-head">
+			<h2 :id="`${tile.id}-title`" class="tile-title">{{ tile.title }}</h2>
+		</header>
 		<div class="tile-stage">
 			<p v-if="failure" class="tile-error" role="alert">{{ tile.id }} failed: {{ failure }}</p>
 			<component :is="tile.demo" v-else-if="near" />
 		</div>
 		<footer class="tile-copy">
-			<h2 :id="`${tile.id}-title`" class="tile-title">{{ tile.title }}</h2>
 			<p class="tile-blurb">{{ tile.blurb }}</p>
 			<ToggleGroup
 				class="tile-uses"

@@ -6,6 +6,8 @@ export const tiles: TileCopy[] = [
 		title: 'Pin the name.',
 		blurb: 'It stays at the start while the other columns scroll sideways.',
 		tone: 'paper',
+		// Wide, so a free column still fits between the two pinned ones.
+		size: 'wide',
 	},
 	{
 		id: 'columns-drag',

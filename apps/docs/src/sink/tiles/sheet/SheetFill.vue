@@ -19,7 +19,7 @@ const columns: ColumnDef<Week>[] = [
 	{ id: 'owner', header: 'Owner' },
 ]
 const START: Week[] = [
-	{ id: 'w1', week: 14, due: '2028-02-22', owner: 'Aino' },
+	{ id: 'w1', week: 14, due: '2028-02-22', owner: 'Ada' },
 	{ id: 'w2', week: 16, due: '2028-02-29', owner: null },
 	...Array.from({ length: 14 }, (_, index) => ({
 		id: `w${index + 3}`,

@@ -3,6 +3,7 @@ import {
 	colourOf,
 	contrastOf,
 	contrastOfPair,
+	contrastOver,
 	installContrast,
 	type ContrastKind,
 } from './contrast'
@@ -542,14 +543,14 @@ test('the tiles of a sheet: a number selects its row, a format is data, a total 
 
 	const cut = tableOf(page, 'sheet-cut')
 	await tile(page, 'sheet-cut').getByRole('button', { name: 'Move two days' }).click()
-	await expect(cell(cut, 'Wed', 'early')).toHaveText('Aino')
+	await expect(cell(cut, 'Wed', 'early')).toHaveText('Ada')
 	await expect(cell(cut, 'Mon', 'early')).toHaveText('')
 	// A cut and a paste are two steps.
 	const undo = tile(page, 'sheet-cut').getByRole('button', { name: 'Undo', exact: true })
 	await undo.click()
 	await expect(cell(cut, 'Wed', 'early')).toHaveText('')
 	await undo.click()
-	await expect(cell(cut, 'Mon', 'early')).toHaveText('Aino')
+	await expect(cell(cut, 'Mon', 'early')).toHaveText('Ada')
 })
 
 test('a row window works in a tile of fixed height', async ({ page }) => {
@@ -643,7 +644,7 @@ for (const { width, columns } of [
 	{ width: 1280, columns: 3 },
 	{ width: 1480, columns: 4 },
 ]) {
-	test(`at ${width} px the grid has ${columns} columns, no hole, and the page does not scroll sideways`, async ({
+	test(`at ${width} px the grid has ${columns} columns, no hole inside, and the page does not scroll sideways`, async ({
 		page,
 	}) => {
 		await page.setViewportSize({ width, height: 800 })
@@ -658,6 +659,7 @@ for (const { width, columns } of [
 				const read = (name: string) => Number(getComputedStyle(item).getPropertyValue(name))
 				const { left, right } = item.getBoundingClientRect()
 				return {
+					full: item.getAttribute('data-size') === 'full',
 					row: read('--tile-row'),
 					column: read('--tile-column'),
 					rows: read('--tile-rows'),
@@ -675,9 +677,11 @@ for (const { width, columns } of [
 				),
 			),
 		)
-		const rows = Math.max(...placed.map((item) => item.row + item.rows - 1))
+		// Only the last line of tiles, before the tile that closes the page, may end early.
+		const lastLine = Math.max(...placed.filter((item) => !item.full).map((item) => item.row))
+		const inside = cells.filter((cell) => Number(cell.split(':')[0]) < lastLine)
 		expect(new Set(cells).size).toBe(cells.length)
-		expect(cells).toHaveLength(rows * columns)
+		expect(inside).toHaveLength((lastLine - 1) * columns)
 		for (const item of placed) {
 			expect(item.left).toBeGreaterThanOrEqual(0)
 			expect(item.right).toBeLessThanOrEqual(width)
@@ -742,7 +746,7 @@ for (const tone of TONES) {
 		await year.click()
 		await tile(page, 'sheet-formats').getByRole('button', { name: 'Mark', exact: true }).click()
 		await expect(year).toHaveAttribute('data-fill', 'accent')
-		await cell(tableOf(page, 'sheet-fill'), 'Aino', 'week').click()
+		await cell(tableOf(page, 'sheet-fill'), 'Ada', 'week').click()
 		await tableOf(page, 'sheet-letters')
 			.locator('th[data-kind="letter"][data-column="city"]')
 			.click()
@@ -986,15 +990,12 @@ for (const tone of TONES) {
 		}
 
 		// A choice that is taken reads against the indicator behind it, which is not one of its parents.
+		// The indicator is a veil, so the ground is its fill over the tray and the card.
 		const taken = part('rows-pages', '[data-slot="segmented-control-item"][data-checked]')
 		const indicator = part('rows-pages', '[data-slot="segmented-control-indicator"]')
 		hold(
 			'a choice that is taken',
-			await contrastOfPair(
-				page,
-				await colourOf(taken, 'color'),
-				await colourOf(indicator, 'background-color'),
-			),
+			await contrastOver(await colourOf(taken, 'color'), indicator),
 			TEXT,
 		)
 		// The thumb of a slider is a child of its track and stands over the ground of the tile.

@@ -4,16 +4,17 @@ import { createTableController, Table, type ColumnDef, type ColumnPinning } from
 import { shallowRef } from 'vue'
 import { euro, orders, type Order } from '../../data'
 
-// A few orders, so the table stands whole in its tile.
-const rows = orders.slice(0, 3)
+// Enough orders to fill the wide tile, few enough to stand whole in it.
+const rows = orders.slice(0, 5)
 
 const columns: ColumnDef<Order>[] = [
-	{ id: 'customer', header: 'Customer', width: 130 },
-	{ id: 'city', header: 'City', width: 110 },
-	{ id: 'status', header: 'Status', width: 90 },
-	{ id: 'items', header: 'Items', width: 80, format: 'integer' },
-	{ id: 'placed', header: 'Placed', width: 110 },
-	{ id: 'total', header: 'Total', width: 110, format: 'currency', formatOptions: euro },
+	{ id: 'customer', header: 'Customer', width: 170 },
+	{ id: 'id', header: 'Order', width: 120 },
+	{ id: 'city', header: 'City', width: 150 },
+	{ id: 'status', header: 'Status', width: 120 },
+	{ id: 'items', header: 'Items', width: 100, format: 'integer' },
+	{ id: 'placed', header: 'Placed', width: 150 },
+	{ id: 'total', header: 'Total', width: 140, format: 'currency', formatOptions: euro },
 ]
 const controller = createTableController()
 const START: ColumnPinning = { start: ['customer'] }
