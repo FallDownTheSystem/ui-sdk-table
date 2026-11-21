@@ -25,6 +25,33 @@ describe('getSelectionSummary', () => {
 		}
 	})
 
+	test('a plain mean shows two decimals more than the values have, and not all that a division gives', () => {
+		const { view } = sheetTable({ sheet: true })
+		try {
+			// 40, 90 and 15: the mean is 48.333333…
+			view.api.selectCells(ref('a', 'stock'), ref('c', 'stock'))
+			expect(view.api.getSelectionSummary()?.texts).toEqual({
+				sum: '145',
+				mean: '48.33',
+				min: '15',
+				max: '90',
+			})
+			// 2.5, 0.5 and 0.2: the mean is 1.066666…
+			view.api.selectCells(ref('a', 'price'), ref('c', 'price'))
+			expect(view.api.getSelectionSummary()?.texts).toEqual({
+				sum: '3.2',
+				mean: '1.067',
+				min: '0.2',
+				max: '2.5',
+			})
+			// A mean that ends shows no zeros after its end.
+			view.api.selectCells(ref('a', 'stock'), ref('b', 'stock'))
+			expect(view.api.getSelectionSummary()?.texts.mean).toBe('65')
+		} finally {
+			view.unmount()
+		}
+	})
+
 	test('one cell is a summary of one cell, and a cell without a number has no mean', () => {
 		const { view } = sheetTable({ sheet: true })
 		try {

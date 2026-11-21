@@ -256,8 +256,8 @@ Last full run of the library (commit `05b2e0b`):
 
 **Open items, added.**
 1. **Size.** The sheet behaviors add 38 kB minified to `packages/core` (154.4 kB minified, 53.9 kB gzip; 116.0 and 40.9 before). A table without the options carries them. A separate entry for the sheet is possible and not built.
-2. **A percent cell opens with the plain value.** A cell that shows `25%` opens its editor with `0.25`. A test pins this; it reads badly for a person who types percentages.
-3. **The average of the selection summary** shows up to six decimals when the selection is more than one column (`35,391.666667`).
+2. **A percent cell opens with the plain value.** Closed later the same day: the text field of a cell that shows `25%` opens with `25`, and `30` in it is 0.3. A paste, a fill and a text from code hold the value itself.
+3. **The average of the selection summary** showed up to six decimals when the selection is more than one column (`35,391.666667`). Closed later the same day: a plain average has two decimals more than the values have (`35,391.67`).
 4. **`selectAllCells` includes a lead column that is no row header** (a checkbox column), so a copy of all cells starts with an empty cell.
 5. **`undo()` with a refused editor open** throws a text for a developer, and the controller cannot say whether an editor is open. The app reads the page for this.
 6. **`cellFormats` is not in the snapshot of the state** that the UI SDK agent bridge reads, because 50,000 formats made it 989 kB. A reader uses `getCellFormat`.

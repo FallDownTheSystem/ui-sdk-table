@@ -1074,6 +1074,48 @@ test('a whole column shown as a percentage holds for rows that come later', asyn
 	await expect(cell(table, 20, STOCK)).toHaveText('4,000%')
 })
 
+test('the field of a cell that shows a percentage holds the number of the screen, and a copy holds the value', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const price = cell(table, 2, PRICE)
+	await price.click()
+	await page.getByTestId('format-kind').selectOption('percentage')
+	await expect(price).toHaveText('12%')
+
+	// Enter on the text as it is reports nothing.
+	await price.click()
+	const reports = await log(page).count()
+	await page.keyboard.press('F2')
+	await expect(editor(table)).toHaveValue('12')
+	await page.keyboard.press('Enter')
+	await expect(cell(table, 3, PRICE)).toBeFocused()
+	await expect(log(page)).toHaveCount(reports)
+
+	// A person who reads 12 % types 30 for 30 %, with the sign or without it.
+	await price.click()
+	await page.keyboard.type('30')
+	await expect(editor(table)).toHaveValue('30')
+	await page.keyboard.press('Enter')
+	await expect(price).toHaveText('30%')
+	await expect(log(page).first()).toHaveText('enter-key: p1.price=0.3')
+	await price.click()
+	await page.keyboard.type('45%')
+	await page.keyboard.press('Enter')
+	await expect(price).toHaveText('45%')
+	await expect(log(page).first()).toHaveText('enter-key: p1.price=0.45')
+
+	// A copy holds the value, so a paste into another column keeps it: the
+	// text of a paste is no text of a field, and 0.45 there is 45 %.
+	await price.click()
+	await page.keyboard.press('Control+c')
+	expect(await clipboard(page)).toBe('0.45')
+	await cell(table, 2, DISCOUNT).click()
+	await page.keyboard.press('Control+v')
+	await expect(cell(table, 2, DISCOUNT)).toHaveText('45%')
+	await expect(log(page).first()).toHaveText('paste: p1.discount=0.45')
+})
+
 test('a CSV export holds the text of the screen for cells with a format of their own', async ({
 	page,
 }) => {

@@ -452,7 +452,7 @@ export type EditorSlotProps<Row> = {
 	node: DataRow<Row>
 	column: ColumnDef<Row>
 	value: unknown
-	/** The value as plain text, as the text field of the table shows it. */
+	/** The value as plain text, without a format: 0.25 for a cell that shows 25 %. `save` takes a value. */
 	text: string
 	/** Why the last value was refused. */
 	error: string | undefined

@@ -4,6 +4,8 @@ import {
 	applyEdits,
 	cellKey,
 	checkValue,
+	editText,
+	fieldText,
 	parseCellKey,
 	parseText,
 	readNumberText,
@@ -127,6 +129,70 @@ describe('values of an edit', () => {
 		expect(parse('7', { id: 'empty', format: 'integer' })).toEqual({ value: 7 })
 		// The `parse` of the column wins.
 		expect(parse('7', { id: 'note', parse: (text) => `#${text}` })).toEqual({ value: '#7' })
+	})
+
+	test('the text field of a percentage holds the number of the screen, and any other text holds the value', () => {
+		const row = { share: 0.07, whole: 25, third: 1 / 3, count: 3 }
+		const share: ColumnDef = { id: 'share', format: 'percentage' }
+		const third: ColumnDef = { id: 'third', format: 'percentage' }
+		const whole: ColumnDef = {
+			id: 'whole',
+			format: 'percentage',
+			formatOptions: { scale: 'percent' },
+		}
+		const typed = (text: string, column: ColumnDef, format = column.format) =>
+			parseText(text, row, column, texts, undefined, format, true)
+		const pasted = (text: string, column: ColumnDef) => parseText(text, row, column, texts)
+
+		// 0.07 * 100 is 7.000000000000001, and no person reads that.
+		expect(fieldText(row, share)).toBe('7')
+		expect(typed('30', share)).toEqual({ value: 0.3 })
+		expect(typed('34.2 %', share)).toEqual({ value: 0.342 })
+		expect(typed('-0.5', share)).toEqual({ value: -0.005 })
+		expect(typed(' ', share)).toEqual({ value: null })
+		expect(typed('a lot', share)).toEqual({ issues: ['"a lot" is not a number.'] })
+		expect(typed('%', share)).toEqual({ issues: ['"%" is not a number.'] })
+
+		// A copy holds the value, so a text without the sign is the value: 0.3
+		// from a column of plain numbers stays 0.3. A spreadsheet copies `30%`.
+		expect(editText(row, share)).toBe('0.07')
+		expect(pasted('0.3', share)).toEqual({ value: 0.3 })
+		expect(pasted('30%', share)).toEqual({ value: 0.3 })
+		// In a column that shows no percentage, the sign is no part of a number.
+		expect(pasted('30%', { id: 'count' })).toEqual({ issues: ['"30%" is not a number.'] })
+
+		// A third has more digits than its text. The text as it was is the value as it was.
+		expect(fieldText(row, third)).toBe('33.3333333333333')
+		expect(typed('33.3333333333333', third)).toEqual({ value: 1 / 3 })
+		expect(typed('33.3', third)).toEqual({ value: 0.333 })
+
+		// With the scale `percent`, the value is the percentage already.
+		expect(fieldText(row, whole)).toBe('25')
+		expect(typed('30', whole)).toEqual({ value: 30 })
+		expect(typed('30%', whole)).toEqual({ value: 30 })
+
+		// A `parse` of the column reads the text itself, so its field keeps the value.
+		const own: ColumnDef = { id: 'share', format: 'percentage', parse: (text) => Number(text) }
+		expect(fieldText(row, own)).toBe('0.07')
+		expect(typed('0.3', own)).toEqual({ value: 0.3 })
+
+		// A format that a person gave the cell decides, and not the column alone.
+		expect(fieldText(row, { id: 'share' }, 'percentage')).toBe('7')
+		expect(typed('30', { id: 'share' }, 'percentage')).toEqual({ value: 0.3 })
+		expect(fieldText(row, share, 'decimal')).toBe('0.07')
+		expect(typed('30', share, 'decimal')).toEqual({ value: 30 })
+
+		// Each value comes back from its own text, read against a row that holds another value.
+		const other = { share: 9 }
+		for (let step = -2500; step <= 2500; step += 7) {
+			for (const scale of [10, 1000, 100_000]) {
+				const value = step / scale
+				const text = fieldText({ share: value }, share)
+				expect(parseText(text, other, share, texts, undefined, 'percentage', true)).toEqual({
+					value,
+				})
+			}
+		}
 	})
 
 	test('`applyEdits` finds the row of an edit by its id when the owner replaced the object already', () => {

@@ -1,3 +1,4 @@
+import { decimalsOf } from '@ui-sdk/core/number'
 import { aggregates } from '../rows/aggregate'
 
 /** What the selected cells add up to, for a status bar. */
@@ -15,7 +16,8 @@ export type RangeSummary = {
 	/**
 	 * Each value as text: in the format of the column when the selection is
 	 * inside one column that shows numbers, else as a plain number of the
-	 * locale. An empty text for a value that does not exist.
+	 * locale, where the mean has the decimals of `meanDecimals`. An empty text
+	 * for a value that does not exist.
 	 */
 	texts: { sum: string; mean: string; min: string; max: string }
 }
@@ -41,4 +43,13 @@ export function summarize(values: readonly unknown[]): Omit<RangeSummary, 'cells
 		min: number(aggregates.min(numeric)),
 		max: number(aggregates.max(numeric)),
 	}
+}
+
+/**
+ * How many decimals a plain mean shows: two more than the smallest and the
+ * largest value have, and six at most. A division seldom ends, and a mean of
+ * whole amounts with six decimals says more than the values know.
+ */
+export function meanDecimals(min: number | undefined, max: number | undefined): number {
+	return Math.min(6, Math.max(decimalsOf(min ?? 0), decimalsOf(max ?? 0)) + 2)
 }

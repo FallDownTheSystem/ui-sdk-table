@@ -616,7 +616,7 @@ test('a format step and a fill step go back in their order, each exactly', async
 	expect(controller.getView()).toMatchObject({ canUndo: false, canRedo: true })
 })
 
-test('the editor of a cell with a percent format shows the plain value', async () => {
+test('the editor of a cell with a percent format shows the number of the screen', async () => {
 	const { controller, wrapper, cell, rows } = setup({ sheet: true })
 	await nextTick()
 	controller.formatCells({ format: 'percentage' }, { from: cellRef('b', 'price') })
@@ -625,9 +625,9 @@ test('the editor of a cell with a percent format shows the plain value', async (
 	controller.startEdit('b', 'price')
 	await nextTick()
 	const input = wrapper.get('tbody input')
-	// The value as code writes it, as in a column with the `percentage` format.
-	expect((input.element as HTMLInputElement).value).toBe('0.5')
-	await input.setValue('0.75')
+	// The number that the person reads, as in a column with the `percentage` format.
+	expect((input.element as HTMLInputElement).value).toBe('50')
+	await input.setValue('75')
 	await input.trigger('keydown', { key: 'Enter' })
 	await nextTick()
 	expect(rows.value[1]?.price).toBe(0.75)

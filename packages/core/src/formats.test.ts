@@ -611,23 +611,52 @@ describe('the format keys of a sheet', () => {
 })
 
 describe('formats and values', () => {
-	test('the editor shows the plain value of a cell with a format, as a column with a format does', async () => {
-		const { view, values, cell, field, press } = sheetTable({ sheet: true, locale: 'en-US' })
+	test('the text field of a cell that shows a percentage holds the number of the screen, and a copy holds the value', async () => {
+		const { view, values, reports, cell, field, press } = sheetTable({
+			sheet: true,
+			locale: 'en-US',
+		})
 		try {
 			if (values.a) values.a.price = 0.25
 			view.api.formatCells({ format: 'percentage' }, { from: ref('a', 'price') })
 			const [a] = view.api.getView().columns.filter((column) => column.id === 'price')
 			if (!a) throw new Error('The table of the test has no price column.')
 			expect(view.api.text({ id: 'a' }, a, 'a')).toBe('25%')
-			// The value as code writes it: a person who types 0.3 gets 30 %.
-			expect(editText({ id: 'a' }, a)).toBe('0.25')
 			cell('a', 'price').focus()
 			await view.settle()
 			press(cell('a', 'price'), 'F2')
-			const input = field()
-			input.value = '0.3'
-			press(input, 'Enter')
+			// A person who reads 25 % types 30 for 30 %.
+			const first = field()
+			expect(first.value).toBe('25')
+			first.value = '30'
+			press(first, 'Enter')
 			expect(values.a?.price).toBe(0.3)
+			await view.settle()
+
+			// Enter on the text as it is reports nothing.
+			const before = reports.length
+			cell('a', 'price').focus()
+			press(cell('a', 'price'), 'F2')
+			const second = field()
+			expect(second.value).toBe('30')
+			press(second, 'Enter')
+			expect(reports.length).toBe(before)
+			await view.settle()
+
+			// A copy and a text from code hold the value itself, and a percent sign says otherwise.
+			expect(editText({ id: 'a' }, a)).toBe('0.3')
+			void view.api.editCell('a', 'price', '0.4')
+			expect(values.a?.price).toBe(0.4)
+			await view.settle()
+			void view.api.editCell('a', 'price', '45%')
+			expect(values.a?.price).toBe(0.45)
+			await view.settle()
+
+			// The cell beside it shows a plain number, and its field holds that number.
+			if (values.b) values.b.price = 0.5
+			cell('b', 'price').focus()
+			press(cell('b', 'price'), 'F2')
+			expect(field().value).toBe('0.5')
 		} finally {
 			view.unmount()
 		}

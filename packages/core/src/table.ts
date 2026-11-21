@@ -71,6 +71,7 @@ import {
 	cellKey,
 	editText,
 	emptyValue,
+	fieldText,
 	parseCellKey,
 	resolveValue,
 	sameValue,
@@ -83,7 +84,7 @@ import { createTurnValue, createTurnValues } from './edit/turn'
 import { fillValues } from './sheet/fill'
 import { moveFrom, type Move } from './sheet/moves'
 import { stepSize, type HistoryEntry, type TableStep } from './sheet/steps'
-import { summarize, type RangeSummary } from './sheet/summary'
+import { meanDecimals, type RangeSummary, summarize } from './sheet/summary'
 import { createDebounce } from './debounce'
 import { collectExport, type ExportData, type ExportOptions } from './export/data'
 import { formatValue, isNumericFormat } from './format'
@@ -2156,7 +2157,7 @@ export const table = definePrimitive({
 		function saveCell(
 			node: DataRow<unknown>,
 			column: ColumnDef,
-			input: { text: string } | { value: unknown },
+			input: { text: string; field?: boolean } | { value: unknown },
 			reason: string,
 			event?: Event,
 		): SaveResult | LateSave {
@@ -2280,7 +2281,9 @@ export const table = definePrimitive({
 			errors: 'editErrors',
 			text: (id) => {
 				const cell = cellOf(id)
-				return cell ? editText(cell.node.row, cell.column) : ''
+				return cell
+					? fieldText(cell.node.row, cell.column, shownFormat(cell.column, cell.node.id))
+					: ''
 			},
 			canEdit: (id) => {
 				const cell = cellOf(id)
@@ -2290,7 +2293,13 @@ export const table = definePrimitive({
 				const cell = cellOf(id)
 				// The row or the column went away while the editor was open, so there is nothing to save.
 				if (!cell) return true
-				return saveCell(cell.node, cell.column, { text }, details.reason, details.event)
+				return saveCell(
+					cell.node,
+					cell.column,
+					{ text, field: true },
+					details.reason,
+					details.event,
+				)
 			},
 			// The person looks at the field, so a refusal is said at once.
 			refused: (_id, reason) => announce(reason, { priority: 'assertive' }),
@@ -2384,9 +2393,9 @@ export const table = definePrimitive({
 		}
 
 		/**
-		 * The text of the selected cells. Each value is the text that its editor
-		 * shows, without the format of the column, so a paste of the text into
-		 * the same columns gives the same values.
+		 * The text of the selected cells. Each value is plain text, without the
+		 * format of the column, so a paste of the text into these columns or into
+		 * other columns gives the same values.
 		 */
 		function copyText(): string {
 			const bounds = selectedCells()
@@ -3628,12 +3637,12 @@ export const table = definePrimitive({
 		})
 
 		/** A number of a summary as text, in the format of a column or as a plain number of the locale. */
-		function summaryText(value: number | undefined, column?: ColumnDef): string {
+		function summaryText(value: number | undefined, column?: ColumnDef, decimals = 6): string {
 			if (value === undefined) return ''
 			if (column?.format && isNumericFormat(column.format)) return totalText(column, value)
 			// A sum of floats can end in noise: six decimals are enough for a status bar.
 			return new Intl.NumberFormat(options().locale ?? 'en-US', {
-				maximumFractionDigits: 6,
+				maximumFractionDigits: decimals,
 			}).format(value)
 		}
 
@@ -3666,7 +3675,7 @@ export const table = definePrimitive({
 					...counted,
 					texts: {
 						sum: summaryText(counted.sum, only),
-						mean: summaryText(counted.mean, only),
+						mean: summaryText(counted.mean, only, meanDecimals(counted.min, counted.max)),
 						min: summaryText(counted.min, only),
 						max: summaryText(counted.max, only),
 					},
