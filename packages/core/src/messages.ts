@@ -15,6 +15,8 @@ export type TableMessages = {
 	formulaIssue?: (issue: FormulaIssue) => string
 	/** Why a formula gives an error value, for the description of its cell. Without it, the words of the engine. */
 	formulaError?: (code: FormulaError) => string
+	/** What the table says after `recalculate()`: how many cells got new values. Without it, the words of the engine. */
+	recalculated?: (details: { cells: number }) => string
 	/** What the body says when no row passes the filters. */
 	noRows: () => string
 	/** What the body says while the first rows are on their way. */

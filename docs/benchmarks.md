@@ -147,6 +147,10 @@ Each value is the median of 9 runs (5 for a parse), in milliseconds, on the clou
 | Slice 6: a paste of 50,000 prices that 50,000 same-row formulas read (one report of 96,163 cells) | under 100 | 361 |
 | Slice 6: a chain of 50,000 cells in a table, one edit at the top | under 90 | 287 |
 | Slice 6: the same, the first edit (a parse of 50,000 different formulas and the index) | not estimated | 819 |
+| Slice 7: the check after one edit that the owner took, 50,000 same-row formulas | under 5 | 2.8 |
+| Slice 7: the check after 50,000 new row objects with the same values | not estimated | 17.3 |
+| Slice 7: the check after 50,000 new prices (50,000 results) | not estimated | 211 |
+| Slice 7: `recalculate`, every one of 50,000 formula cells, none changed | not estimated | 126 |
 
 What the numbers show:
 
@@ -156,6 +160,7 @@ What the numbers show:
 - A formula of a column at run time (`setColumnFormula`, slice 3) reports no value. It gives the row model new column objects, so the next read of the rows runs the stages again: nothing to compute until a stage reads the column, and one pass of the formula and one sort when the table sorts by it. The three lines of slice 3 come from the second test of `formulas/formulas.perf.test.ts`, which mounts a table with 50,000 rows.
 - `follow` (slice 5) builds a node for each cell to compute, with the list of its readers, puts them in order (Kahn), counts the reads against `maxReads` and only then computes. The first version kept a text key and a `Set` of edges for each cell: 402 ms for 50,000 same-row formulas, 571 ms for the ranges and 2,056 ms before the running sum was refused. A map by row id and then column id and a list of readers with a mark for the last reader give the numbers of the table. The rest of the time of a chain is the walk itself: each of the 50,000 cells is a node, and each is computed through its compiled tree.
 - The lines of slice 6 come from the last test of `formulas/formulas.perf.test.ts`, which mounts a table with 50,000 rows and edits it through the controller. A paste with formulas costs the paste (P7: 162 ms for a report of 100,000 cells) and `follow` of its readers (176 ms above), so the estimate of the plan, which counted the paste alone, is three times too low. The rows with a quantity of 0 keep a total of 0, so they are no part of the report.
+- The lines of slice 7 measure `recheck` of the engine on two maps of 50,000 rows, which is the work of the check of the table after new rows; a `mount` of the tests cannot give a table new rows. The check after an edit that the owner took compares the row objects by id (50,000 reads of a map) and the values of the one changed row.
 - A report of 100,000 cells through a paste reads each text with `parseText`; a report of dependents will not. The budgets of the report are written again before slice 5, with the real path of dependents.
 
 ## Size of the build
@@ -188,6 +193,7 @@ The glue of the formulas in the main entry has a limit of 12 kB minified, which 
 | 4, the address mode of the numbers and the letters, `getAddress` and `cellAt` | 3.58 kB |
 | 5, the engine of cell formulas (all of it in the formulas entry) | 3.58 kB |
 | 6, cell formulas in the table: the rule of `=`, the join in `report()`, the steps, `getCellFormula`, `setCellFormula`, the attributes, the slot props and the view | 8.32 kB |
+| 7, the check after new rows, its guard and `recalculate()` | 9.46 kB |
 
 The main entry holds no text of the engine. The format `period` is in the main entry, as the plan says: the chunk of the formats, which the main entry and the export entry share, grows from 12.59 kB to 13.76 kB (4.66 kB to 5.09 kB compressed). The plan estimated about 20 kB for the entry with about 45 functions; slice 2 has 51 of them in 25.38 kB.
 

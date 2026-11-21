@@ -116,6 +116,17 @@ export type FormulaChange = FormulaPlace & { value?: unknown; formula?: string |
 /** A new value for a formula cell, and the value that the cell held before. */
 export type FormulaResult = FormulaPlace & { value: unknown; previous: unknown }
 
+/**
+ * The rows of a table before and after the owner gave new ones, by id, and
+ * the cells that the table reported since. Without `before`, every formula
+ * of a cell is checked.
+ */
+export type FormulaRows = {
+	before?: ReadonlyMap<string, { row: unknown }>
+	after: ReadonlyMap<string, { row: unknown }>
+	told: readonly (readonly { rowId: string; columnId: string; value: unknown }[])[]
+}
+
 /** The formula of a cell, or of its column, as a formula bar and an agent read it. */
 export type FormulaView = {
 	rowId: string
@@ -216,6 +227,8 @@ export type FormulaEngine = {
 	revertFormulas(now: CellFormulas, from: CellFormulas, to: CellFormulas): CellFormulas
 	/** The words for an issue, in English. */
 	describe(issue: FormulaIssue): string
+	/** What the table says after `recalculate()`, in English. */
+	recalculated(cells: number): string
 	/** The words for an error value, in English: why a formula gives it. */
 	errorText(code: FormulaError): string
 	/**
@@ -241,6 +254,17 @@ export type FormulaEngine = {
 		before: CellFormulas,
 		sheet: FormulaSheet,
 	): FormulaJoin | { issues: FormulaIssue[] }
+	/**
+	 * The formula cells whose value is not the value that their formula
+	 * gives, after the owner gave new rows, or for every formula cell. A
+	 * circle gives `#CYCLE!`. The issue `tooLarge` when the check would read
+	 * too many cells: the cells stay as they are.
+	 */
+	recheck(
+		rows: FormulaRows,
+		formulas: CellFormulas,
+		sheet: FormulaSheet,
+	): { results: FormulaResult[] } | { issues: FormulaIssue[] }
 	/** The number of a row in the document, from 1, or `undefined` for a row it does not hold. */
 	rowNumber(rowId: string, sheet: FormulaSheet): number | undefined
 	/** The address of a cell, such as `D7`, or `undefined` for a column without a letter or a row that is gone. */

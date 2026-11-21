@@ -363,3 +363,68 @@ describe.runIf(requested)('formulas of cells in a table with 50,000 rows', () =>
 		console.table(results)
 	}, 300_000)
 })
+
+describe.runIf(requested)('the check after new rows with 50,000 rows', () => {
+	test('median time of `recheck`', () => {
+		const engine = createFormulaEngine()
+		const defs: ColumnDef[] = [
+			{ id: 'price', header: 'Price' },
+			{ id: 'qty', header: 'Quantity' },
+			{ id: 'total', header: 'Total' },
+		]
+		const ids = Array.from({ length: ROWS }, (_, index) => `r${index}`)
+		type Row = { price: number; qty: number; total: number }
+		const byId = (rows: Row[]) => new Map(ids.map((id, index) => [id, { row: rows[index] as Row }]))
+		const first = ids.map((_, index) => ({ price: index % 100, qty: 2, total: (index % 100) * 2 }))
+		let now = byId(first)
+		const sheet = {
+			columns: () => defs,
+			rowIds: () => ids,
+			row: (rowId: string) => now.get(rowId)?.row,
+			value: (rowId: string, columnId: string) =>
+				(now.get(rowId)?.row as Record<string, unknown> | undefined)?.[columnId],
+			locale: () => undefined,
+		}
+		const cells: Record<string, Record<string, string>> = {}
+		for (const id of ids) cells[id] = { total: '=[price]*[qty]' }
+		const formulas = { cells }
+		const results: Record<string, number> = {}
+		const before = now
+		engine.recheck({ before, after: before, told: [] }, formulas, sheet)
+
+		// The owner took one edit and its result: the rows hold what the table reported.
+		const taken = [...first]
+		taken[7] = { price: 50, qty: 2, total: 100 }
+		const tookEdit = byId(taken)
+		const told = [
+			[
+				{ rowId: 'r7', columnId: 'price', value: 50 },
+				{ rowId: 'r7', columnId: 'total', value: 100 },
+			],
+		]
+		now = tookEdit
+		results['the check after one edit that the owner took'] = median(
+			() => engine.recheck({ before, after: tookEdit, told }, formulas, sheet),
+			21,
+		)
+		const same = byId(first.map((row) => ({ ...row })))
+		now = same
+		results['the check after 50,000 new row objects with the same values'] = median(() => {
+			const found = engine.recheck({ before, after: same, told: [] }, formulas, sheet)
+			return 'results' in found ? found.results.length : 0
+		})
+		const priced = byId(first.map((row) => ({ ...row, price: row.price + 1 })))
+		now = priced
+		let reported = 0
+		results['the check after 50,000 new prices (50,000 results)'] = median(() => {
+			const found = engine.recheck({ before, after: priced, told: [] }, formulas, sheet)
+			reported = 'results' in found ? found.results.length : 0
+		}, 5)
+		expect(reported).toBe(ROWS)
+		results['`recalculate`: every one of 50,000 formula cells, none changed'] = median(() => {
+			now = before
+			return engine.recheck({ after: before, told: [] }, formulas, sheet)
+		}, 5)
+		console.table(results)
+	}, 120_000)
+})

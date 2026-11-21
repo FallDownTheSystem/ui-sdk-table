@@ -23,6 +23,7 @@ import {
 } from './graph'
 import { namedColumns, parseTree, type FormulaNode } from './parser'
 import { addressRef, bracketRef, headerNames, printTree } from './print'
+import { changedCells, everyFormula } from './recheck'
 import { revertFormulas, setFormulas } from './state'
 import { formulaSigns, STORED_SIGNS } from './tokens'
 import { describeFormulaError, describeFormulaIssue } from './words'
@@ -176,6 +177,10 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 		revertFormulas,
 		describe: describeFormulaIssue,
 		errorText: describeFormulaError,
+		recalculated: (cells) =>
+			cells === 0
+				? 'Every formula holds its value.'
+				: `${cells} ${cells === 1 ? 'cell' : 'cells'} got the value of ${cells === 1 ? 'its' : 'their'} formula.`,
 		entry(text, at, sheet) {
 			if (text.startsWith("'=")) return { text: text.slice(1) }
 			if (text.length < 2 || text[0] !== '=') return undefined
@@ -184,6 +189,13 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 		field(formula, plain, at, sheet) {
 			if (formula !== undefined) return engine.print(formula, at, sheet)
 			return plain.startsWith('=') ? `'${plain}` : plain
+		},
+		recheck(rows, formulas, sheet) {
+			if (!formulas.cells) return { results: [] }
+			const changes = changedCells(rows, sheet.columns(), formulas)
+			if (!changes) return { results: [] }
+			const entries = changes === 'all' ? everyFormula(formulas) : changes
+			return follow(entries, formulas, sheet, addressesOf(sheet), true)
 		},
 		join(changes, before, sheet) {
 			const cells: CellFormulaPatch[] = []

@@ -242,6 +242,8 @@ export function createFollow(options: FollowOptions) {
 		formulas: CellFormulas,
 		sheet: FormulaSheet,
 		maps: Addresses,
+		/** A check of the formulas that are there: a circle gives `#CYCLE!`, and no entry is refused for one. */
+		check = false,
 	): { results: FormulaResult[] } | { issues: FormulaIssue[] } {
 		const columns = sheet.columns()
 		const cellLayer = formulas.cells ?? {}
@@ -320,7 +322,7 @@ export function createFollow(options: FollowOptions) {
 			for (const next of (order[at] as Node).readers) if (--next.waiting === 0) order.push(next)
 		}
 		const circled = order.length < queue.length ? queue.filter((node) => node.waiting > 0) : []
-		for (const entry of entries) {
+		for (const entry of check ? [] : entries) {
 			const node = nodes.get(entry.rowId, entry.columnId)
 			if (!node || node.waiting === 0) continue
 			const path = circlePath(node)

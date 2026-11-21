@@ -56,6 +56,7 @@ import type {
 	FormulaEngine,
 	FormulaEntry,
 	FormulaIssue,
+	FormulaResult,
 	FormulaView,
 } from './formula/types'
 import { createColumnResize, type ResizeDraft } from './behaviors/resize'
@@ -159,7 +160,9 @@ export type TableCommitDetails = CommitDetails<TableReason>
  * Why cells got new values: a key or a loss of focus in the editor, a paste,
  * or a call from code. A table with the `sheet` or the `history` option also
  * reports an arrow key that saved the editor (`list-navigation`), a cut, a
- * clear, a fill, and an undo or a redo.
+ * clear, a fill, and an undo or a redo. With formulas, `recalculate` reports
+ * the formula cells that the new rows of the owner gave other values: no
+ * person did it, so it is no step of the history.
  */
 export type TableEditReason =
 	| 'enter-key'
@@ -173,6 +176,7 @@ export type TableEditReason =
 	| 'fill'
 	| 'undo'
 	| 'redo'
+	| 'recalculate'
 export type TableEditDetails = ChangeDetails<TableEditReason>
 
 /** Where a fill goes from its source. `forward` is toward the end of a row in reading order. */
@@ -381,6 +385,13 @@ export type TableController = {
 	 * hold a formula, the formula cannot be read, or it reads its own cell.
 	 */
 	setCellFormula(rowId: string, columnId: string, formula: string | null): void
+	/**
+	 * Computes every formula of a cell and reports each cell whose value is
+	 * not the one its formula gives, with the reason `recalculate`. Returns
+	 * how many cells it reported. The table does this by itself after new
+	 * rows, for the cells that they change; this is for a check after a load.
+	 */
+	recalculate(): number
 	/**
 	 * Changes the format of cells: how their values become text (`format`,
 	 * `decimals`, `currency`, `dateStyle`) and how they look (`align`, `bold`,
@@ -2112,8 +2123,67 @@ export const table = definePrimitive({
 				}),
 			}
 			const refused = dispatch(through, 'onCellEdit', edits, { reason, event })
-			if (!refused) turn.add(edits)
+			if (!refused) {
+				turn.add(edits)
+				if (engine()) toldSince.push(edits)
+				// A cell that got a value by another way can get the value of a check again.
+				if (reason !== 'recalculate' && checkedValues.size) {
+					for (const edit of edits) checkedValues.delete(cellKey(edit.rowId, edit.columnId))
+				}
+			}
 			return { refused, source }
+		}
+
+		// The check after new rows of the owner. The rows of the last check by
+		// id, the reports since, and the last value that a check reported for
+		// each cell: an owner that does not take it gets it once, and no loop.
+		// At the mount the table trusts the document: the first check compares with these rows.
+		let checkedById: ReadonlyMap<string, DataRow<unknown>> | undefined = engine()
+			? model.source().byId
+			: undefined
+		let toldSince: (readonly CellEdit[])[] = []
+		const checkedValues = new Map<string, unknown>()
+		let checkQueued = false
+		let checkedRows = options().rows
+		context.onOptions((next) => {
+			if (!next.formulas || next.rows === checkedRows) return
+			checkedRows = next.rows
+			if (checkQueued) return
+			checkQueued = true
+			queueMicrotask(checkRows)
+		})
+
+		function checkRows(): void {
+			checkQueued = false
+			const before = checkedById
+			const after = model.source().byId
+			checkedById = after
+			const told = toldSince
+			toldSince = []
+			const found = engine()
+			const formulas = formulasNow.read()
+			if (destroyed || !found || before === after || !formulas.cells) return
+			if (options().manualPage ?? false) return
+			const checked = found.recheck({ before, after, told }, formulas, formulaSheet)
+			// A check that would read too many cells leaves them as they are.
+			if (!('issues' in checked)) reportCheck(checked.results)
+		}
+
+		/** Reports what a check found, once for each value of a cell. Returns how many cells it reported. */
+		function reportCheck(results: readonly FormulaResult[]): number {
+			const edits: CellEdit[] = []
+			const columns = layout().byId
+			for (const result of results) {
+				const key = cellKey(result.rowId, result.columnId)
+				if (checkedValues.has(key) && sameValue(checkedValues.get(key), result.value)) continue
+				const node = model.rowById(result.rowId)
+				const column = columns.get(result.columnId)
+				if (!node || !column) continue
+				checkedValues.set(key, result.value)
+				edits.push({ ...result, row: node.row, column })
+			}
+			if (edits.length) tell(edits, 'recalculate')
+			return edits.length
 		}
 
 		/**
@@ -3903,6 +3973,24 @@ export const table = definePrimitive({
 			resetColumnPinning: () => resetColumns('columnPinning'),
 			setColumnAggregate: (columnId, aggregate) => chooseAggregate(columnId, aggregate),
 			getColumnFormula: (columnId) => readColumnFormula(columnId),
+			recalculate() {
+				const found = requireFormulas()
+				if (historyBusy()) {
+					throw new Error('A new value is checked now. Wait for its answer, then recalculate.')
+				}
+				if (options().manualPage ?? false) throw new Error(issueText(found, { code: 'noDocument' }))
+				const checked = found.recheck(
+					{ after: model.source().byId, told: [] },
+					formulasNow.read(),
+					formulaSheet,
+				)
+				if ('issues' in checked) throw new Error(entryRefusal(checked))
+				// A request of the owner reports every cell again.
+				checkedValues.clear()
+				const cells = reportCheck(checked.results)
+				announce(options().messages?.recalculated?.({ cells }) ?? found.recalculated(cells))
+				return cells
+			},
 			getCellFormula(rowId, columnId) {
 				requireFormulas()
 				const node = requireRow(String(rowId), 'read the formula of')
@@ -6186,6 +6274,7 @@ export const table = definePrimitive({
 			'cellAt',
 			'getCellFormula',
 			'setCellFormula',
+			'recalculate',
 			'pinRow',
 			'scrollToRow',
 			'editCell',

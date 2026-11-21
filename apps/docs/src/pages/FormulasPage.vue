@@ -325,6 +325,22 @@ function filterPeriod() {
 	</div>
 	<h2>Formulas of cells</h2>
 	<p>Type <code>=B1*C1</code> into a total. A cell that a formula reads changes its total.</p>
+	<div class="toolbar">
+		<button
+			type="button"
+			data-testid="new-prices"
+			@click="lines = lines.map((line) => ({ ...line, price: line.price * 2 }))"
+		>
+			Load new prices
+		</button>
+		<button
+			type="button"
+			data-testid="remove-third"
+			@click="lines = lines.filter((line) => line.id !== 'l3')"
+		>
+			Remove the washer
+		</button>
+	</div>
 	<output data-testid="line-formulas">{{ JSON.stringify(lineFormulas) }}</output>
 	<div class="scroller">
 		<Table

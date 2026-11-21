@@ -487,3 +487,33 @@ test('in fi-FI, a formula of a cell takes a decimal comma and `;`, and is stored
 	await expect(table.locator('[data-slot="table-edit-error"]')).toContainText(',')
 	await expect(lineEditor(table)).toBeVisible()
 })
+
+test('new prices of the owner change the totals without a key, and a removed row turns the formula that names it into #REF!', async ({
+	page,
+}) => {
+	const table = await openLines(page)
+	await lineCell(table, 0, 'total').click()
+	await page.keyboard.type('=B1*C1')
+	await page.keyboard.press('Enter')
+	await lineCell(table, 3, 'total').click()
+	await page.keyboard.type('=B3*2')
+	await page.keyboard.press('Enter')
+	await expect(lineCell(table, 0, 'total')).toHaveText('100.00')
+	await expect(lineCell(table, 3, 'total')).toHaveText('0.40')
+
+	await page.getByTestId('new-prices').click()
+	await expect(lineCell(table, 0, 'price')).toHaveText('5.00')
+	await expect(lineCell(table, 0, 'total')).toHaveText('200.00')
+	await expect(lineCell(table, 3, 'total')).toHaveText('0.80')
+
+	await page.getByTestId('remove-third').click()
+	await expect(dataRows(table)).toHaveCount(3)
+	const screw = dataRows(table).filter({ hasText: 'Screw' })
+	await expect(screw.locator('td[data-column="total"]')).toHaveText('#REF!')
+	await expect(screw.locator('td[data-column="total"]')).toHaveAttribute(
+		'data-formula-error',
+		'ref',
+	)
+	// The other formula still reads its own row.
+	await expect(lineCell(table, 0, 'total')).toHaveText('200.00')
+})
