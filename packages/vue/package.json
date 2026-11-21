@@ -4,7 +4,8 @@
 	"private": true,
 	"description": "Vue parts for the ui-sdk-table primitive: slots, v-model and controllers.",
 	"files": [
-		"dist"
+		"dist",
+		"src"
 	],
 	"type": "module",
 	"sideEffects": false,
@@ -23,7 +24,7 @@
 		"@ui-sdk/core": "catalog:",
 		"@ui-sdk/vue": "catalog:",
 		"@vitejs/plugin-vue": "catalog:",
-		"@vue/test-utils": "^2.5.1",
+		"@vue/test-utils": "catalog:",
 		"jsdom": "catalog:",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",

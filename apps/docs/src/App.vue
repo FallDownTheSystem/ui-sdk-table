@@ -1,35 +1,34 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import BenchmarkPage from './pages/BenchmarkPage.vue'
-import ColumnsPage from './pages/ColumnsPage.vue'
-import EditingPage from './pages/EditingPage.vue'
-import ServerPage from './pages/ServerPage.vue'
-import WindowPage from './pages/WindowPage.vue'
+import { currentPage, isStyledPage, pages } from './page'
 
-// The demo app has no router: a page is one query parameter, so a browser
-// test opens a page with one address.
-const pages: Record<string, { title: string; component: Component }> = {
-	benchmark: { title: 'Rows', component: BenchmarkPage },
-	columns: { title: 'Columns', component: ColumnsPage },
-	window: { title: 'Row window', component: WindowPage },
-	editing: { title: 'Editing', component: EditingPage },
-	server: { title: 'Server', component: ServerPage },
-}
-
-const requested = new URLSearchParams(location.search).get('page') ?? 'benchmark'
-const current = pages[requested] ?? pages.benchmark
+defineProps<{
+	/** The component of the page in view. */
+	page?: Component
+}>()
 </script>
 
 <template>
-	<nav class="pages" aria-label="Demo pages">
+	<!-- The plain pages style the list with `.pages`. The styled page has Tailwind CSS and no plain stylesheet. -->
+	<nav
+		class="pages"
+		:class="
+			isStyledPage &&
+			'mx-auto flex max-w-7xl flex-wrap gap-4 px-6 pt-6 text-sm underline underline-offset-4'
+		"
+		aria-label="Demo pages"
+	>
 		<a
-			v-for="(page, id) in pages"
+			v-for="(entry, id) in pages"
 			:key="id"
 			:href="`?page=${id}`"
-			:aria-current="page === current ? 'page' : undefined"
+			:aria-current="id === currentPage ? 'page' : undefined"
+			:class="isStyledPage && 'aria-[current=page]:font-semibold'"
 		>
-			{{ page.title }}
+			{{ entry.title }}
 		</a>
 	</nav>
-	<component :is="current.component" v-if="current" />
+	<main v-if="page" :class="isStyledPage && 'mx-auto max-w-7xl p-6'">
+		<component :is="page" />
+	</main>
 </template>

@@ -55,18 +55,23 @@ import {
 	type Checked,
 } from './edit'
 import { collectExport, type ExportData, type ExportOptions } from './export/data'
-import { formatValue } from './format'
+import { formatValue, isNumericFormat } from './format'
 import { defaultMessages, type TableMessages } from './messages'
 import {
 	cellValue,
 	createRowModel,
+	dateRange,
 	memo,
+	numberRange,
 	sameContent,
 	stabilize,
 	toText,
+	uniqueValues,
 	walkRows,
 	type ColumnDef,
 	type DataRow,
+	type FacetValue,
+	type FilterKind,
 	type FilterState,
 	type FlatRow,
 	type GroupRow,
@@ -113,6 +118,8 @@ export type TableController = {
 	setSearch(text: string): void
 	setColumnFilter(columnId: string, value: unknown): void
 	clearFilters(): void
+	/** Takes the filter of every column away, in one change. The search stays. */
+	clearColumnFilters(): void
 	setGroupBy(columnIds: readonly string[]): void
 	setPage(page: number): void
 	setPageSize(pageSize: number): void
@@ -173,7 +180,72 @@ export type TableController = {
 	 * writers are in the `export` entry of the package (`toCsv`, `toXlsx`).
 	 */
 	exportData(options?: ExportOptions): ExportData
+	/** Selects rows in one change, beside the rows that are selected. It throws for a row that cannot be selected. */
+	selectRows(rowIds: readonly string[]): void
+	/** Takes rows out of the selection in one change. */
+	deselectRows(rowIds: readonly string[]): void
+	/**
+	 * What the table shows now, for a control beside it: a search field, a
+	 * list of columns, the pages. It answers at the time of the call;
+	 * `subscribe` says when to ask again.
+	 */
+	getView(): TableView
+	/**
+	 * What a filter control of a column offers: its kind, and the values, the
+	 * numbers or the dates that the column holds. They come from every row of
+	 * the table, so a filter does not take away its own choices.
+	 */
+	getFacets(columnId: string): ColumnFacets
+	/**
+	 * Runs the listener after each change of the state, of the rows or of the
+	 * columns, with the keys of the state that changed. Returns the function
+	 * that stops it.
+	 */
+	subscribe(listener: (changed: readonly string[]) => void): () => void
 }
+
+/** The state of a table and the numbers that follow from it, as `getView` gives them. */
+export type TableView = {
+	sort: readonly SortRule[]
+	filter: FilterState
+	groupBy: readonly string[]
+	expanded: readonly string[]
+	selected: readonly string[]
+	/** The page in view, from 1. A table without pages has one page. */
+	page: number
+	/** How many rows a page holds, or `undefined` for a table without pages. */
+	pageSize: number | undefined
+	pageCount: number
+	/** How many rows or groups the pages divide: the rows that pass the filters. */
+	rowCount: number
+	/** Whether the last page is known. It is not for pages from a server that gave no count. */
+	lastPageKnown: boolean
+	/** Every column that holds cells, hidden ones too, in definition order. */
+	columns: readonly ColumnDef[]
+	/** The columns in view, in display order. */
+	visibleColumns: readonly ColumnDef[]
+	/** The ids of the rows that `selectAll` selects: the rows that pass the filters and can be selected. */
+	selectable: readonly string[]
+	/** Whether the table has a group or a row with child rows: what `expandAll` opens. */
+	hasExpandable: boolean
+	loading: boolean
+}
+
+/** One value of a column, with its text as a cell shows it and the number of rows that hold it. */
+export type ColumnFacetValue = FacetValue & { text: string }
+
+export type ColumnFacets = {
+	/** The filter of the column: its `filter` option, or what its format says. A column of dates filters by a range of dates, a column of numbers by a range, any other column by text. */
+	kind: FilterKind
+	/** Each different value, sorted. Filled for the kind `select`. */
+	values: readonly ColumnFacetValue[]
+	/** The lowest and the highest number. Filled for the kind `range`. */
+	range: { min: number; max: number } | null
+	/** The earliest and the latest date. Filled for the kind `dateRange`. */
+	dates: { from: Date; to: Date } | null
+}
+
+type ReadActions = 'getView' | 'getFacets' | 'subscribe'
 
 type CellActions =
 	| 'editCell'
@@ -184,6 +256,9 @@ type CellActions =
 	| 'copyCells'
 	| 'pasteCells'
 	| 'exportData'
+
+/** The methods that are written apart from the main list, each group beside the state it reads. */
+type OtherActions = 'pinRow' | 'scrollToRow' | CellActions | ReadActions
 
 export type TableOptions<Row = unknown> = {
 	rows?: readonly Row[]
@@ -1408,6 +1483,11 @@ export const table = definePrimitive({
 				throw new Error(`Row "${id}" cannot be selected: \`canSelect\` refuses it.`)
 		}
 
+		function rowIdList(rowIds: unknown, action: string): string[] {
+			if (!Array.isArray(rowIds)) throw new Error(`\`${action}\` takes a list of row ids.`)
+			return rowIds.map(String)
+		}
+
 		function requireExpandable(id: string): void {
 			const ids = expandable(model.grouped())
 			if (ids.has(id)) return
@@ -1626,7 +1706,7 @@ export const table = definePrimitive({
 			if (clamped !== current.page) change('page', { ...current, page: clamped }, { reason })
 		}
 
-		const controller: Omit<TableController, 'pinRow' | 'scrollToRow' | CellActions> = {
+		const controller: Omit<TableController, OtherActions> = {
 			sortBy(columnId, direction = 'asc', { append = false } = {}) {
 				column(columnId, 'sort by')
 				if (direction !== null && direction !== 'asc' && direction !== 'desc') {
@@ -1665,6 +1745,10 @@ export const table = definePrimitive({
 			},
 			clearFilters() {
 				setFilter(NO_FILTER, 'imperative')
+			},
+			clearColumnFilters() {
+				const search = state().filter.search
+				setFilter(search === undefined ? NO_FILTER : { search }, 'imperative')
 			},
 			setGroupBy(columnIds) {
 				if (!Array.isArray(columnIds)) throw new Error('`setGroupBy` takes a list of column ids.')
@@ -1734,6 +1818,28 @@ export const table = definePrimitive({
 			},
 			clearSelection() {
 				change('selected', [], { reason: 'imperative' })
+			},
+			selectRows(rowIds) {
+				const ids = rowIdList(rowIds, 'selectRows')
+				for (const id of ids) requireSelectable(id)
+				if (options().selection !== 'multiple' && ids.length > 1) {
+					throw new Error(
+						"`selectRows` with more than one row needs the `selection` option to be 'multiple'.",
+					)
+				}
+				const current = options().selection === 'multiple' ? state().selected : []
+				const next = [...new Set([...current, ...ids])]
+				if (!sameContent(next, state().selected)) {
+					change('selected', next, { reason: 'imperative' })
+				}
+			},
+			deselectRows(rowIds) {
+				const gone = new Set(rowIdList(rowIds, 'deselectRows'))
+				requireSelection()
+				const next = state().selected.filter((id) => !gone.has(id))
+				if (next.length !== state().selected.length) {
+					change('selected', next, { reason: 'imperative' })
+				}
 			},
 			setColumnVisibility(columnId, visible) {
 				const found = columnOrGroup(columnId, visible ? 'show' : 'hide')
@@ -1847,6 +1953,92 @@ export const table = definePrimitive({
 		}
 
 		const rowIndex = () => flatIndex(bodyRows())
+
+		const selectableNow = memo(
+			(ids: readonly string[], _canSelect: unknown, _source: unknown): readonly string[] =>
+				ids.filter(canSelect),
+		)
+
+		/** The filter control that fits a column. */
+		function filterKind(found: ColumnDef): FilterKind {
+			if (typeof found.filter === 'string') return found.filter
+			// A matcher of the caller reads a value that only the caller knows. Text is the one value every control can give.
+			if (typeof found.filter === 'function' || !found.format) return 'text'
+			if (found.format === 'date' || found.format === 'datetime') return 'dateRange'
+			return isNumericFormat(found.format) ? 'range' : 'text'
+		}
+
+		// The facets of a column are kept while the rows, the column and the
+		// locale are the same: a filter control asks for them at each render.
+		const facetCache = new Map<
+			string,
+			{ rows: unknown; column: ColumnDef; locale: string | undefined; result: ColumnFacets }
+		>()
+
+		const readActions: Pick<TableController, ReadActions> = {
+			getView() {
+				const current = state()
+				const columns = layout()
+				return {
+					sort: current.sort,
+					filter: current.filter,
+					groupBy: current.groupBy,
+					expanded: current.expanded,
+					selected: current.selected,
+					page: model.page(),
+					pageSize: current.page?.pageSize,
+					pageCount: model.pageCount(),
+					rowCount: model.rowCount(),
+					lastPageKnown: !openEnded(),
+					columns: columns.all,
+					visibleColumns: columns.leaves,
+					selectable: options().selection
+						? selectableNow(selectableOrder(), options().canSelect, model.source())
+						: NO_IDS,
+					hasExpandable: expandable(model.grouped()).size > 0,
+					loading: options().loading ?? false,
+				}
+			},
+			getFacets(columnId) {
+				const found = column(String(columnId), 'read the facets of')
+				const rows = model.source().rows
+				const locale = options().locale
+				const kept = facetCache.get(found.id)
+				if (kept && kept.rows === rows && kept.column === found && kept.locale === locale) {
+					return kept.result
+				}
+				const kind = filterKind(found)
+				const valueText = (value: unknown) =>
+					found.format
+						? formatValue(value, found.format, found.formatOptions, { locale })
+						: toText(value)
+				const result: ColumnFacets = {
+					kind,
+					values:
+						kind === 'select'
+							? uniqueValues(rows, found, locale).map((facet) => ({
+									...facet,
+									text: valueText(facet.value),
+								}))
+							: [],
+					range: kind === 'range' ? numberRange(rows, found) : null,
+					dates: kind === 'dateRange' ? dateRange(rows, found) : null,
+				}
+				facetCache.set(found.id, { rows, column: found, locale, result })
+				return result
+			},
+			subscribe(listener) {
+				if (typeof listener !== 'function') throw new Error('`subscribe` takes a function.')
+				let active = true
+				const stop = context.store.subscribe((liveOnly, _delivered, changed) => {
+					if (active && !liveOnly) listener(changed)
+				})
+				return () => {
+					active = false
+					stop()
+				}
+			},
+		}
 
 		const rowActions: Pick<TableController, 'pinRow' | 'scrollToRow'> = {
 			pinRow(rowId, edge) {
@@ -2025,6 +2217,7 @@ export const table = definePrimitive({
 			...controller,
 			...rowActions,
 			...cellActions,
+			...readActions,
 			edit,
 			range,
 			cellIdAt,
@@ -2717,6 +2910,7 @@ export const table = definePrimitive({
 			'setSearch',
 			'setColumnFilter',
 			'clearFilters',
+			'clearColumnFilters',
 			'setGroupBy',
 			'setPage',
 			'setPageSize',
@@ -2733,6 +2927,9 @@ export const table = definePrimitive({
 			'toggleSelected',
 			'selectAll',
 			'clearSelection',
+			'selectRows',
+			'deselectRows',
+			'getFacets',
 			'setColumnVisibility',
 			'toggleColumnVisibility',
 			'showAllColumns',

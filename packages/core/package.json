@@ -4,7 +4,8 @@
 	"private": true,
 	"description": "Framework-free table primitive, behaviors and row helpers built on @ui-sdk/core.",
 	"files": [
-		"dist"
+		"dist",
+		"src"
 	],
 	"type": "module",
 	"sideEffects": false,

@@ -1,0 +1,37 @@
+{
+	"name": "ui-sdk-table-styled",
+	"version": "0.0.0",
+	"private": true,
+	"description": "The styled data table: source that an app installs through the registry file and owns.",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": "./src/data-table/index.ts"
+	},
+	"scripts": {
+		"build": "node scripts/build-registry.mjs"
+	},
+	"dependencies": {
+		"ui-sdk-table-vue": "workspace:*"
+	},
+	"devDependencies": {
+		"@lucide/vue": "catalog:",
+		"@types/jsdom": "catalog:",
+		"@ui-sdk/core": "catalog:",
+		"@ui-sdk/vue": "catalog:",
+		"@vitejs/plugin-vue": "catalog:",
+		"@vue/test-utils": "catalog:",
+		"clsx": "catalog:",
+		"jsdom": "catalog:",
+		"tailwind-merge": "catalog:",
+		"vite": "catalog:",
+		"vite-plus": "catalog:",
+		"vue": "catalog:"
+	},
+	"peerDependencies": {
+		"@lucide/vue": ">=1",
+		"@ui-sdk/core": "0.1.0-beta.13",
+		"@ui-sdk/vue": "0.1.0-beta.13",
+		"vue": ">=3.5"
+	}
+}

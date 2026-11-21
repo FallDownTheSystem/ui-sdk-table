@@ -172,10 +172,56 @@ const BOOLEANS: readonly string[] = [
 	'loading',
 ]
 
-export type TableProps<Row> = Omit<TableOptions<Row>, `on${string}`>
+/** What `rowAttrs` gets: which row of the table asks for its attributes. */
+export type RowAttrsContext<Row> =
+	| { kind: 'header'; index: number }
+	| {
+			kind: 'row'
+			row: Row
+			node: DataRow<Row>
+			/** The place of the row among the rows of the body, from 0. */
+			index: number
+			level: number
+	  }
+	| { kind: 'group'; group: GroupRow<Row>; index: number; level: number }
+	| { kind: 'detail'; row: Row; node: DataRow<Row>; index: number }
+	| { kind: 'foot' }
+	| { kind: 'empty' }
+
+/** What `cellAttrs` gets: which cell of the table asks for its attributes. */
+export type CellAttrsContext<Row> =
+	| { kind: 'header'; column: ColumnDef<Row>; leaf: boolean }
+	| { kind: 'cell'; column: ColumnDef<Row>; row: Row; node: DataRow<Row>; value: unknown }
+	| { kind: 'group'; group: GroupRow<Row> }
+	| { kind: 'detail'; row: Row; node: DataRow<Row> }
+	| { kind: 'foot'; column: ColumnDef<Row> }
+	| { kind: 'empty' }
+
+export type PartAttrs = Record<string, unknown>
+
+/**
+ * Attributes for the elements that the table renders itself, such as a class
+ * or a `data-*` attribute. The table calls a function when it renders its
+ * rows, and not for a new selection or a new active cell: show such state
+ * with the `data-*` and `aria-*` attributes that the parts carry. Pass the
+ * same function while its answers are the same, because a new function
+ * renders every row again.
+ */
+export type TableAttrsProps<Row> = {
+	/** Attributes of a `tr` element. */
+	rowAttrs?: (context: RowAttrsContext<Row>) => PartAttrs | undefined
+	/** Attributes of a `th` or `td` element. */
+	cellAttrs?: (context: CellAttrsContext<Row>) => PartAttrs | undefined
+	/** Attributes of the `thead`, `tbody` and `tfoot` elements. */
+	sectionAttrs?: { head?: PartAttrs; body?: PartAttrs; foot?: PartAttrs }
+}
+
+const ATTRS = ['rowAttrs', 'cellAttrs', 'sectionAttrs'] as const
+
+export type TableProps<Row> = Omit<TableOptions<Row>, `on${string}`> & TableAttrsProps<Row>
 
 const PROPS = Object.fromEntries(
-	OPTIONS.map((name) => [
+	[...OPTIONS, ...ATTRS].map((name) => [
 		name,
 		BOOLEANS.includes(name) ? { type: Boolean, default: undefined } : null,
 	]),
@@ -277,6 +323,8 @@ export type GroupSlotProps<Row> = {
 	level: number
 	/** Column totals of the rows in the group. */
 	totals: Record<string, unknown>
+	/** The totals as text, with the format of their columns, by column id. */
+	totalTexts: Record<string, string>
 	toggleExpanded: (event?: Event) => void
 }
 
@@ -284,6 +332,8 @@ export type FootSlotProps<Row> = {
 	column: ColumnDef<Row>
 	value: unknown
 	text: string
+	/** The totals of every column that has one, by column id. */
+	totals: Record<string, unknown>
 }
 
 export type TableSlots<Row> = {
@@ -355,11 +405,16 @@ const TableImpl = defineComponent(
 				(emit as (name: string, ...args: unknown[]) => void)('columnWidthsCommit', value, details),
 		}
 
-		const handle = usePrimitive(
-			tablePrimitive,
-			() => ({ ...props, ...callbacks }) as TableOptions,
-		) as Handle
+		const handle = usePrimitive(tablePrimitive, () => {
+			// The primitive gets its own options only: the attribute props are for this component.
+			const options: Record<string, unknown> = { ...callbacks }
+			for (const name of OPTIONS) options[name] = props[name]
+			return options as TableOptions
+		}) as Handle
 		const api = handle.api
+
+		const rowAttrs = (context: RowAttrsContext<unknown>) => props.rowAttrs?.(context)
+		const cellAttrs = (context: CellAttrsContext<unknown>) => props.cellAttrs?.(context)
 
 		context.expose({ api } satisfies { api: TableController })
 
@@ -373,46 +428,50 @@ const TableImpl = defineComponent(
 
 		function headerRows() {
 			return api.headerRows().map((cells, index) =>
-				h(TableHeaderRow, { key: `header-${index}`, index }, () =>
-					cells.map((cell) => {
-						const column = cell.column
-						return h(
-							TableHeaderCell,
-							{
-								// The key is the column, so the element stays with its column when the order changes.
-								key: cell.key,
-								value: headerKey(cell.key),
-								row: cell.row,
-								col: cell.col,
-								colspan: cell.colSpan,
-								rowspan: cell.rowSpan,
-								header: true,
-							},
-							() => {
-								const label = column.header ?? column.id
-								const toggleSort = (event?: Event) =>
-									api.toggleSort(column.id, {
-										append: event instanceof MouseEvent && event.shiftKey,
-										event,
-									})
-								const slot = slots[`header-${column.id}`] ?? slots.header
-								const content = slot
-									? slot({
-											column,
-											label,
-											leaf: cell.leaf,
-											sort: cell.leaf ? api.sortOf(column.id) : undefined,
-											toggleSort,
-											pin: cell.pin,
+				h(
+					TableHeaderRow,
+					{ key: `header-${index}`, index, ...rowAttrs({ kind: 'header', index }) },
+					() =>
+						cells.map((cell) => {
+							const column = cell.column
+							return h(
+								TableHeaderCell,
+								{
+									// The key is the column, so the element stays with its column when the order changes.
+									key: cell.key,
+									value: headerKey(cell.key),
+									row: cell.row,
+									col: cell.col,
+									colspan: cell.colSpan,
+									rowspan: cell.rowSpan,
+									header: true,
+									...cellAttrs({ kind: 'header', column, leaf: cell.leaf }),
+								},
+								() => {
+									const label = column.header ?? column.id
+									const toggleSort = (event?: Event) =>
+										api.toggleSort(column.id, {
+											append: event instanceof MouseEvent && event.shiftKey,
+											event,
 										})
-									: cell.leaf && column.sortable
-										? h('button', { type: 'button', onClick: toggleSort }, label)
-										: label
-								if (!cell.leaf || !api.canResize(column.id)) return content
-								return [content, h(TableResizer, { key: 'resizer', value: column.id })]
-							},
-						)
-					}),
+									const slot = slots[`header-${column.id}`] ?? slots.header
+									const content = slot
+										? slot({
+												column,
+												label,
+												leaf: cell.leaf,
+												sort: cell.leaf ? api.sortOf(column.id) : undefined,
+												toggleSort,
+												pin: cell.pin,
+											})
+										: cell.leaf && column.sortable
+											? h('button', { type: 'button', onClick: toggleSort }, label)
+											: label
+									if (!cell.leaf || !api.canResize(column.id)) return content
+									return [content, h(TableResizer, { key: 'resizer', value: column.id })]
+								},
+							)
+						}),
 				),
 			)
 		}
@@ -421,27 +480,47 @@ const TableImpl = defineComponent(
 			flat: FlatRow<unknown>,
 			group: GroupRow<unknown>,
 			index: number,
+			position: number,
 			span: number,
 		) {
-			return h(TableRow, { key: flat.id, value: flat.id, index }, () =>
-				h(TableCell, { value: groupKey(flat.id), row: index, col: 0, colspan: span }, () => {
-					const column = api.column(group.columnId)
-					const sample = group.leaves[0]
-					const text = column && sample ? api.text(sample.row, column) : toText(group.value)
-					const toggleExpanded = (event?: Event) => api.toggleExpanded(flat.id, event)
-					if (slots.group) {
-						return slots.group({
-							group,
-							column,
-							text,
-							expanded: flat.expanded,
-							level: flat.level,
-							totals: api.totals(group),
-							toggleExpanded,
-						})
-					}
-					return h('button', { type: 'button', onClick: toggleExpanded }, api.groupText(group))
-				}),
+			const attrs = rowAttrs({ kind: 'group', group, index: position, level: flat.level })
+			return h(TableRow, { key: flat.id, value: flat.id, index, ...attrs }, () =>
+				h(
+					TableCell,
+					{
+						value: groupKey(flat.id),
+						row: index,
+						col: 0,
+						colspan: span,
+						...cellAttrs({ kind: 'group', group }),
+					},
+					() => {
+						const column = api.column(group.columnId)
+						const sample = group.leaves[0]
+						const text = column && sample ? api.text(sample.row, column) : toText(group.value)
+						const toggleExpanded = (event?: Event) => api.toggleExpanded(flat.id, event)
+						if (slots.group) {
+							const totals = api.totals(group)
+							const totalTexts: Record<string, string> = {}
+							for (const total of api.allColumns()) {
+								if (total.aggregate !== undefined) {
+									totalTexts[total.id] = api.totalText(total, totals[total.id])
+								}
+							}
+							return slots.group({
+								group,
+								column,
+								text,
+								expanded: flat.expanded,
+								level: flat.level,
+								totals,
+								totalTexts,
+								toggleExpanded,
+							})
+						}
+						return h('button', { type: 'button', onClick: toggleExpanded }, api.groupText(group))
+					},
+				),
 			)
 		}
 
@@ -449,6 +528,7 @@ const TableImpl = defineComponent(
 			flat: FlatRow<unknown>,
 			node: DataRow<unknown>,
 			index: number,
+			position: number,
 			columns: readonly ColumnDef[],
 		) {
 			const toggleSelected = (event?: Event) => api.toggleSelected(flat.id, event)
@@ -494,7 +574,12 @@ const TableImpl = defineComponent(
 
 			return h(
 				TableRow,
-				{ key: flat.id, value: flat.id, index },
+				{
+					key: flat.id,
+					value: flat.id,
+					index,
+					...rowAttrs({ kind: 'row', row: node.row, node, index: position, level: flat.level }),
+				},
 				{
 					// The state of the row part is the only thing here that follows the
 					// selection, so a new selection renders this row and no other.
@@ -502,7 +587,21 @@ const TableImpl = defineComponent(
 						columns.map((column, col) =>
 							h(
 								TableCell,
-								{ key: column.id, value: cellId(flat.id, column.id), row: index, col },
+								{
+									key: column.id,
+									value: cellId(flat.id, column.id),
+									row: index,
+									col,
+									...(props.cellAttrs
+										? props.cellAttrs({
+												kind: 'cell',
+												column,
+												row: node.row,
+												node,
+												value: cellValue(node.row, column),
+											})
+										: undefined),
+								},
 								{
 									// The state of the cell part says whether its editor is open,
 									// so the start and the end of an edit render one cell.
@@ -550,23 +649,38 @@ const TableImpl = defineComponent(
 			flat: FlatRow<unknown>,
 			node: DataRow<unknown>,
 			index: number,
+			position: number,
 			span: number,
 		) {
-			return h(TableRow, { key: flat.id, value: flat.id, index }, () =>
-				h(TableCell, { value: detailKey(node.id), row: index, col: 0, colspan: span }, () =>
-					slots.detail?.({
-						row: node.row,
-						node,
-						toggleExpanded: (event?: Event) => api.toggleExpanded(node.id, event),
-					}),
+			const attrs = rowAttrs({ kind: 'detail', row: node.row, node, index: position })
+			return h(TableRow, { key: flat.id, value: flat.id, index, ...attrs }, () =>
+				h(
+					TableCell,
+					{
+						value: detailKey(node.id),
+						row: index,
+						col: 0,
+						colspan: span,
+						...cellAttrs({ kind: 'detail', row: node.row, node }),
+					},
+					() =>
+						slots.detail?.({
+							row: node.row,
+							node,
+							toggleExpanded: (event?: Event) => api.toggleExpanded(node.id, event),
+						}),
 				),
 			)
 		}
 
 		function bodyRow(flat: FlatRow<unknown>, index: number, columns: readonly ColumnDef[]) {
-			if (flat.node.kind === 'group') return groupRow(flat, flat.node, index, columns.length)
-			if (flat.detail) return detailRow(flat, flat.node, index, columns.length)
-			return dataRow(flat, flat.node, index, columns)
+			// The grid counts the header rows first. A caller counts the rows of the body.
+			const position = index - api.headerRowCount()
+			if (flat.node.kind === 'group') {
+				return groupRow(flat, flat.node, index, position, columns.length)
+			}
+			if (flat.detail) return detailRow(flat, flat.node, index, position, columns.length)
+			return dataRow(flat, flat.node, index, position, columns)
 		}
 
 		/**
@@ -606,16 +720,22 @@ const TableImpl = defineComponent(
 		function footRow(columns: readonly ColumnDef[], index: number) {
 			if (!api.footerRowCount()) return null
 			const totals = api.totals()
-			return h(TableFoot, null, () =>
-				h(TablePlainRow, { index, footer: true }, () =>
+			return h(TableFoot, props.sectionAttrs?.foot ?? null, () =>
+				h(TablePlainRow, { index, footer: true, ...rowAttrs({ kind: 'foot' }) }, () =>
 					columns.map((column, col) => {
 						const value = totals[column.id]
 						const text = column.aggregate ? api.totalText(column, value) : ''
 						const slot = slots[`foot-${column.id}`] ?? slots.foot
 						return h(
 							TableCell,
-							{ key: column.id, value: footKey(column.id), row: index, col },
-							() => (slot ? slot({ column, value, text }) : text),
+							{
+								key: column.id,
+								value: footKey(column.id),
+								row: index,
+								col,
+								...cellAttrs({ kind: 'foot', column }),
+							},
+							() => (slot ? slot({ column, value, text, totals }) : text),
 						)
 					}),
 				),
@@ -623,11 +743,15 @@ const TableImpl = defineComponent(
 		}
 
 		function emptyRow(index: number, span: number) {
-			return h(TablePlainRow, { key: 'empty', index, 'data-kind': 'empty' }, () =>
-				h(TableCell, { value: 'empty', row: index, col: 0, colspan: span }, () =>
-					api.loading()
-						? (shown(slots.loading?.({})) ?? api.message('loading')())
-						: (shown(slots.empty?.({})) ?? api.message('noRows')()),
+			const attrs = rowAttrs({ kind: 'empty' })
+			return h(TablePlainRow, { key: 'empty', index, 'data-kind': 'empty', ...attrs }, () =>
+				h(
+					TableCell,
+					{ value: 'empty', row: index, col: 0, colspan: span, ...cellAttrs({ kind: 'empty' }) },
+					() =>
+						api.loading()
+							? (shown(slots.loading?.({})) ?? api.message('loading')())
+							: (shown(slots.empty?.({})) ?? api.message('noRows')()),
 				),
 			)
 		}
@@ -659,8 +783,8 @@ const TableImpl = defineComponent(
 				h('colgroup', null, [
 					columns.map((column) => h(TableCol, { key: column.id, value: column.id })),
 				]),
-				h(TableHead, null, headerRows),
-				h(TableBody, null, () =>
+				h(TableHead, props.sectionAttrs?.head ?? null, headerRows),
+				h(TableBody, props.sectionAttrs?.body ?? null, () =>
 					rows.length ? bodyRows(rows, head, columns) : emptyRow(head, columns.length),
 				),
 				footRow(columns, head + Math.max(1, rows.length)),
@@ -672,6 +796,7 @@ const TableImpl = defineComponent(
 			// locale, a message, whether columns resize. So every option is read here,
 			// and a new value renders the table again.
 			for (const name of OPTIONS) void props[name]
+			for (const name of ATTRS) void props[name]
 			void structure.value
 			// A new function at each render: the root part then renders its content again.
 			return h(RootPart, { handle, ...attrs }, () => content())

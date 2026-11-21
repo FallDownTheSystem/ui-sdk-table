@@ -4,6 +4,10 @@
 	"compilerOptions": {
 		"lib": ["ESNext", "DOM", "DOM.Iterable"],
 		"noUncheckedIndexedAccess": true,
+		// The styled table imports `cn` from the address that the consumer app has.
+		"paths": {
+			"@/lib/utils": ["../../packages/styled/src/lib/utils.ts"]
+		},
 		"tsBuildInfoFile": "../../node_modules/.tmp/tsconfig.docs.tsbuildinfo"
 	}
 }

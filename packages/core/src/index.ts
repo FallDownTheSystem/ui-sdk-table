@@ -19,6 +19,8 @@ export type { CellBounds, CellRange } from './behaviors/range'
 export {
 	table,
 	type CellRef,
+	type ColumnFacets,
+	type ColumnFacetValue,
 	type ColumnVisibility,
 	type ColumnWidths,
 	type RowPin,
@@ -31,4 +33,5 @@ export {
 	type TableEditReason,
 	type TableOptions,
 	type TableReason,
+	type TableView,
 } from './table'

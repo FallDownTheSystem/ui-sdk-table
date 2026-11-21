@@ -16,18 +16,32 @@ export {
 } from './parts'
 export {
 	Table,
+	type CellAttrsContext,
 	type CellSlotProps,
 	type DetailSlotProps,
 	type EditorSlotProps,
 	type FootSlotProps,
 	type GroupSlotProps,
 	type HeaderSlotProps,
+	type PartAttrs,
+	type RowAttrsContext,
+	type TableAttrsProps,
 	type TableEmits,
+	type TableInstance,
 	type TableProps,
 	type TableSlots,
 } from './table'
 export { createTableController } from './controller'
-export { applyEdits, cellKey } from 'ui-sdk-table-core'
+export {
+	applyEdits,
+	cellKey,
+	cellValue,
+	defaultMessages,
+	isEmptyFilter,
+	isNumericFormat,
+	linkOf,
+	toText,
+} from 'ui-sdk-table-core'
 export type {
 	CellEdit,
 	CellRange,
@@ -35,6 +49,12 @@ export type {
 	StandardSchemaV1,
 	TableEditDetails,
 	ColumnDef,
+	ColumnFacets,
+	ColumnFacetValue,
+	DataRow,
+	GroupRow,
+	FilterKind,
+	FormatName,
 	ExportData,
 	ExportOptions,
 	ColumnPin,
@@ -51,4 +71,5 @@ export type {
 	TableCommitDetails,
 	TableController,
 	TableMessages,
+	TableView,
 } from 'ui-sdk-table-core'
