@@ -401,12 +401,12 @@ input {
 }
 
 .tile:is(
-		[data-tone='clay'],
-		[data-tone='ink'],
-		[data-tone='navy'],
-		[data-tone='pine'],
-		[data-tone='wine']
-	) {
+	[data-tone='clay'],
+	[data-tone='ink'],
+	[data-tone='navy'],
+	[data-tone='pine'],
+	[data-tone='wine']
+) {
 	--tile-pick: color-mix(in oklab, var(--tile-bg) 58%, black);
 }
 
