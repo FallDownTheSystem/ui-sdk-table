@@ -240,6 +240,8 @@ Last full run of the library (commit `05b2e0b`):
 - `6410cc1`: the data sheet. `DataTableSheetToolbar`, `DataTableSummary`, `DataTableAggregate`, row numbers, the fill handle, the looks of formats in light and dark, and the page `/data-sheet` with a budget sheet, checked values, saved formats and a sheet in a grid of 50,000 rows.
 - Checks at `6410cc1`: `vp check`, type-check and build pass; ESLint 0 errors; 90 unit tests; 77 Playwright tests (Chromium); audit `0 errors, 193 warnings, 166 in the baseline`; contrast 204 pairs (table) and 121 pairs (sheet) for each theme at WCAG AA.
 
+**Later the same day, on the owner's word:** library `19f3d59` (the text field of a percentage, the average of the summary) and app pull request 51, merged as `7318107` (the library commit, the text "No total" in the list of a column without a total). The deploy of the app passed. Three pull requests of the dependency bot (38, 39, 40; major versions, with conflicts) are open and were not touched.
+
 **Faults that the sheet work found in the code of before, each fixed with a test.**
 - Two reports of edits in one turn lost the first: the second read the rows of the last render. The table holds the values of a turn (`edit/turn.ts`), and `applyEdits(rows, edits, getRowId?)` finds a replaced row by its id.
 - Two changes of a state key that the owner holds, in one turn, lost the first.
