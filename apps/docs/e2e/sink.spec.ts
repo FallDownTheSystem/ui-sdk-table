@@ -412,6 +412,18 @@ test('a price is edited in its cell, and a price below zero is refused', async (
 	await expect(cell(table, 'Filter roast', 'price')).toBeFocused()
 })
 
+test('a switch in a cell reports its edit, and the row follows', async ({ page }) => {
+	await open(page, '&only=edit-switch')
+	const weekly = tile(page, 'edit-switch').getByRole('switch', { name: 'Weekly summary' })
+	await expect(weekly).not.toBeChecked()
+	await weekly.click()
+	await expect(weekly).toBeChecked()
+	await expect(tile(page, 'edit-switch').getByRole('status')).toHaveText('1 edits reported')
+	await weekly.click()
+	await expect(weekly).not.toBeChecked()
+	await expect(tile(page, 'edit-switch').getByRole('status')).toHaveText('2 edits reported')
+})
+
 test('a sheet in a tile takes a typed number, goes down, and Control+Z takes it back', async ({
 	page,
 }) => {
