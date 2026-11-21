@@ -1,5 +1,7 @@
 # Report: table library, subtasks 4 to 9
 
+**This report is the state at commit `5035ff8`. The work after it (headless only, sink page, data sheet) is in the last section, "After the report", which is the state of now where the two differ.**
+
 Date: 2026-11-21. All six subtasks are done. The library is on `master` of `ui-sdk-table`. The app change is a pull request that waits for the owner: https://github.com/FallDownTheSystem/dashboard-template/pull/50.
 
 ## Result in short
@@ -202,3 +204,65 @@ Styled table, 30,000 selected rows in 300 groups: one toggle takes 7 to 13 ms (3
 - Rules of the library: `CLAUDE.md`. Numbers: `docs/benchmarks.md`.
 - Install route for an app: `packages/styled/README.md`.
 - Pull request: https://github.com/FallDownTheSystem/dashboard-template/pull/50
+
+## After the report
+
+Date: 2026-11-21, later the same day. The owner set the layers: UI SDK gives the logic primitives, this library gives the headless table, and an app builds its own styled table. Then the owner asked for a sink page, a published docs site, and data sheet behaviors with examples in the app.
+
+**What changed in the sections above.**
+- `packages/styled`, the registry and the install script are removed (subtask 8). The styled table is source of the app, in `src/components/DataTable/` of dashboard-template. The install route is in `packages/vue/README.md`, not in `packages/styled/README.md`.
+- The library is a public repository. Open item 2 (git access for each computer) is closed. The deploy workflow of the app is still not run with the new dependencies.
+- The name `ui-sdk-table-styled` of open item 1 is no longer needed.
+
+**Library, `master` at the commit of this report.**
+
+| Work | Commit | What |
+| --- | --- | --- |
+| Headless only | `43e1db1` | No styled package. Group totals under their columns, facets that follow the other filters, a search with a pause, sort modes, the path of a nested group, reset of the columns. |
+| Sink page, docs site | `4d4e397` | `?page=sink`, small tables that each show one thing, tags read from the code. A workflow publishes `apps/docs` to https://falldownthesystem.github.io/ui-sdk-table/ at each push to `master`. |
+| Data sheet, first half | `6bd796c` | One writer for many cells, undo and redo, sheet keys, clear, cut, the range from code, a paste that repeats. |
+| Data sheet, second half | `05b2e0b` | Row numbers, the fill handle and fill keys, the selection summary, the function of a total at run time, cell formats. Nine sheet tiles on the sink page (55 tiles). |
+
+A sheet is no second component. Each behavior is an option of the table, and `sheet` is the preset (`editable`, `cellSelection`, `history`, `fillHandle`), so sheet and table features combine. The table still writes no row: an undo and a fill are reports through `onCellEdit`. `packages/vue/README.md`, section "A data sheet", is the text for a consumer; `CLAUDE.md`, section "Sheet behaviors", has the rules.
+
+Last full run of the library (commit `05b2e0b`):
+
+| Check | Result |
+| --- | --- |
+| `pnpm check` | pass |
+| `pnpm type-check` | pass |
+| `pnpm exec vp test run` | 680 tests pass, 4 skipped (the two measurement files, which run with `BENCH=1`) |
+| `pnpm test:e2e` | 131 Playwright tests pass (Chromium) |
+| `pnpm build` | pass |
+
+**App, branch `table-swap` at `6410cc1`, pull request 50, not merged.**
+- `aafc677`: the table is source of the app; slider, date and value-list filters, "All" page size, a jump to a page, "Hide all" and "Reset", totals under columns, the search pause, a sort mode switch, a group-by control.
+- `6410cc1`: the data sheet. `DataTableSheetToolbar`, `DataTableSummary`, `DataTableAggregate`, row numbers, the fill handle, the looks of formats in light and dark, and the page `/data-sheet` with a budget sheet, checked values, saved formats and a sheet in a grid of 50,000 rows.
+- Checks at `6410cc1`: `vp check`, type-check and build pass; ESLint 0 errors; 90 unit tests; 77 Playwright tests (Chromium); audit `0 errors, 193 warnings, 166 in the baseline`; contrast 204 pairs (table) and 121 pairs (sheet) for each theme at WCAG AA.
+
+**Faults that the sheet work found in the code of before, each fixed with a test.**
+- Two reports of edits in one turn lost the first: the second read the rows of the last render. The table holds the values of a turn (`edit/turn.ts`), and `applyEdits(rows, edits, getRowId?)` finds a replaced row by its id.
+- Two changes of a state key that the owner holds, in one turn, lost the first.
+- The grid pulled focus back into the table after a person had tabbed out of the page.
+- The Vue controller subscribed before a table arrived, with a warning for each table with a search.
+
+**Set without an answer of the owner.** Change them when the owner says otherwise.
+1. An undo covers values and formats, not sort, filter or column moves.
+2. Tab leaves the table, except inside a selected range.
+3. No insert or removal of rows by the table; the app changes its own array.
+4. A fill goes on with the step of two numbers or two days and repeats everything else.
+5. Formats carry looks (alignment, bold, italic, named colours) as data attributes.
+6. No formula engine, and the rows and columns of the table, not an A1 grid.
+
+**Open items, added.**
+1. **Size.** The sheet behaviors add 38 kB minified to `packages/core` (154.4 kB minified, 53.9 kB gzip; 116.0 and 40.9 before). A table without the options carries them. A separate entry for the sheet is possible and not built.
+2. **A percent cell opens with the plain value.** A cell that shows `25%` opens its editor with `0.25`. A test pins this; it reads badly for a person who types percentages.
+3. **The average of the selection summary** shows up to six decimals when the selection is more than one column (`35,391.666667`).
+4. **`selectAllCells` includes a lead column that is no row header** (a checkbox column), so a copy of all cells starts with an empty cell.
+5. **`undo()` with a refused editor open** throws a text for a developer, and the controller cannot say whether an editor is open. The app reads the page for this.
+6. **`cellFormats` is not in the snapshot of the state** that the UI SDK agent bridge reads, because 50,000 formats made it 989 kB. A reader uses `getCellFormat`.
+7. **The sink page** is light only and has 55 tiles; the first wish was 30 to 40.
+8. **Local paths in `docs/handoff/task-002.md`** (five places) and the four commits of open item 4 above are now public.
+9. **The pull request** waits for the owner's merge. `.claude/skills/vue-virtual-scroller/` in the app is still there.
+
+**Not verified, added.** Firefox and Safari; the Command keys of a Mac; what a browser with its own menus does with Ctrl+D and Ctrl+R; a touch drag of the fill handle; a screen reader on row numbers and footer lists; an xlsx file with cell formats opened in Excel; the published pages in a browser after the last deploy (the deploy passed and the site answers).
