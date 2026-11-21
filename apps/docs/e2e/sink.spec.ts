@@ -719,6 +719,7 @@ const CONTRAST_TILES = [
 	'filter-search',
 	'filter-range',
 	'columns-pin',
+	'columns-hide',
 	'columns-formats',
 	'group-totals',
 	'rows-select',
@@ -818,6 +819,18 @@ for (const tone of TONES) {
 				part('columns-pin', '[data-slot="button"][aria-pressed="true"]'),
 				'fill',
 				EDGE,
+			],
+			[
+				'a choice beside a table',
+				part('columns-hide', '.facet .tile-use:not([data-pressed])'),
+				'text',
+				TEXT,
+			],
+			[
+				'a chosen choice beside a table',
+				part('columns-hide', '.facet .tile-use[data-pressed]'),
+				'text',
+				TEXT,
 			],
 			['a main button', part('rows-empty', '[data-slot="button"].primary'), 'text', TEXT],
 			[
