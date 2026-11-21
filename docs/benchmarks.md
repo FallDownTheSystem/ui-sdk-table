@@ -132,6 +132,9 @@ Each value is the median of 9 runs (5 for a parse), in milliseconds, on the clou
 | Slice 3: set a formula of a column in a table, then `getView` | the cost of one pass of the pipeline | 0.89 |
 | Slice 3: the same while the table sorts by that column | as above | 104 |
 | Slice 3: sort again by that column, its values kept | not estimated | 79.6 |
+| Slice 4: the maps of the addresses for 50,000 new rows, and one number | under 5 | 5.8 |
+| Slice 4: the number of each of 50,000 rows, the maps kept | not estimated | 2.6 |
+| Slice 4: a parse of `=A1+A50000*B2` at a cell, the maps kept | not estimated | 0.04 |
 
 What the numbers show:
 
@@ -168,6 +171,7 @@ The glue of the formulas in the main entry has a limit of 12 kB minified, which 
 | --- | --- |
 | 3, the first build, with the words and the helpers in the main entry | 8.93 kB |
 | 3, with them behind the engine | 2.99 kB |
+| 4, the address mode of the numbers and the letters, `getAddress` and `cellAt` | 3.58 kB |
 
 The main entry holds no text of the engine. The format `period` is in the main entry, as the plan says: the chunk of the formats, which the main entry and the export entry share, grows from 12.59 kB to 13.76 kB (4.66 kB to 5.09 kB compressed). The plan estimated about 20 kB for the entry with about 45 functions; slice 2 has 51 of them in 25.38 kB.
 

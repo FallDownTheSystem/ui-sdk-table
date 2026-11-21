@@ -354,6 +354,14 @@ export type TableController = {
 	 */
 	setColumnFormula(columnId: string, formula: string | null): void
 	/**
+	 * The address of a cell, such as `D7`: the letter of its column among
+	 * the columns of the owner and the number of its row in the document.
+	 * `null` for a column without a letter. Needs the `formulas` option.
+	 */
+	getAddress(rowId: string, columnId: string): string | null
+	/** The cell of an address such as `D7`. It throws for an address that the table does not have. Needs the `formulas` option. */
+	cellAt(address: string): CellRef
+	/**
 	 * Changes the format of cells: how their values become text (`format`,
 	 * `decimals`, `currency`, `dateStyle`) and how they look (`align`, `bold`,
 	 * `italic`, `color`, `fill`). A key with `null` takes that property away.
@@ -1370,7 +1378,9 @@ export const table = definePrimitive({
 		const letterMap = memo(lettersByColumn)
 		/** The letter that a column shows, or `undefined` without the row of letters and for a column that leads the table. */
 		const letterOf = (columnId: string): string | undefined =>
-			letterRowCount() ? letterMap(layout()).get(columnId) : undefined
+			letterRowCount()
+				? letterMap(layout(), engine() ? ownColumns() : undefined).get(columnId)
+				: undefined
 		/** The header cell that covers a place of the header. The header rows come after the row of letters. */
 		const headerAt = (row: number, col: number) =>
 			headerMap(layout())[row - letterRowCount()]?.[col]
@@ -2013,6 +2023,9 @@ export const table = definePrimitive({
 		 * sort, row 1 is another row.
 		 */
 		function rowNumber(rowId: string): number | undefined {
+			// With formulas, the number is an address: the place of the row in the document.
+			const found = engine()
+			if (found && !(options().manualPage ?? false)) return found.rowNumber(rowId, formulaSheet)
 			const rows = bodyRows()
 			const index = flatIndex(rows).get(rowId)
 			const flat = index === undefined ? undefined : rows[index]
@@ -3297,14 +3310,13 @@ export const table = definePrimitive({
 			return found
 		}
 
+		const documentIds = memo((source: { byId: ReadonlyMap<string, unknown> }) => [
+			...source.byId.keys(),
+		])
 		/** What the engine reads of the table. */
 		const formulaSheet = {
 			columns: ownColumns,
-			rowIds: () => [...model.source().byId.keys()],
-			rowNumber: (rowId: string) => {
-				const at = [...model.source().byId.keys()].indexOf(rowId)
-				return at < 0 ? undefined : at + 1
-			},
+			rowIds: () => documentIds(model.source()),
 			row: (rowId: string) => model.source().byId.get(rowId)?.row,
 			value: (rowId: string, columnId: string) => {
 				const node = model.source().byId.get(rowId)
@@ -3650,6 +3662,25 @@ export const table = definePrimitive({
 			setColumnAggregate: (columnId, aggregate) => chooseAggregate(columnId, aggregate),
 			getColumnFormula: (columnId) => readColumnFormula(columnId),
 			setColumnFormula: (columnId, formula) => writeColumnFormula(columnId, formula),
+			getAddress(rowId, columnId) {
+				const found = requireFormulas()
+				const target = formulaTarget(columnId, 'read the address of')
+				if (!model.source().byId.has(String(rowId))) {
+					throw new Error(`No row "${String(rowId)}" in the table.`)
+				}
+				return found.address({ rowId: String(rowId), columnId: target.id }, formulaSheet) ?? null
+			},
+			cellAt(address) {
+				const found = requireFormulas()
+				const cell = found.cellAt(address, formulaSheet)
+				if ('issues' in cell) {
+					throw new Error(
+						cell.issues.map((issue) => issueText(found, issue)).join(' ') +
+							' An address is a letter and a number, such as A1.',
+					)
+				}
+				return cell
+			},
 			moveColumn(columnId, index) {
 				requireVisible(columnId, 'move')
 				const track = state().columnTrack
@@ -5854,6 +5885,8 @@ export const table = definePrimitive({
 			'setColumnAggregate',
 			'getColumnFormula',
 			'setColumnFormula',
+			'getAddress',
+			'cellAt',
 			'pinRow',
 			'scrollToRow',
 			'editCell',

@@ -57,6 +57,8 @@ const NOT_SHOWN: Record<string, string> = {
 	defaultCellFormulas: 'The tiles for formulas come in a later slice.',
 	getColumnFormula: 'The tiles for formulas come in a later slice.',
 	setColumnFormula: 'The tiles for formulas come in a later slice.',
+	getAddress: 'The tiles for formulas come in a later slice.',
+	cellAt: 'The tiles for formulas come in a later slice.',
 	getRowId: 'Every tile has rows with an `id`, which is the default.',
 	sortChildren: 'A sorted tree; the tree tile is not sorted.',
 	canGroup: 'The group tiles say it by `column.groupable`.',

@@ -42,7 +42,10 @@ test('a column of a formula shows the product of its row, sorts, filters and add
 	)
 
 	// A press on the header sorts by the computed value.
-	await table.locator('thead th[data-column="total"]').getByRole('button').click()
+	await table
+		.locator('thead th:not([data-kind="letter"])[data-column="total"]')
+		.getByRole('button')
+		.click()
 	const sorted = await column(table, 'total')
 	expect(sorted).toEqual([...totals].sort((a, b) => a - b))
 
@@ -145,7 +148,10 @@ async function groupByPeriod(page: Page, table: Locator, formula: string) {
 	await page.getByTestId('period').selectOption(formula)
 	await page.getByTestId('grouping').selectOption('period')
 	// A sort by the column puts the groups in time order: a group keeps the order of its rows.
-	await table.locator('thead th[data-column="period"]').getByRole('button').click()
+	await table
+		.locator('thead th:not([data-kind="letter"])[data-column="period"]')
+		.getByRole('button')
+		.click()
 	await expect(groupRows(table).first()).toBeVisible()
 	return groups(table)
 }
@@ -165,8 +171,14 @@ test('a group by WEEKOF starts each week on Sunday, and with type 2 on Monday, i
 		expect(times).toEqual([...times].sort((a, b) => a - b))
 		expect(found.reduce((sum, group) => sum + group.count, 0)).toBe(48)
 		// Back to no sort, so the next round sorts up again.
-		await table.locator('thead th[data-column="period"]').getByRole('button').click()
-		await table.locator('thead th[data-column="period"]').getByRole('button').click()
+		await table
+			.locator('thead th:not([data-kind="letter"])[data-column="period"]')
+			.getByRole('button')
+			.click()
+		await table
+			.locator('thead th:not([data-kind="letter"])[data-column="period"]')
+			.getByRole('button')
+			.click()
 	}
 })
 
@@ -195,8 +207,14 @@ test('a group by MONTHOF holds the orders of its month, and the other periods ha
 		['=HOUROF([created])', /^[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{1,2}:00 [AP]M$/],
 	]
 	for (const [formula, pattern] of patterns) {
-		await table.locator('thead th[data-column="period"]').getByRole('button').click()
-		await table.locator('thead th[data-column="period"]').getByRole('button').click()
+		await table
+			.locator('thead th:not([data-kind="letter"])[data-column="period"]')
+			.getByRole('button')
+			.click()
+		await table
+			.locator('thead th:not([data-kind="letter"])[data-column="period"]')
+			.getByRole('button')
+			.click()
 		const found = await groupByPeriod(page, table, formula)
 		expect(found.every((group) => pattern.test(group.label))).toBe(true)
 		expect(found.reduce((sum, group) => sum + group.count, 0)).toBe(48)
@@ -258,10 +276,9 @@ test('a formula of a column that the table holds: set it, group by it, change it
 	const table = await open(page)
 	const field = page.getByTestId('custom-formula')
 	const quantities = await column(table, 'qty')
-	await expect(table.locator('thead th[data-column="custom"]')).toHaveAttribute(
-		'data-formula-column',
-		'',
-	)
+	await expect(
+		table.locator('thead th:not([data-kind="letter"])[data-column="custom"]'),
+	).toHaveAttribute('data-formula-column', '')
 	expect(await column(table, 'custom')).toEqual(quantities.map((qty) => qty * 2))
 
 	await field.fill('=IF([Quantity]>20, "many", "few")')
@@ -299,4 +316,46 @@ test('a formula of a column that the table holds: set it, group by it, change it
 	await field.press('Enter')
 	await expect(page.getByTestId('custom-issue')).toContainText('reads that column itself')
 	await expect(page.getByTestId('custom-stored')).toHaveText('=IF([qty]>20, "many", "few")')
+})
+
+test('the gutter shows the numbers of the document after a sort, and the letters stay with their columns', async ({
+	page,
+}) => {
+	const table = await open(page)
+	const numbers = () => dataRows(table).locator('th[data-row-header]').allInnerTexts()
+	const first = await numbers()
+	expect(first.slice(0, 3)).toEqual(['1', '2', '3'])
+	const products = await dataRows(table).locator('td[data-column="product"]').allInnerTexts()
+
+	// After a sort the numbers read out of order, and each row keeps its number.
+	await table
+		.locator('thead th:not([data-kind="letter"])[data-column="price"]')
+		.getByRole('button')
+		.click()
+	const sorted = await numbers()
+	expect(sorted).not.toEqual(first)
+	expect([...sorted].sort((a, b) => Number(a) - Number(b))).toEqual(first)
+	const after = await dataRows(table).locator('td[data-column="product"]').allInnerTexts()
+	sorted.forEach((number, index) => expect(after[index]).toBe(products[Number(number) - 1]))
+	await expect(dataRows(table).first().locator('th[data-row-header]')).toHaveAttribute(
+		'aria-label',
+		`Row ${sorted[0]}`,
+	)
+
+	// A filter leaves gaps in the numbers.
+	await page.getByTestId('total-min').fill('500')
+	await page.getByTestId('total-min').press('Tab')
+	const filtered = (await numbers()).map(Number)
+	expect(filtered.length).toBeLessThan(first.length)
+	expect(Math.max(...filtered)).toBeGreaterThan(filtered.length)
+
+	const letters = () =>
+		table.locator('thead th[data-kind="letter"]:not([data-lead])').allInnerTexts()
+	expect(await letters()).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'])
+	// A hidden column leaves a gap, and a moved column keeps its letter.
+	await page.getByTestId('hide-qty').click()
+	expect(await letters()).toEqual(['A', 'B', 'D', 'E', 'F', 'G', 'H'])
+	await page.getByTestId('hide-qty').click()
+	await page.getByTestId('move-total').click()
+	expect(await letters()).toEqual(['A', 'E', 'B', 'C', 'D', 'F', 'G', 'H'])
 })

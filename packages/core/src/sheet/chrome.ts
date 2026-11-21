@@ -1,5 +1,5 @@
 import { isLead, type ColumnLayout } from '../columns/layout'
-import type { ColumnDef } from '../rows'
+import { leafColumns, type ColumnDef } from '../rows'
 
 /**
  * A column of row numbers: it leads the table, its cells are the row headers,
@@ -48,10 +48,28 @@ export function columnLetter(index: number): string {
  * without the columns that lead the table (row numbers, a checkbox): those
  * have no letter. A column that moves or that stands after a hidden column
  * takes the letter of its new place, as the rows take their numbers.
+ *
+ * With `document`, the columns of the owner in the order of their
+ * definition, a letter is an address of a formula instead: the place among
+ * those columns, also without the columns that lead. A hidden column keeps
+ * its letter, so the row of letters shows a gap (A, C), and a column that
+ * moved keeps it too (A, C, B).
  */
-export function lettersByColumn(layout: ColumnLayout): ReadonlyMap<string, string> {
+export function lettersByColumn(
+	layout: ColumnLayout,
+	document?: readonly ColumnDef[],
+): ReadonlyMap<string, string> {
+	return document ? documentLetters(document) : lettersOf(layout.leaves)
+}
+
+/** The letters of the columns of the owner, in the order of their definition: the addresses of a formula. */
+export function documentLetters(columns: readonly ColumnDef[]): ReadonlyMap<string, string> {
+	return lettersOf(leafColumns(columns))
+}
+
+function lettersOf(columns: readonly ColumnDef[]): ReadonlyMap<string, string> {
 	const letters = new Map<string, string>()
-	for (const column of layout.leaves) {
+	for (const column of columns) {
 		if (isLead(column)) continue
 		letters.set(column.id, columnLetter(letters.size))
 	}

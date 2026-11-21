@@ -4,7 +4,7 @@ import { cellValue, toTime } from '../rows/columns'
 import type { ColumnDef } from '../rows/types'
 import { FUNCTIONS, type FormulaArgs, type FormulaContext } from './functions'
 import { namedColumns, parseTree, type FormulaNode } from './parser'
-import { headerNames, printTree } from './print'
+import { bracketRef, headerNames, printTree } from './print'
 import { formulaSigns, STORED_SIGNS } from './tokens'
 import { compare, resultOf, toFormulaText, toNumber } from './values'
 import { describeFormulaIssue } from './words'
@@ -78,7 +78,11 @@ function compileNode(node: FormulaNode, columns: ReadonlyMap<string, ColumnDef<n
 			const value = node.value
 			return () => value
 		}
+		case 'range':
+			throw new Error('A range is read by the formula of a cell only.')
 		case 'column': {
+			if (node.row !== undefined)
+				throw new Error('Another row is read by the formula of a cell only.')
 			const column = columns.get(node.id)
 			if (!column) throw new Error(`No column "${node.id}".`)
 			return (context) => cellValue(context.row as never, column)
@@ -175,7 +179,13 @@ export function parseFormula(
 		self: options.self,
 	})
 	if ('issues' in parsed) return parsed
-	return { formula: printTree(parsed.tree, STORED_SIGNS, (id) => id) }
+	return {
+		formula: printTree(
+			parsed.tree,
+			STORED_SIGNS,
+			bracketRef((id) => id),
+		),
+	}
 }
 
 /**
@@ -190,7 +200,7 @@ export function printFormula(
 	const parsed = parseTree(formula, { columns: options.columns, signs: STORED_SIGNS })
 	if ('issues' in parsed) failWith(formula, parsed.issues, '')
 	const names = options.form === 'id' ? (id: string) => id : headerNames(options.columns)
-	return printTree(parsed.tree, formulaSigns(options.locale), names)
+	return printTree(parsed.tree, formulaSigns(options.locale), bracketRef(names))
 }
 
 /**

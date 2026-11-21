@@ -174,3 +174,36 @@ describe.runIf(requested)('formulas of columns in a table with 50,000 rows', () 
 		}
 	})
 })
+
+describe.runIf(requested)('addresses with 50,000 rows', () => {
+	test('median time of the maps of the addresses and of a parse at a cell', () => {
+		const engine = createFormulaEngine()
+		const ids = lines().map((line) => line.id)
+		const results: Record<string, number> = {}
+		results['the maps for 50,000 new rows, then one number'] = median(() => {
+			const rowIds = [...ids]
+			return engine.rowNumber('r49999', {
+				columns: () => base as readonly ColumnDef[],
+				rowIds: () => rowIds,
+				row: () => undefined,
+				value: () => undefined,
+				locale: () => undefined,
+			})
+		})
+		const kept = {
+			columns: () => base as readonly ColumnDef[],
+			rowIds: () => ids,
+			row: () => undefined,
+			value: () => undefined,
+			locale: () => undefined,
+		}
+		results['the number of each of 50,000 rows, maps kept'] = median(() => {
+			for (const id of ids) engine.rowNumber(id, kept)
+		})
+		results['parse of "=A1+A50000*B2" at a cell, maps kept'] = median(() =>
+			engine.parse('=A1+A50000*B2', { rowId: 'r1', columnId: 'total' }, kept),
+		)
+		expect(engine.rowNumber('r49999', kept)).toBe(50_000)
+		console.table(results)
+	})
+})

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import type { CellFormulas } from './formula/types'
 import { createFormulaEngine } from './formulas'
 import type { ColumnDef } from './rows'
+import { rowNumberColumn } from './sheet/chrome'
 import { items, sheetTable, type ItemRow } from './sheet/harness'
 
 // The formulas of the `columns` layer of `cellFormulas`: a column whose
@@ -177,6 +178,96 @@ describe('a table without the `formulas` option', () => {
 			expect(() => view.api.getColumnFormula('total')).toThrow('This table has no formulas')
 		} finally {
 			view.unmount()
+		}
+	})
+})
+
+describe('the addresses of a table with formulas', () => {
+	const numbered = () => {
+		const values = items()
+		const read = (key: 'name' | 'kind' | 'price' | 'stock') => (row: ItemRow) =>
+			values[row.id]?.[key]
+		return [
+			rowNumberColumn<ItemRow>(),
+			{ id: 'name', header: 'Name', value: read('name') },
+			{ id: 'kind', header: 'Kind', value: read('kind') },
+			{ id: 'price', header: 'Price', value: read('price'), sortable: true },
+			{ id: 'stock', header: 'Stock', value: read('stock') },
+		] satisfies ColumnDef<ItemRow>[]
+	}
+
+	test('the number of a row is its place in the document, also after a sort and on another page', () => {
+		const { view, cell } = sheetTable({
+			sheet: true,
+			columns: numbered(),
+			formulas: engine,
+			defaultPage: { page: 1, pageSize: 4 },
+		})
+		try {
+			expect(cell('c', '#').getAttribute('aria-label')).toBe('Row 3')
+			view.api.sortBy('price', 'asc')
+			// The cheapest row (c) is the third row of the document.
+			expect(['c', 'b', 'd', 'a'].map((id) => view.api.rowNumber(id))).toEqual([3, 2, 4, 1])
+			view.api.setPageSize(2)
+			view.api.setPage(2)
+			// Page 2 holds the rows d and a, by price: their numbers are still those of the document.
+			expect(['d', 'a'].map((id) => view.api.rowNumber(id))).toEqual([4, 1])
+			expect(view.api.getAddress('c', 'price')).toBe('C3')
+			expect(view.api.cellAt('$d$1')).toEqual({ rowId: 'a', columnId: 'stock' })
+			expect(() => view.api.cellAt('A9')).toThrow('No cell `A9`. The table has 4 rows.')
+			expect(() => view.api.getAddress('a', 'nope')).toThrow('No column "nope"')
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a letter is the place among the columns of the owner: a hidden column leaves a gap, and a moved one keeps it', () => {
+		const { view } = sheetTable({
+			sheet: true,
+			columnLetters: true,
+			columns: numbered(),
+			formulas: engine,
+		})
+		try {
+			const letters = () => ['name', 'kind', 'price', 'stock'].map((id) => view.api.letterOf(id))
+			expect(letters()).toEqual(['A', 'B', 'C', 'D'])
+			// The hidden column keeps its letter and has no cell in the row of letters: A, C, D.
+			view.api.setColumnVisibility('kind', false)
+			expect(letters()).toEqual(['A', 'B', 'C', 'D'])
+			expect(
+				view.api.getView().visibleColumns.map((column) => view.api.letterOf(column.id)),
+			).toEqual([undefined, 'A', 'C', 'D'])
+			view.api.setColumnVisibility('kind', true)
+			view.api.moveColumn('stock', 2)
+			expect(letters()).toEqual(['A', 'B', 'C', 'D'])
+			expect(view.api.letterOf('#')).toBeUndefined()
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('with pages from a server, and without the option, numbers and letters are places of the view', () => {
+		const server = sheetTable({
+			sheet: true,
+			columns: numbered(),
+			formulas: engine,
+			manualPage: true,
+			rowCount: 40,
+			page: { page: 3, pageSize: 4 },
+		})
+		try {
+			expect(server.view.api.rowNumber('a')).toBe(9)
+		} finally {
+			server.view.unmount()
+		}
+		const plain = sheetTable({ sheet: true, columnLetters: true, columns: numbered() })
+		try {
+			plain.view.api.sortBy('price', 'asc')
+			expect(plain.view.api.rowNumber('c')).toBe(1)
+			plain.view.api.setColumnVisibility('kind', false)
+			expect(plain.view.api.letterOf('price')).toBe('B')
+		} finally {
+			plain.view.unmount()
 		}
 	})
 })

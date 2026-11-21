@@ -68,10 +68,12 @@ export type FormulaPlace = { rowId: string; columnId: string }
 export type FormulaSheet = {
 	/** The columns as the owner defines them, with the formulas of the columns in place. */
 	columns(): readonly ColumnDef[]
-	/** The ids of the rows in the order of the document, children after their parent. */
+	/**
+	 * The ids of the rows in the order of the document, children after their
+	 * parent. The same array while the rows are the same: the engine keeps
+	 * its maps for it.
+	 */
 	rowIds(): readonly string[]
-	/** The number of a row, from 1, or `undefined` for a row that the document does not hold. */
-	rowNumber(rowId: string): number | undefined
 	/** The row object of an id, or `undefined` for a row that is gone. */
 	row(rowId: string): unknown
 	/** The value of a cell now: what the table reported in this turn, else the row. */
@@ -172,4 +174,10 @@ export type FormulaEngine = {
 	revertFormulas(now: CellFormulas, from: CellFormulas, to: CellFormulas): CellFormulas
 	/** The words for an issue, in English. */
 	describe(issue: FormulaIssue): string
+	/** The number of a row in the document, from 1, or `undefined` for a row it does not hold. */
+	rowNumber(rowId: string, sheet: FormulaSheet): number | undefined
+	/** The address of a cell, such as `D7`, or `undefined` for a column without a letter or a row that is gone. */
+	address(place: FormulaPlace, sheet: FormulaSheet): string | undefined
+	/** The cell of an address such as `D7` or `$D$7`, or the issue. */
+	cellAt(address: string, sheet: FormulaSheet): FormulaPlace | { issues: FormulaIssue[] }
 }

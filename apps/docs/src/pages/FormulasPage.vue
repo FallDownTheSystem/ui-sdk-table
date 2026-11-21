@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { createTableController, Table, type CellFormulas, type ColumnDef } from 'ui-sdk-table-vue'
+import {
+	createTableController,
+	rowNumberColumn,
+	Table,
+	type CellFormulas,
+	type ColumnDef,
+} from 'ui-sdk-table-vue'
 import {
 	createFormulaEngine,
 	describeFormulaIssue,
@@ -141,7 +147,15 @@ function saveCustom() {
 	}
 }
 
-const columns = computed(() => [...base, total.value, band.value, periodColumn.value, custom])
+const numbers = rowNumberColumn<Order>()
+const columns = computed(() => [
+	numbers,
+	...base,
+	total.value,
+	band.value,
+	periodColumn.value,
+	custom,
+])
 
 function save() {
 	const parsed = parseFormula(draft.value, { columns: base, locale, self: 'total' })
@@ -244,6 +258,14 @@ function filterPeriod() {
 			<input v-model="range.max" type="number" data-testid="total-max" @change="filterTotal" />
 		</label>
 	</div>
+	<div class="toolbar">
+		<button type="button" data-testid="hide-qty" @click="controller.toggleColumnVisibility('qty')">
+			Hide or show the quantity
+		</button>
+		<button type="button" data-testid="move-total" @click="controller.moveColumn('total', 1)">
+			Move the total after the product
+		</button>
+	</div>
 	<div class="scroller">
 		<Table
 			v-model:filter="filter"
@@ -251,6 +273,7 @@ function filterPeriod() {
 			:controller="controller"
 			:formulas="engine"
 			history
+			column-letters
 			:rows="rows"
 			:columns="columns"
 			:group-by="groupBy"

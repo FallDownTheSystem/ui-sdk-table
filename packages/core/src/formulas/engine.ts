@@ -10,8 +10,9 @@ import { columnCircle, withColumnFormulas, type ColumnCompiler } from './columns
 import { compileTree, type FormulaOptions } from './compile'
 import { FORMULA_FUNCTIONS } from './functions'
 import { formulaShows } from './kinds'
-import { parseTree, type FormulaNode } from './parser'
-import { headerNames, printTree } from './print'
+import { documentLetters } from '../sheet/chrome'
+import { namedColumns, parseTree, type FormulaAddresses, type FormulaNode } from './parser'
+import { addressRef, bracketRef, headerNames, printTree } from './print'
 import { revertFormulas, setFormulas } from './state'
 import { formulaSigns, STORED_SIGNS } from './tokens'
 import { describeFormulaIssue } from './words'
@@ -31,6 +32,9 @@ export function columnsRead(tree: FormulaNode): string[] {
 				return walk(node.operand)
 			case 'group':
 				return walk(node.inner)
+			case 'range':
+				walk(node.from)
+				return walk(node.to)
 			case 'binary':
 				walk(node.left)
 				return walk(node.right)
@@ -43,6 +47,16 @@ export function columnsRead(tree: FormulaNode): string[] {
 	walk(tree)
 	return [...found]
 }
+
+/** The maps of the addresses of one list of columns and rows. */
+type Addresses = {
+	letters: ReadonlyMap<string, string>
+	columns: ReadonlyMap<string, string>
+	numbers: ReadonlyMap<string, number>
+	rowIds: readonly string[]
+}
+
+const ADDRESS = /^(\$?)([A-Z]{1,3})(\$?)(\d+)$/
 
 /** A value function that computes each row object once and keeps the value for it. */
 export function keptByRow(run: (row: unknown) => unknown): (row: unknown) => unknown {
@@ -66,24 +80,67 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 	const compile: ColumnCompiler = (formula, columnId, columns) =>
 		engine.column(formula, columnId, columns)
 
+	// The maps are kept for each list of row ids, and made again for other columns.
+	const kept = new WeakMap<readonly string[], { columns: readonly ColumnDef[]; maps: Addresses }>()
+	function addressesOf(sheet: FormulaSheet): Addresses {
+		const rowIds = sheet.rowIds()
+		const columns = sheet.columns()
+		const found = kept.get(rowIds)
+		if (found && found.columns === columns) return found.maps
+		const letters = documentLetters(columns)
+		const numbers = new Map<string, number>()
+		rowIds.forEach((id, index) => numbers.set(id, index + 1))
+		const maps = {
+			letters,
+			columns: new Map([...letters].map(([id, letter]) => [letter, id])),
+			numbers,
+			rowIds,
+		}
+		kept.set(rowIds, { columns, maps })
+		return maps
+	}
+	function where(place: FormulaPlace, sheet: FormulaSheet): FormulaAddresses {
+		const maps = addressesOf(sheet)
+		return {
+			rowId: place.rowId,
+			columnOf: (letters) => maps.columns.get(letters),
+			letterOf: (id) => maps.letters.get(id),
+			rowOf: (number) => maps.rowIds[number - 1],
+			numberOf: (id) => maps.numbers.get(id),
+			rows: maps.rowIds.length,
+		}
+	}
+
 	const engine: FormulaEngine = {
 		parse(text, at, sheet) {
-			if (!('rowId' in at)) {
-				const parsed = parseTree(text, {
-					columns: columnsOf(sheet),
-					signs: formulaSigns(sheet.locale()),
-					self: at.columnId,
-				})
-				if ('issues' in parsed) return parsed
-				return { formula: printTree(parsed.tree, STORED_SIGNS, (id) => id) }
+			const parsed = parseTree(text, {
+				columns: columnsOf(sheet),
+				signs: formulaSigns(sheet.locale()),
+				self: 'rowId' in at ? undefined : at.columnId,
+				addresses: 'rowId' in at ? where(at, sheet) : undefined,
+			})
+			if ('issues' in parsed) return parsed
+			return {
+				formula: printTree(
+					parsed.tree,
+					STORED_SIGNS,
+					bracketRef((id) => id),
+				),
 			}
-			return { issues: [{ code: 'otherRow', at: 0, name: text } satisfies FormulaIssue] }
 		},
-		print(formula, _at, sheet) {
+		print(formula, at, sheet) {
 			const columns = columnsOf(sheet)
-			const parsed = parseTree(formula, { columns, signs: STORED_SIGNS })
+			const place = 'rowId' in at ? where(at, sheet) : undefined
+			const parsed = parseTree(formula, {
+				columns,
+				signs: STORED_SIGNS,
+				addresses: place,
+				keepGone: true,
+			})
 			if ('issues' in parsed) return formula
-			return printTree(parsed.tree, formulaSigns(sheet.locale()), headerNames(columns))
+			const names = headerNames(columns)
+			const ref = place ? addressRef(place, names) : bracketRef(names)
+			return printTree(parsed.tree, formulaSigns(sheet.locale()), ref)
 		},
 		column(formula, columnId, columns): FormulaColumn | { issues: FormulaIssue[] } {
 			const known = columns as readonly ColumnDef<never>[]
@@ -109,6 +166,34 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 		setFormulas,
 		revertFormulas,
 		describe: describeFormulaIssue,
+		rowNumber: (rowId, sheet) => addressesOf(sheet).numbers.get(rowId),
+		address(place, sheet) {
+			const maps = addressesOf(sheet)
+			const letter = maps.letters.get(place.columnId)
+			const number = maps.numbers.get(place.rowId)
+			return letter === undefined || number === undefined ? undefined : `${letter}${number}`
+		},
+		cellAt(address, sheet) {
+			const maps = addressesOf(sheet)
+			const parts = typeof address === 'string' ? ADDRESS.exec(address.trim().toUpperCase()) : null
+			const columnId = parts ? maps.columns.get(parts[2] ?? '') : undefined
+			if (!parts || columnId === undefined) {
+				const named = namedColumns(columnsOf(sheet)).flatMap((column) => {
+					const letter = maps.letters.get(column.id)
+					return letter ? [letter] : []
+				})
+				return {
+					issues: [{ code: 'unknownColumn', at: 0, name: String(address), valid: named }],
+				}
+			}
+			const rowId = maps.rowIds[Number(parts[4]) - 1]
+			if (rowId === undefined) {
+				return {
+					issues: [{ code: 'unknownCell', at: 0, name: String(address), rows: maps.rowIds.length }],
+				}
+			}
+			return { rowId, columnId }
+		},
 	}
 	return engine
 }
