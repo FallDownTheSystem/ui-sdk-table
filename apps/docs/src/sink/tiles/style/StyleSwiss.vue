@@ -12,7 +12,6 @@ const departures: Departure[] = [
 const columns: ColumnDef<Departure>[] = [
 	{ id: 'time', header: 'Time', sortable: true },
 	{ id: 'to', header: 'To', sortable: true },
-	{ id: 'via', header: 'Via' },
 	{ id: 'track', header: 'Track', format: 'integer' },
 ]
 </script>

@@ -7,28 +7,8 @@ export type Person = {
 	joined: string
 }
 
-const FIRST = [
-	'Aino',
-	'Eero',
-	'Helmi',
-	'Ilmari',
-	'Kerttu',
-	'Lauri',
-	'Maija',
-	'Onni',
-	'Saara',
-	'Väinö',
-]
-const LAST = [
-	'Aalto',
-	'Heikkinen',
-	'Järvinen',
-	'Korhonen',
-	'Laine',
-	'Mäkinen',
-	'Nieminen',
-	'Virtanen',
-]
+const FIRST = ['Ada', 'Ben', 'Cleo', 'Dan', 'Eve', 'Finn', 'Gus', 'Ivy', 'Jack', 'Lily']
+const LAST = ['Adams', 'Brooks', 'Carter', 'Drake', 'Ellis', 'Fisher', 'Grant', 'Hayes']
 const TEAMS = ['Billing', 'Design', 'Growth', 'Platform', 'Support']
 const COUNTRIES = ['Finland', 'Sweden', 'Norway', 'Denmark', 'Estonia']
 

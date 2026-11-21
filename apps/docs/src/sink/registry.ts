@@ -52,17 +52,21 @@ function interleave<Item>(lists: Item[][]): Item[] {
 
 // The tiles that open the page, in this order.
 const FEATURED = [
-	'group-totals',
-	'rows-window',
-	'style-pixel',
-	'edit-price',
 	'style-brutal',
-	'sort-two-columns',
 	'style-swiss',
 	'style-deco',
+	'style-pixel',
+	'group-totals',
+	'rows-window',
+	'edit-price',
+	'sort-two-columns',
 ]
 
+// The tile that closes the page: everything at once, in one real table.
+const CLOSING = 'more-app'
+
 const rank = (id: string) => {
+	if (id === CLOSING) return FEATURED.length + 1
 	const index = FEATURED.indexOf(id)
 	return index === -1 ? FEATURED.length : index
 }

@@ -88,7 +88,6 @@ const NOT_SHOWN: Record<string, string> = {
 	startEdit:
 		'The edit tiles open a cell with Enter or two clicks; `editCell` edits without an editor.',
 	cancelEdit: 'As `startEdit`; Escape does it.',
-	getTotals: 'The tiles read a total in the `foot` and `group-total` slots.',
 	'slot.editor':
 		'The editor of every column; the tile brings one for one column, with `#edit-{id}`.',
 	defaultColumnAggregates: 'The totals tile passes `columnAggregates` itself.',
@@ -200,11 +199,27 @@ describe('pack', () => {
 	})
 
 	it('lets a neighbour grow over a cell that no item took', () => {
-		// Two columns: the tall item leaves the cell under the small one free.
-		const placed = pack(['tall', 's'] as const, span, 2)
+		// Two columns: the tall item leaves the cell under the small one free, and a line follows.
+		const placed = pack(['tall', 's', 'wide'] as const, span, 2)
 		expect(placed.find((entry) => entry.item === 's')).toMatchObject({ row: 1, column: 2, rows: 2 })
+	})
+
+	it('leaves the end of the last line open, also before an item as wide as the grid', () => {
 		const last = pack(['wide', 's'] as const, span, 2)
-		expect(last.at(-1)).toMatchObject({ row: 2, column: 1, columns: 2 })
+		expect(last.at(-1)).toMatchObject({ row: 2, column: 1, columns: 1 })
+		const closed = pack(['wide', 's', 'full'] as const, span, 3)
+		expect(closed.map((entry) => [entry.item, entry.row, entry.columns])).toEqual([
+			['wide', 1, 2],
+			['s', 1, 1],
+			['full', 2, 3],
+		])
+		// A hole above the last line is filled.
+		const open = pack(['wide', 'wide', 'full'] as const, span, 3)
+		expect(open.map((entry) => [entry.item, entry.row, entry.columns])).toEqual([
+			['wide', 1, 3],
+			['wide', 2, 2],
+			['full', 3, 3],
+		])
 	})
 
 	it('leaves no hole and no overlap for the tiles of the page at any width', () => {
@@ -212,9 +227,13 @@ describe('pack', () => {
 		for (const columns of [1, 2, 3, 4, 5, 6]) {
 			const placed = pack(tiles, (tile) => SPANS[tile.size], columns)
 			const taken = cells(placed)
-			const rows = Math.max(...placed.map((entry) => entry.row + entry.rows - 1))
+			// Only the last line of tiles, before the tile that closes the page, may end early.
+			const lastLine = Math.max(
+				...placed.filter((entry) => entry.item.size !== 'full').map((entry) => entry.row),
+			)
+			const inside = taken.filter((cell) => Number(cell.split(':')[0]) < lastLine)
 			if (new Set(taken).size !== taken.length) wrong.push(`${columns} columns overlap`)
-			if (taken.length !== rows * columns) wrong.push(`${columns} columns have a hole`)
+			if (inside.length !== (lastLine - 1) * columns) wrong.push(`${columns} columns have a hole`)
 		}
 		expect(wrong).toEqual([])
 	})

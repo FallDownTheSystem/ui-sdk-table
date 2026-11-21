@@ -21,11 +21,11 @@ test('the table sorts, searches and pages 50,000 rows', async ({ page }) => {
 	const last = Number(await table.locator('tbody tr').last().locator('td').nth(3).innerText())
 	expect(first).toBeGreaterThanOrEqual(last)
 
-	await page.getByRole('searchbox', { name: 'Search' }).fill('Aino Aalto')
-	await expect(table.locator('tbody tr').first()).toContainText('Aino Aalto')
+	await page.getByRole('searchbox', { name: 'Search' }).fill('Ada Adams')
+	await expect(table.locator('tbody tr').first()).toContainText('Ada Adams')
 	await page.getByRole('button', { name: 'Next page' }).click()
 	await expect(page.getByTestId('page')).toHaveText('Page 2')
-	await expect(table.locator('tbody tr').first()).toContainText('Aino Aalto')
+	await expect(table.locator('tbody tr').first()).toContainText('Ada Adams')
 
 	await page.getByRole('searchbox', { name: 'Search' }).fill('no such person')
 	await expect(table.locator('tbody')).toHaveText('No person matches the search.')

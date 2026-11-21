@@ -5,7 +5,7 @@ import { shallowRef } from 'vue'
 import { count, euro, orders, type Order } from '../../data'
 
 // A few orders, so the table stands whole in its tile.
-const rows = orders.slice(0, 3)
+const rows = orders.slice(0, 4)
 
 const columns: ColumnDef<Order>[] = [
 	{ id: 'customer', header: 'Customer', sortable: true },

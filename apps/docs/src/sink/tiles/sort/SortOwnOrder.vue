@@ -6,11 +6,11 @@ type Ticket = { id: string; subject: string; urgency: string }
 const LEVELS = ['Urgent', 'High', 'Medium', 'Low']
 
 const tickets: Ticket[] = [
-	{ id: 't1', subject: 'Invoice shows the wrong tax', urgency: 'High' },
-	{ id: 't2', subject: 'Typo on the pricing page', urgency: 'Low' },
+	{ id: 't1', subject: 'Wrong tax on an invoice', urgency: 'High' },
+	{ id: 't2', subject: 'Typo on pricing', urgency: 'Low' },
 	{ id: 't3', subject: 'Checkout is down', urgency: 'Urgent' },
-	{ id: 't5', subject: 'Password mail is slow', urgency: 'High' },
-	{ id: 't7', subject: 'Refund was sent twice', urgency: 'Urgent' },
+	{ id: 't5', subject: 'Slow password mail', urgency: 'High' },
+	{ id: 't7', subject: 'Refund sent twice', urgency: 'Urgent' },
 ]
 const columns: ColumnDef<Ticket>[] = [
 	{ id: 'subject', header: 'Ticket', sortable: true },

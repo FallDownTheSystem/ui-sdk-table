@@ -1,7 +1,7 @@
 import type { Component } from 'vue'
 
-/** How much of the grid a tile takes: one cell, two columns, two rows, or two by two. */
-export type TileSize = 's' | 'wide' | 'tall' | 'large'
+/** How much of the grid a tile takes: one cell, two columns, two rows, two by two, or every column and two rows. */
+export type TileSize = 's' | 'wide' | 'tall' | 'large' | 'full'
 
 /**
  * The ground of a tile, in three weights: neutral (`paper`, `sand`), soft

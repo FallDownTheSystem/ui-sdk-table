@@ -13,6 +13,7 @@ export type ContrastKind = 'text' | 'placeholder' | 'border' | 'outline' | 'fill
 type Contrast = {
 	measure: (element: Element, kind: ContrastKind) => number
 	pair: (front: string, back: string) => number
+	pairOver: (front: string, element: Element) => number
 }
 
 declare global {
@@ -83,6 +84,10 @@ function install() {
 
 	window.tableContrast = {
 		pair: (front, back) => ratio(over([back, front]), over([back])),
+		pairOver: (front, element) => {
+			const ground = fills(element)
+			return ratio(over([...ground, front]), over(ground))
+		},
 		measure(element, kind) {
 			const style = getComputedStyle(element)
 			const own = fills(element)
@@ -126,6 +131,10 @@ export const colourOf = (locator: Locator, property: string, pseudo?: string) =>
 			getComputedStyle(element, pseudo).getPropertyValue(property ?? 'color'),
 		[property, pseudo] as const,
 	)
+
+/** The ratio of a colour painted over an element, against that element: its own fill over every fill behind it. */
+export const contrastOver = (front: string, back: Locator) =>
+	back.evaluate((element, front) => window.tableContrast.pairOver(front, element), front)
 
 /** The ratio of two colours as written, the first painted over the second. */
 export const contrastOfPair = (page: Page, front: string, back: string) =>

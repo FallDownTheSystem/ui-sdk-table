@@ -58,12 +58,12 @@ test('a search and a filter go to the server, and start on the first page', asyn
 	await page.getByRole('button', { name: 'Next page' }).click()
 	await expect(page.getByTestId('page')).toHaveText('Page 2 of 400')
 
-	await page.getByRole('searchbox', { name: 'Search' }).fill('Aino Aalto')
+	await page.getByRole('searchbox', { name: 'Search' }).fill('Ada Adams')
 	await expect(page.getByTestId('status')).toHaveText('Ready')
 	await expect(page.getByTestId('page')).toHaveText(/^Page 1 of \d$/)
 	const names = await column(page, 1).allInnerTexts()
 	expect(names.length).toBeGreaterThan(0)
-	expect(names.every((name) => name === 'Aino Aalto')).toBe(true)
+	expect(names.every((name) => name === 'Ada Adams')).toBe(true)
 	const found = await page.getByTestId('total').innerText()
 
 	await page.getByRole('combobox', { name: 'Team' }).selectOption('Design')
@@ -92,11 +92,11 @@ test('while rows load, the table is busy and keeps its rows; a late answer does 
 	// Two searches, the second before the first answer: only the second shows.
 	const search = page.getByRole('searchbox', { name: 'Search' })
 	await search.fill('Design')
-	await search.fill('Väinö Virtanen')
+	await search.fill('Lily Hayes')
 	await expect(page.getByTestId('status')).toHaveText('Ready')
 	await page.waitForTimeout(800)
 	const names = await column(page, 1).allInnerTexts()
-	expect(names.every((name) => name === 'Väinö Virtanen')).toBe(true)
+	expect(names.every((name) => name === 'Lily Hayes')).toBe(true)
 })
 
 test('the first load says so in the body', async ({ page }) => {

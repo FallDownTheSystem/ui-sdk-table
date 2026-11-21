@@ -368,7 +368,7 @@ test('the search field shows each letter at once, and the table filters once aft
 	expect(await said()).toBe(1)
 	await page.getByRole('button', { name: 'Open all groups' }).click()
 	for (const name of await dataRows(table).locator('td[data-column="name"]').allInnerTexts()) {
-		expect(name).toContain('Saara')
+		expect(name).toContain('Jack')
 	}
 
 	// Escape empties the field and the search at once, and the text that waited never filters.

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { Table, type ColumnDef } from 'ui-sdk-table-vue'
+import { computed, shallowRef } from 'vue'
+import SinkSwitch from '../../parts/SinkSwitch.vue'
 
 type Flight = { id: string; flight: string; departs: string }
 
@@ -28,14 +30,25 @@ const columns: ColumnDef<Flight>[] = [
 		formatOptions: { ...time, timeZone: 'America/New_York' },
 	},
 ]
+
+// Off, every column shows the value as the data holds it, so the work of a format shows.
+const formatted = shallowRef(true)
+const shown = computed(() =>
+	formatted.value
+		? columns
+		: columns.map((column) => ({ ...column, format: undefined, formatOptions: undefined })),
+)
 </script>
 
 <template>
 	<div class="demo">
+		<div class="demo-bar">
+			<SinkSwitch v-model="formatted">Formatted</SinkSwitch>
+		</div>
 		<div class="sink-frame">
 			<Table
 				:rows="flights"
-				:columns="columns"
+				:columns="shown"
 				locale="en-GB"
 				aria-label="Departures in two time zones"
 			/>

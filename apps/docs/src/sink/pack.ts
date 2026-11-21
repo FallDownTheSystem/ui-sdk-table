@@ -7,6 +7,8 @@ export const SPANS: Record<TileSize, Span> = {
 	wide: { columns: 2, rows: 1 },
 	tall: { columns: 1, rows: 2 },
 	large: { columns: 2, rows: 2 },
+	// As wide as the grid is: `pack` cuts a span to the columns there are.
+	full: { columns: Number.MAX_SAFE_INTEGER, rows: 2 },
 }
 
 export type Placed<Item> = Span & {
@@ -69,7 +71,14 @@ export function pack<Item>(
 
 	// A cell that no item took is a hole in the page. A neighbour grows over
 	// it: the one before it in the row, else the one above, else the one after.
-	for (let row = 1; row <= owners.length; row++) {
+	// The last line of items keeps its holes: a tile stretched over the page
+	// only to fill it reads worse than the empty end of a line. An item that
+	// asks for more columns than the grid has closes the page and is no line.
+	const lastLine = Math.max(
+		0,
+		...placed.filter((owner) => spanOf(owner.item).columns <= width).map((owner) => owner.row),
+	)
+	for (let row = 1; row < lastLine; row++) {
 		for (let column = 1; column <= width; column++) {
 			if (at(row, column)) continue
 			const before = at(row, column - 1)

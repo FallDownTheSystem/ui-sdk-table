@@ -6,7 +6,6 @@ export const tiles: TileCopy[] = [
 		id: 'style-brutal',
 		title: 'Make it loud.',
 		blurb: 'The same table, with thick lines, hard shadows and a colour for each state.',
-		size: 'wide',
 	},
 	{
 		id: 'style-pixel',
@@ -17,7 +16,6 @@ export const tiles: TileCopy[] = [
 		id: 'style-swiss',
 		title: 'Read the departures.',
 		blurb: 'The same table set as a Swiss poster: a grid, one red and large numbers.',
-		size: 'wide',
 	},
 	{
 		id: 'style-deco',

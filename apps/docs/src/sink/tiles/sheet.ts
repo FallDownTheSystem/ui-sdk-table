@@ -65,7 +65,6 @@ export const tiles: TileCopy[] = [
 		id: 'sheet-saved',
 		title: 'Open saved formats.',
 		blurb: 'A column shown as a share and two marked cells come with the document.',
-		size: 'wide',
 		tone: 'paper',
 	},
 ]
