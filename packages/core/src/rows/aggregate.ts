@@ -1,4 +1,5 @@
 import { cellValue, leafColumns } from './columns'
+import { walkRows } from './nodes'
 import type { AggregateFn, AggregateName, ColumnDef, DataRow } from './types'
 
 function numbers(values: readonly unknown[]): number[] {
@@ -66,4 +67,18 @@ export function aggregateRows<Row>(
 		result[column.id] = built(values)
 	}
 	return result
+}
+
+/**
+ * The totals of a list of rows with their child rows, open or not: one value
+ * for each column that has an `aggregate`. The footer, a group row and the
+ * totals row of an export all count their rows here.
+ */
+export function totalRows<Row>(
+	rows: readonly DataRow<Row>[],
+	columns: readonly ColumnDef<Row>[],
+): Record<string, unknown> {
+	const all: DataRow<Row>[] = []
+	walkRows(rows, (node) => all.push(node))
+	return aggregateRows(all, columns)
 }

@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vite-plus/test'
-import { createRowModel, type ColumnDef, type FilterState, type SortRule } from './index'
+import {
+	createRowModel,
+	numberRange,
+	uniqueValues,
+	type ColumnDef,
+	type FilterState,
+	type SortRule,
+} from './index'
 
 // A measurement, not a pass or fail check: it runs only on request, with
 // `BENCH=1 vp test run packages/core/src/rows/rows.perf`, and prints one
@@ -159,7 +166,43 @@ describe.runIf(requested)('row pipeline with 50,000 rows', () => {
 			details.flat()
 		})
 
+		// The facets of a filter control: the rows that count for the column, and the count itself.
+		const team = columns[1] as ColumnDef<Person>
+		const score = columns[3] as ColumnDef<Person>
+		const facets = setup()
+		results['facet values of a column, all rows'] = median(() => {
+			uniqueValues(facets.model.facetRows('team'), team)
+		})
+		// A keystroke filters the rows once, for the table. A column without a filter counts those rows.
+		results['search keystroke, then facet values of a column'] = median((round) => {
+			facets.state.filter = { search: `person ${round}` }
+			facets.model.flat()
+			uniqueValues(facets.model.facetRows('team'), team)
+		})
+		results['facet range after a filter on another column'] = median((round) => {
+			facets.state.filter = { columns: { team: [TEAMS[round % TEAMS.length]] } }
+			facets.model.flat()
+			numberRange(facets.model.facetRows('score'), score)
+		})
+		// A column that filters: its facets leave its own filter out, which is one more pass over the rows.
+		results['search keystroke, then facet values of a column that filters'] = median((round) => {
+			facets.state.filter = { search: `person ${round}`, columns: { team: ['Design'] } }
+			facets.model.flat()
+			uniqueValues(facets.model.facetRows('team'), team)
+		})
+		// A new value of the filter of the column itself: the table filters, and the rows of the facet are kept.
+		facets.state.filter = { search: 'person 1', columns: { team: ['Design'] } }
+		const kept = facets.model.facetRows('team')
+		results['facet rows after a new filter of the column itself'] = median((round) => {
+			facets.state.filter = {
+				search: 'person 1',
+				columns: { team: [TEAMS[round % TEAMS.length]] },
+			}
+			expect(facets.model.facetRows('team')).toBe(kept)
+		})
+
 		console.table(results)
-		expect(Object.keys(results)).toHaveLength(10)
-	})
+		expect(Object.keys(results)).toHaveLength(15)
+		// A text sort of 50,000 rows takes its time, nine times over.
+	}, 60_000)
 })

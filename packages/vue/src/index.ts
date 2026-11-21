@@ -22,6 +22,7 @@ export {
 	type EditorSlotProps,
 	type FootSlotProps,
 	type GroupSlotProps,
+	type GroupTotalSlotProps,
 	type HeaderSlotProps,
 	type PartAttrs,
 	type RowAttrsContext,
@@ -32,14 +33,17 @@ export {
 	type TableSlots,
 } from './table'
 export { createTableController } from './controller'
+export { useTableSearch, type TableSearch } from './search'
 export {
 	applyEdits,
 	cellKey,
 	cellValue,
+	createDebounce,
 	defaultMessages,
 	isEmptyFilter,
 	isNumericFormat,
 	linkOf,
+	sliderBounds,
 	toText,
 } from 'ui-sdk-table-core'
 export type {
@@ -52,8 +56,15 @@ export type {
 	ColumnFacets,
 	ColumnFacetsSource,
 	ColumnFacetValue,
+	ColumnTotal,
 	DataRow,
+	Debounce,
+	DebounceOptions,
+	FacetOptions,
+	GroupPathEntry,
 	GroupRow,
+	MultiSortMode,
+	TableTotalsSource,
 	FilterKind,
 	FormatName,
 	ExportData,

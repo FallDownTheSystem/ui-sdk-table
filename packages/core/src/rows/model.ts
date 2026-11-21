@@ -1,9 +1,9 @@
-import { aggregateRows } from './aggregate'
-import { createRowPredicate, filterRows } from './filter'
+import { totalRows } from './aggregate'
+import { createRowPredicate, filterRows, isEmptyFilter } from './filter'
 import { flattenRows, type FlatRow } from './flatten'
 import { groupRows } from './group'
-import { memo } from './memo'
-import { createRowNodes, omitRows, walkRows, type RowNodeOptions, type RowNodes } from './nodes'
+import { memo, stabilize } from './memo'
+import { createRowNodes, omitRows, type RowNodeOptions, type RowNodes } from './nodes'
 import { clampPage, pageCount, paginate } from './paginate'
 import { sortRows } from './sort'
 import type {
@@ -99,6 +99,17 @@ export type RowModel<Row> = {
 	 * only because a child passed the filter is on the screen, so it counts.
 	 */
 	aggregate: (group?: GroupRow<Row>) => Record<string, unknown>
+	/**
+	 * The rows that the facets of a column count: the rows that pass the search
+	 * and the filters of every other column. The filter of the column itself
+	 * is left out, so a filter never takes away its own choices. The order of
+	 * the rows is not a part of the answer: a count has none. A column without
+	 * a filter of its own gets the list of `filtered`, or of `source` when
+	 * nothing filters, and costs nothing more. A column that filters has a
+	 * stage of its own, which runs on the first call and again only when the
+	 * search or another filter changed.
+	 */
+	facetRows: (columnId: string) => readonly DataRow<Row>[]
 }
 
 /**
@@ -113,22 +124,24 @@ export type RowModel<Row> = {
 export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row> {
 	const source = memo((rows: readonly Row[]) => createRowNodes(rows, options))
 
-	const predicate = memo(
-		(
-			state: FilterState | undefined,
-			columns: readonly ColumnDef<Row>[],
-			locale: string | undefined,
-			searchMode: 'contains' | 'fuzzy' | undefined,
-			fuzzyThreshold: number | undefined,
-		) =>
-			createRowPredicate(state, {
-				columns,
-				locale,
-				searchMode,
-				fuzzyThreshold,
-				text: options.filterText,
-			}),
-	)
+	const predicateStage = () =>
+		memo(
+			(
+				state: FilterState | undefined,
+				columns: readonly ColumnDef<Row>[],
+				locale: string | undefined,
+				searchMode: 'contains' | 'fuzzy' | undefined,
+				fuzzyThreshold: number | undefined,
+			) =>
+				createRowPredicate(state, {
+					columns,
+					locale,
+					searchMode,
+					fuzzyThreshold,
+					text: options.filterText,
+				}),
+		)
+	const predicate = predicateStage()
 
 	const filterStage = memo((rows: readonly DataRow<Row>[], test: ((row: Row) => boolean) | null) =>
 		test ? filterRows(rows, test) : rows,
@@ -239,6 +252,63 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 	const grouped = (): readonly TableRow<Row>[] =>
 		options.groupBy ? groupStage(listed(), options.groupBy(), options.columns()) : listed()
 
+	// One stage for each column that filters and whose facets were asked for.
+	// The filter of the column itself is not in its key, so a new value of that
+	// filter keeps the rows: only the search and the filters of the other
+	// columns run it again. A column without a filter of its own needs no
+	// stage: its rows are the rows that the table shows.
+	type FacetStage = {
+		others: (state: FilterState) => FilterState
+		predicate: ReturnType<typeof predicateStage>
+		rows: (
+			rows: readonly DataRow<Row>[],
+			test: ((row: Row) => boolean) | null,
+		) => readonly DataRow<Row>[]
+	}
+	const facetStages = new Map<string, FacetStage>()
+
+	const facetRows = (columnId: string): readonly DataRow<Row>[] => {
+		const all = source(options.rows()).rows
+		const state = options.filter?.()
+		if (!state || manual('filter')) return all
+		if (isEmptyFilter(state.columns?.[columnId])) {
+			const test = predicate(
+				state,
+				options.columns(),
+				options.locale?.(),
+				options.searchMode?.(),
+				options.fuzzyThreshold?.(),
+			)
+			// With no filter at all, the list of the data: a new sort is then no new list to count.
+			return test ? filtered() : all
+		}
+		let stage = facetStages.get(columnId)
+		if (!stage) {
+			const stable = stabilize<FilterState>()
+			stage = {
+				others: memo((filter: FilterState) => {
+					const { [columnId]: _own, ...columns } = filter.columns ?? {}
+					return stable({ search: filter.search, columns })
+				}),
+				predicate: predicateStage(),
+				rows: memo((rows: readonly DataRow<Row>[], test: ((row: Row) => boolean) | null) =>
+					test ? filterRows(rows, test) : rows,
+				),
+			}
+			facetStages.set(columnId, stage)
+		}
+		return stage.rows(
+			all,
+			stage.predicate(
+				stage.others(state),
+				options.columns(),
+				options.locale?.(),
+				options.searchMode?.(),
+				options.fuzzyThreshold?.(),
+			),
+		)
+	}
+
 	const paged = () => {
 		const page = options.page?.()
 		return page && !manual('page') ? pageStage(grouped(), page.page, page.pageSize) : grouped()
@@ -262,14 +332,13 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 			const asked = Number.isFinite(page.page) ? Math.trunc(page.page) : 1
 			return Math.min(Math.max(1, asked), total(page).pages)
 		},
+		facetRows,
 		aggregate: (group) => {
 			const rows = group ? group.leaves : filtered()
 			const columns = options.columns()
 			const kept = totals.get(rows)
 			if (kept && kept.columns === columns) return kept.result
-			const all: DataRow<Row>[] = []
-			walkRows(rows, (node) => all.push(node))
-			const result = aggregateRows(all, columns)
+			const result = totalRows(rows, columns)
 			totals.set(rows, { columns, result })
 			return result
 		},

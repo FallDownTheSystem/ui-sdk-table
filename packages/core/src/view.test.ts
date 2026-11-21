@@ -1,5 +1,6 @@
 import { mount } from '@ui-sdk/core/testing'
 import { describe, expect, test } from 'vite-plus/test'
+import { sliderBounds } from './rows'
 import { table, type TableOptions } from './table'
 
 type Person = {
@@ -164,13 +165,170 @@ describe('what a control beside the table reads', () => {
 		}
 	})
 
-	test('facets come from every row, so a filter does not take away its own choices, and they are kept', () => {
+	test('a filter does not take away its own choices, and the facets are kept while nothing changes them', () => {
 		const view = setup()
 		try {
 			const before = view.api.getFacets('team')
 			view.api.setColumnFilter('team', ['Design'])
 			expect(view.api.getFacets('team')).toBe(before)
 			expect(view.api.getFacets('team').values).toHaveLength(2)
+			// A sort and a page give the same rows to count.
+			view.api.sortBy('name', 'desc')
+			view.api.setPageSize(1)
+			expect(view.api.getFacets('team')).toBe(before)
+			// The first filter of a column gives it rows of its own to count, with the same answer.
+			const score = view.api.getFacets('score')
+			view.api.setColumnFilter('score', { min: 50 })
+			const own = view.api.getFacets('score')
+			expect(own).toEqual(score)
+			expect(own.range).toEqual({ min: 45, max: 70, step: 1 })
+			// From then on, a new value of that filter keeps them.
+			view.api.setColumnFilter('score', { min: 60 })
+			expect(view.api.getFacets('score')).toBe(own)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('the facets of a column follow the search and the filters of the other columns, with counts', () => {
+		const view = setup()
+		try {
+			view.api.setColumnFilter('team', ['Design'])
+			// The filter on the team does not count for the team, and it does for every other column.
+			expect(view.api.getFacets('team').values).toEqual([
+				{ value: 'Design', count: 2, text: 'Design' },
+				{ value: 'Platform', count: 1, text: 'Platform' },
+			])
+			expect(view.api.getFacets('score').range).toEqual({ min: 45, max: 70, step: 1 })
+			expect(view.api.getFacets('joined').days).toEqual({ from: '2024-03-01', to: '2025-06-30' })
+			expect(view.api.getFacets('tags').values).toEqual([
+				{ value: 'lead', count: 2, text: 'lead' },
+				{ value: 'new', count: 1, text: 'new' },
+			])
+
+			view.api.setSearch('aino')
+			expect(view.api.getFacets('team').values).toEqual([
+				{ value: 'Design', count: 1, text: 'Design' },
+			])
+			expect(view.api.getFacets('tags').values).toEqual([{ value: 'lead', count: 1, text: 'lead' }])
+			expect(view.api.getFacets('score').range).toEqual({ min: 70, max: 70, step: 1 })
+
+			// Every row of the table, whatever the filters say.
+			expect(view.api.getFacets('team', { rows: 'all' }).values).toEqual([
+				{ value: 'Design', count: 2, text: 'Design' },
+				{ value: 'Platform', count: 1, text: 'Platform' },
+			])
+			expect(view.api.getFacets('score', { rows: 'all' }).range).toEqual({
+				min: 20,
+				max: 70,
+				step: 1,
+			})
+			expect(() => view.api.getFacets('team', { rows: 'page' as never })).toThrow(
+				'`getFacets` takes a column id and `{ rows }`, where `rows` is one of: filtered, all.',
+			)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a value that the filter names stays in the list when no row holds it any more', () => {
+		const view = setup({ defaultFilter: { columns: { team: ['Platform', 'Sales'] } } })
+		try {
+			view.api.setSearch('aino')
+			// Only a Design row passes the search. The two chosen values stay, with no row.
+			expect(view.api.getFacets('team').values).toEqual([
+				{ value: 'Design', count: 1, text: 'Design' },
+				{ value: 'Platform', count: 0, text: 'Platform' },
+				{ value: 'Sales', count: 0, text: 'Sales' },
+			])
+			view.api.setColumnFilter('team', ['Design'])
+			expect(view.api.getFacets('team').values).toEqual([
+				{ value: 'Design', count: 1, text: 'Design' },
+			])
+			// No row passes: a range has no ends, and a list holds the chosen values.
+			view.api.setSearch('nobody')
+			expect(view.api.getFacets('team').values).toEqual([
+				{ value: 'Design', count: 0, text: 'Design' },
+			])
+			expect(view.api.getFacets('score').range).toBeNull()
+			expect(view.api.getFacets('joined').days).toBeNull()
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a facet is counted when it is asked for, and again only when its rows changed', () => {
+		let reads = 0
+		const counted = columns.map((column) =>
+			column.id === 'team'
+				? {
+						...column,
+						value: (row: Person) => {
+							reads++
+							return row.team
+						},
+					}
+				: column,
+		)
+		const view = setup({ columns: counted })
+		try {
+			view.api.setSearch('e')
+			view.api.setColumnFilter('score', { min: 0 })
+			// Nothing asked for the facets yet. The filter does not read the team: the search reads its text.
+			const before = reads
+			view.api.getFacets('team')
+			const once = reads - before
+			expect(once).toBeGreaterThan(0)
+			view.api.getFacets('team')
+			view.api.setColumnFilter('team', ['Design'])
+			view.api.getFacets('team')
+			// The filter of the column itself read the team of each row, and the facets did not count again.
+			const after = reads
+			view.api.getFacets('team')
+			expect(reads).toBe(after)
+			view.api.setColumnFilter('score', { min: 30 })
+			view.api.getFacets('team')
+			expect(reads).toBeGreaterThan(after)
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('the step of a range follows the format of its column, and `sliderBounds` gives whole steps', () => {
+		type Item = { id: string; price: number; share: number; weight: number; count: number }
+		const items: Item[] = [
+			{ id: 'a', price: 0.1 + 0.2, share: 0.125, weight: 1.25, count: 3 },
+			{ id: 'b', price: 12.349, share: 0.5, weight: 2.5, count: 12 },
+		]
+		const view = mount(
+			table,
+			{
+				rows: items,
+				columns: [
+					{ id: 'price', format: 'currency' },
+					{ id: 'share', format: 'percentage' },
+					{ id: 'weight', filter: 'range' },
+					{ id: 'count', filter: 'range' },
+				],
+				facets: { count: { range: { min: 0, max: 50, step: 5 } } },
+			} as TableOptions,
+			'<root aria-label="Items"></root>',
+		)
+		try {
+			const price = view.api.getFacets('price').range
+			expect(price).toEqual({ min: 0.1 + 0.2, max: 12.349, step: 0.01 })
+			// A percentage of fractions shows 0.01 as 1 %.
+			expect(view.api.getFacets('share').range?.step).toBe(0.01)
+			// Without a number format, the digits of the rows say the step.
+			expect(view.api.getFacets('weight').range?.step).toBe(0.01)
+			expect(view.api.getFacets('count').range).toEqual({ min: 0, max: 50, step: 5 })
+			expect(price && sliderBounds(price)).toEqual({ min: 0.3, max: 12.35, step: 0.01 })
+			expect(sliderBounds({ min: 3, max: 12, step: 5 })).toEqual({ min: 0, max: 15, step: 5 })
+			expect(sliderBounds({ min: -0.25, max: 0.25, step: 0.1 })).toEqual({
+				min: -0.3,
+				max: 0.3,
+				step: 0.1,
+			})
 		} finally {
 			view.unmount()
 		}
@@ -389,7 +547,7 @@ describe('what a review of the controls found', () => {
 				{ value: 'Platform', text: 'Platform' },
 				{ value: 'Sales', text: 'Sales' },
 			])
-			expect(view.api.getFacets('score').range).toEqual({ min: 0, max: 100 })
+			expect(view.api.getFacets('score').range).toEqual({ min: 0, max: 100, step: 1 })
 			expect(view.api.getFacets('joined').days).toEqual({ from: '2020-01-01', to: '2025-12-31' })
 			// A column without an entry reads the rows that the table holds.
 			expect(view.api.getFacets('tags').values.map((facet) => facet.value)).toEqual(['lead', 'new'])

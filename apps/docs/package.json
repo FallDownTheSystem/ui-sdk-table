@@ -9,21 +9,15 @@
 		"test:e2e": "playwright test"
 	},
 	"dependencies": {
-		"@lucide/vue": "catalog:",
 		"@ui-sdk/core": "catalog:",
 		"@ui-sdk/vue": "catalog:",
-		"clsx": "catalog:",
-		"tailwind-merge": "catalog:",
 		"ui-sdk-table-core": "workspace:*",
-		"ui-sdk-table-styled": "workspace:*",
 		"ui-sdk-table-vue": "workspace:*",
 		"vue": "catalog:"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.65.1",
-		"@tailwindcss/vite": "catalog:",
 		"@vitejs/plugin-vue": "catalog:",
-		"tailwindcss": "catalog:",
 		"vite": "catalog:",
 		"vite-plus": "catalog:"
 	}

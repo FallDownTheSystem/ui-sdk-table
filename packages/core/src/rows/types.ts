@@ -95,6 +95,8 @@ export type GroupRow<Row> = {
 	/** Grouping level, 0 for the first `groupBy` column. */
 	depth: number
 	parentId: string | null
+	/** The group that holds this group, or `null` for a group of the first `groupBy` column. */
+	parent: GroupRow<Row> | null
 	children: readonly TableRow<Row>[]
 	/** Every data row under the group, in order, without their tree children. */
 	leaves: readonly DataRow<Row>[]

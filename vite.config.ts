@@ -7,8 +7,7 @@ export default defineConfig({
 		useTabs: true,
 		// Markdown is authored content. `docs/proof` is a frozen copy of the
 		// feasibility proof and stays as it was verified.
-		// The registry file is written by a script, and a test compares it with what the script gives.
-		ignorePatterns: ['**/*.md', 'docs/proof/**', 'packages/styled/registry/**'],
+		ignorePatterns: ['**/*.md', 'docs/proof/**'],
 	},
 	lint: {
 		plugins: ['eslint', 'typescript', 'unicorn', 'oxc', 'vue', 'vitest'],
@@ -25,6 +24,6 @@ export default defineConfig({
 		},
 	},
 	test: {
-		projects: ['packages/core', 'packages/vue', 'packages/styled'],
+		projects: ['packages/core', 'packages/vue'],
 	},
 })

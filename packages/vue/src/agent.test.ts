@@ -49,3 +49,62 @@ test('an agent finds the table by its name, acts on it, and reads a useful error
 
 	wrapper.unmount()
 })
+
+test('an agent hides and resets the columns, and hears why a sort cannot add a column', async () => {
+	const wrapper = mount(
+		() =>
+			h(Table<Person>, {
+				rows: people,
+				columns: [...columns, { id: 'id', aggregate: 'count' }],
+				multiSort: 'none',
+				defaultColumnVisibility: { id: false },
+				'aria-label': 'Staff',
+			}),
+		{ attachTo: document.body },
+	)
+	const agent = createAgent()
+	const headers = () => wrapper.findAll('thead th').map((cell) => cell.attributes('data-column'))
+
+	const seen = agent.snapshot().find((component) => component.label === 'Staff')
+	expect(seen?.actions).toEqual(
+		expect.arrayContaining([
+			'hideAllColumns',
+			'resetColumnVisibility',
+			'resetColumnOrder',
+			'resetColumnPinning',
+			'getTotals',
+			'flushSearch',
+		]),
+	)
+
+	const hidden = await agent.act({
+		steps: [
+			{ ref: 'Staff', action: 'setColumnVisibility', args: ['id', true] },
+			{ ref: 'Staff', action: 'hideAllColumns', args: [] },
+		],
+	})
+	await nextTick()
+	expect(hidden.ok).toBe(true)
+	expect(headers()).toEqual(['name'])
+
+	const reset = await agent.act({
+		steps: [{ ref: 'Staff', action: 'resetColumnVisibility', args: [] }],
+	})
+	await nextTick()
+	expect(reset.ok).toBe(true)
+	expect(headers()).toEqual(['name', 'score'])
+
+	const refused = await agent.act({
+		steps: [{ ref: 'Staff', action: 'toggleSort', args: ['score', { append: true }] }],
+	})
+	expect(refused.ok).toBe(false)
+	expect(refused.error?.message).toContain('its `multiSort` option is "none"')
+
+	const unknown = await agent.act({
+		steps: [{ ref: 'Staff', action: 'getTotals', args: ['group/team=Design'] }],
+	})
+	expect(unknown.ok).toBe(false)
+	expect(unknown.error?.message).toContain('No group "group/team=Design" to read the totals of.')
+
+	wrapper.unmount()
+})

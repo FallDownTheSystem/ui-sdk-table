@@ -4,9 +4,7 @@
 		"vite.config.ts",
 		"packages/*/vite.config.ts",
 		"apps/*/vite.config.ts",
-		"apps/*/playwright.config.ts",
-		"packages/styled/scripts/*.ts",
-		"packages/styled/scripts/*.mts"
+		"apps/*/playwright.config.ts"
 	],
 	"compilerOptions": {
 		"module": "preserve",

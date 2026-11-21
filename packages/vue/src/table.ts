@@ -15,6 +15,7 @@ import {
 	type DataRow,
 	type FilterState,
 	type FlatRow,
+	type GroupPathEntry,
 	type GroupRow,
 	type PageState,
 	type RowPin,
@@ -128,6 +129,11 @@ const OPTIONS = [
 	'columnMaxWidth',
 	'messages',
 	'controller',
+	'multiSort',
+	'alwaysSorted',
+	'searchDebounce',
+	'groupTotals',
+	'totals',
 	'rowWindow',
 	'rowHeight',
 	'estimatedRowHeight',
@@ -162,6 +168,8 @@ const OPTIONS = [
 // resizable>` passes an empty text, which reads as false.
 const BOOLEANS: readonly string[] = [
 	'sortChildren',
+	'alwaysSorted',
+	'groupTotals',
 	'resizable',
 	'reorderable',
 	'rowWindow',
@@ -186,7 +194,14 @@ export type RowAttrsContext<Row> =
 			index: number
 			level: number
 	  }
-	| { kind: 'group'; group: GroupRow<Row>; index: number; level: number }
+	| {
+			kind: 'group'
+			group: GroupRow<Row>
+			index: number
+			level: number
+			/** The groups from the outermost one down to this group. */
+			path: readonly GroupPathEntry<Row>[]
+	  }
 	| { kind: 'detail'; row: Row; node: DataRow<Row>; index: number }
 	| { kind: 'foot' }
 	| { kind: 'empty' }
@@ -195,7 +210,15 @@ export type RowAttrsContext<Row> =
 export type CellAttrsContext<Row> =
 	| { kind: 'header'; column: ColumnDef<Row>; leaf: boolean }
 	| { kind: 'cell'; column: ColumnDef<Row>; row: Row; node: DataRow<Row>; value: unknown }
-	| { kind: 'group'; group: GroupRow<Row> }
+	| { kind: 'group'; group: GroupRow<Row>; path: readonly GroupPathEntry<Row>[] }
+	| {
+			/** A cell of a group row under one column: its total, or nothing for a column without one. */
+			kind: 'group-total'
+			group: GroupRow<Row>
+			column: ColumnDef<Row>
+			value: unknown
+			path: readonly GroupPathEntry<Row>[]
+	  }
 	| { kind: 'detail'; row: Row; node: DataRow<Row> }
 	| { kind: 'foot'; column: ColumnDef<Row> }
 	| { kind: 'empty' }
@@ -402,7 +425,31 @@ export type GroupSlotProps<Row> = {
 	totals: Record<string, unknown>
 	/** The totals as text, with the format of their columns, by column id. */
 	totalTexts: Record<string, string>
+	/**
+	 * The groups from the outermost one down to this group, each with its
+	 * column, its value and its text: "Europe", then "Finland".
+	 */
+	path: readonly GroupPathEntry<Row>[]
+	/**
+	 * The columns that this cell covers. With totals under their columns, a
+	 * total of one of these columns has no cell of its own.
+	 */
+	covered: readonly ColumnDef<Row>[]
 	toggleExpanded: (event?: Event) => void
+}
+
+export type GroupTotalSlotProps<Row> = {
+	group: GroupRow<Row>
+	column: ColumnDef<Row>
+	/** The total of the column over the rows of the group. `undefined` for a column without an `aggregate`. */
+	value: unknown
+	/** The total as text, with the format of the column, or an empty text. */
+	text: string
+	/** The totals of every column that has one, by column id. */
+	totals: Record<string, unknown>
+	expanded: boolean
+	level: number
+	path: readonly GroupPathEntry<Row>[]
 }
 
 export type FootSlotProps<Row> = {
@@ -421,6 +468,11 @@ export type TableSlots<Row> = {
 	/** One total in the footer. `foot-{column id}` wins over `foot`. */
 	[name: `foot-${string}`]: (props: FootSlotProps<Row>) => VNodeChild
 	/**
+	 * The cell of a group row under one column, which holds the total of the
+	 * group for that column. `group-total-{column id}` wins over `group-total`.
+	 */
+	[name: `group-total-${string}`]: (props: GroupTotalSlotProps<Row>) => VNodeChild
+	/**
 	 * The editor of one cell, in place of the text field of the table.
 	 * `edit-{column id}` wins over `editor`. The control must take focus itself.
 	 */
@@ -430,7 +482,9 @@ export type TableSlots<Row> = {
 	header?: (props: HeaderSlotProps<Row>) => VNodeChild
 	cell?: (props: CellSlotProps<Row>) => VNodeChild
 	foot?: (props: FootSlotProps<Row>) => VNodeChild
+	/** The label cell of a group row. */
 	group?: (props: GroupSlotProps<Row>) => VNodeChild
+	'group-total'?: (props: GroupTotalSlotProps<Row>) => VNodeChild
 	/** The detail row of a row, for the rows that `hasDetail` names. */
 	detail?: (props: DetailSlotProps<Row>) => VNodeChild
 	/** Shown in place of the rows when no row passes the filters. */
@@ -506,6 +560,7 @@ const TableImpl = defineComponent(
 		const headerKey = (columnId: string) => `h|${columnId}`
 		const cellId = (rowId: string, columnId: string) => `r|${rowId}|${columnId}`
 		const groupKey = (rowId: string) => `g|${rowId}`
+		const groupTotalKey = (rowId: string, columnId: string) => `t|${rowId}|${columnId}`
 		const detailKey = (rowId: string) => `d|${rowId}`
 		const footKey = (columnId: string) => `f|${columnId}`
 
@@ -532,11 +587,8 @@ const TableImpl = defineComponent(
 								},
 								() => {
 									const label = column.header ?? column.id
-									const toggleSort = (event?: Event) =>
-										api.toggleSort(column.id, {
-											append: event instanceof MouseEvent && event.shiftKey,
-											event,
-										})
+									// The mode of the table reads the modifier keys of the event.
+									const toggleSort = (event?: Event) => api.toggleSort(column.id, { event })
 									const slot = slots[`header-${column.id}`] ?? slots.header
 									const content = slot
 										? slot({
@@ -564,47 +616,96 @@ const TableImpl = defineComponent(
 			group: GroupRow<unknown>,
 			index: number,
 			position: number,
-			span: number,
+			columns: readonly ColumnDef[],
 		) {
-			const attrs = rowAttrs({ kind: 'group', group, index: position, level: flat.level })
-			return h(TableRow, { ...attrs, key: flat.id, value: flat.id, index }, () =>
+			const path = api.groupPath(group)
+			// With totals under their columns, the label covers the first columns
+			// and each column after them has a cell. Else the label is the row.
+			const split = api.groupSpan()
+			const span = split ?? columns.length
+			const covered = columns.slice(0, span)
+			const attrs = rowAttrs({ kind: 'group', group, index: position, level: flat.level, path })
+
+			const label = () => {
+				const column = api.column(group.columnId)
+				const text = path.at(-1)?.text ?? toText(group.value)
+				const toggleExpanded = (event?: Event) => api.toggleExpanded(flat.id, event)
+				if (slots.group) {
+					const totals = api.totals(group)
+					const totalTexts: Record<string, string> = {}
+					for (const total of api.allColumns()) {
+						if (total.aggregate !== undefined) {
+							totalTexts[total.id] = api.totalText(total, totals[total.id])
+						}
+					}
+					return slots.group({
+						group,
+						column,
+						text,
+						expanded: flat.expanded,
+						level: flat.level,
+						totals,
+						totalTexts,
+						path,
+						covered,
+						toggleExpanded,
+					})
+				}
+				const button = h(
+					'button',
+					{ type: 'button', onClick: toggleExpanded },
+					api.groupText(group),
+				)
+				// A total of a column under the label has no cell of its own, so the label says it.
+				const hidden = split === undefined ? [] : covered.filter((total) => total.aggregate)
+				if (!hidden.length) return button
+				const totals = api.totals(group)
+				return [button, ...hidden.map((total) => ` ${api.totalText(total, totals[total.id])}`)]
+			}
+
+			return h(TableRow, { ...attrs, key: flat.id, value: flat.id, index }, () => [
 				h(
 					TableCell,
 					{
-						...cellAttrs({ kind: 'group', group }),
+						...cellAttrs({ kind: 'group', group, path }),
+						key: 'label',
 						value: groupKey(flat.id),
 						row: index,
 						col: 0,
 						colspan: span,
 					},
-					() => {
-						const column = api.column(group.columnId)
-						const sample = group.leaves[0]
-						const text = column && sample ? api.text(sample.row, column) : toText(group.value)
-						const toggleExpanded = (event?: Event) => api.toggleExpanded(flat.id, event)
-						if (slots.group) {
-							const totals = api.totals(group)
-							const totalTexts: Record<string, string> = {}
-							for (const total of api.allColumns()) {
-								if (total.aggregate !== undefined) {
-									totalTexts[total.id] = api.totalText(total, totals[total.id])
-								}
-							}
-							return slots.group({
-								group,
-								column,
-								text,
-								expanded: flat.expanded,
-								level: flat.level,
-								totals,
-								totalTexts,
-								toggleExpanded,
-							})
-						}
-						return h('button', { type: 'button', onClick: toggleExpanded }, api.groupText(group))
-					},
+					label,
 				),
-			)
+				...columns.slice(span).map((column, offset) => {
+					const totals = api.totals(group)
+					const value = totals[column.id]
+					const text = column.aggregate ? api.totalText(column, value) : ''
+					const slot = slots[`group-total-${column.id}`] ?? slots['group-total']
+					return h(
+						TableCell,
+						{
+							...cellAttrs({ kind: 'group-total', group, column, value, path }),
+							key: column.id,
+							value: groupTotalKey(flat.id, column.id),
+							row: index,
+							col: span + offset,
+						},
+						() =>
+							slot
+								? slot({
+										group,
+										column,
+										value,
+										text,
+										totals,
+										expanded: flat.expanded,
+										level: flat.level,
+										path,
+									})
+								: text,
+					)
+				}),
+			])
 		}
 
 		function dataRow(
@@ -760,7 +861,7 @@ const TableImpl = defineComponent(
 			// The grid counts the header rows first. A caller counts the rows of the body.
 			const position = index - api.headerRowCount()
 			if (flat.node.kind === 'group') {
-				return groupRow(flat, flat.node, index, position, columns.length)
+				return groupRow(flat, flat.node, index, position, columns)
 			}
 			if (flat.detail) return detailRow(flat, flat.node, index, position, columns.length)
 			return dataRow(flat, flat.node, index, position, columns)

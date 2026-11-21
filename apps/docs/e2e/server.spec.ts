@@ -196,3 +196,45 @@ test('the CSV file and the Excel file hold the rows as the screen shows them', a
 	})
 	expect(shown).toBe(first[4])
 })
+
+test('focus stays where it is while a page or a sort of the server loads', async ({ page }) => {
+	await page.goto('/?page=server&delay=500')
+	const table = page.getByRole('grid', { name: 'People' })
+	const status = page.getByTestId('status')
+	await expect(status).toHaveText('Ready')
+	const name = table.locator('thead th[data-column="name"]')
+	const first = table.locator('tbody tr').first().locator('td').first()
+	const before = await first.innerText()
+
+	// Enter on a header asks the server. The header keeps focus while the rows are on their way, and after.
+	await name.focus()
+	await page.keyboard.press('Enter')
+	await expect(table).toHaveAttribute('aria-busy', 'true')
+	await expect(name).toBeFocused()
+	await expect(first).toHaveText(before)
+	await expect(status).toHaveText('Ready')
+	await expect(name).toBeFocused()
+	await expect(name).toHaveAttribute('aria-sort', 'ascending')
+
+	// A cell of the body: its row is another person after the load, and focus is still on a cell of the table.
+	await page.keyboard.press('ArrowDown')
+	await expect(first).toBeFocused()
+	const sorted = await first.innerText()
+	await page.keyboard.press('ArrowUp')
+	await page.keyboard.press('Enter')
+	await page.keyboard.press('ArrowDown')
+	await expect(table).toHaveAttribute('aria-busy', 'true')
+	await expect(status).toHaveText('Ready')
+	await expect(first).not.toHaveText(sorted)
+	await expect(first).toBeFocused()
+
+	// The button of the pages keeps focus through the load, and the table does not take it.
+	const next = page.getByRole('button', { name: 'Next page' })
+	await next.focus()
+	await page.keyboard.press('Enter')
+	await expect(table).toHaveAttribute('aria-busy', 'true')
+	await expect(next).toBeFocused()
+	await expect(page.getByTestId('page')).toHaveText(/^Page 2 of/)
+	await expect(status).toHaveText('Ready')
+	await expect(next).toBeFocused()
+})

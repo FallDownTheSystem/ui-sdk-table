@@ -308,6 +308,45 @@ test('without a frame around the table, the page scrolls the rows', async ({ pag
 	expect(Math.round((foot?.y ?? 0) + (foot?.height ?? 0))).toBeLessThanOrEqual(view?.height ?? 0)
 })
 
+test('under a header and a footer of the page, the sticky rows stop at them by two variables', async ({
+	page,
+}) => {
+	const table = await open(page, '&frame=page&bars')
+	const bar = await page.getByTestId('app-bar').boundingBox()
+	const footer = await page.getByTestId('app-foot').boundingBox()
+	const view = page.viewportSize()
+	expect(bar?.height).toBe(56)
+	expect(footer?.height).toBe(40)
+	const head = table.locator('thead th').first()
+	const foot = table.locator('tfoot td').first()
+
+	await page.evaluate(() => window.scrollTo(0, 20000))
+	// The header of the table is under the header of the page, not behind it and not at the top of the window.
+	await expect.poll(async () => Math.round((await head.boundingBox())?.y ?? -1)).toBe(56)
+	await expect(head).toHaveCSS('top', '56px')
+	const low = await foot.boundingBox()
+	expect(Math.round((low?.y ?? 0) + (low?.height ?? 0))).toBe((view?.height ?? 0) - 40)
+	// A row that scrolled on is behind the header of the table.
+	expect(
+		await head.evaluate((cell) => {
+			const box = cell.getBoundingClientRect()
+			return cell.contains(document.elementFromPoint(box.x + 10, box.y + box.height / 2))
+		}),
+	).toBe(true)
+
+	// A row that is asked for lands between the two bars, and a pinned row stacks under the header.
+	await page.getByRole('button', { name: 'Pin row 2 to the top' }).dispatchEvent('click')
+	const pinned = rowOf(table, 'p2').locator('td').first()
+	const headBox = await head.boundingBox()
+	await expect
+		.poll(async () => Math.round((await pinned.boundingBox())?.y ?? -1))
+		.toBe(Math.round((headBox?.y ?? 0) + (headBox?.height ?? 0)))
+	await page.getByRole('button', { name: 'Go to that row' }).dispatchEvent('click')
+	const row = await rowOf(table, 'p5000').boundingBox()
+	expect(row?.y ?? 0).toBeGreaterThan(56)
+	expect((row?.y ?? 0) + (row?.height ?? 0)).toBeLessThan((view?.height ?? 0) - 40)
+})
+
 test('a wrapper that scrolls only sideways leaves the page as the frame', async ({ page }) => {
 	const table = await open(page, '&frame=wide')
 	await expect(page.getByTestId('scroller')).toHaveCSS('overflow-y', 'auto')

@@ -1,3 +1,6 @@
+import { DEFAULT_LOCALE, isNumericFormat } from '../format/format'
+import { numberPlan, type NumericFormatName } from '../format/number'
+import type { FormatOptionsByName } from '../format/types'
 import { cellValue, dayOf, isDay, timeZoneOf, toTime, valueKey } from './columns'
 import { walkRows } from './nodes'
 import { compareValues } from './sort'
@@ -89,4 +92,69 @@ export function dayRange<Row>(
 		if (to === '' || day > to) to = day
 	})
 	return from === '' ? null : { from, to }
+}
+
+// A step below this is noise of binary fractions, not a digit that a cell shows.
+const SMALLEST_STEP = 6
+
+/** `1`, `0.1`, `0.01` and so on, as exact as a number can hold them. */
+const stepOf = (digits: number) => Number(`1e-${Math.max(0, Math.min(SMALLEST_STEP, digits))}`)
+
+/**
+ * The step of a slider over the numbers of a column: the smallest change of
+ * a value that changes the text of its cell. A column with a number format
+ * says it: two digits after the point give 0.01, and a percentage of
+ * fractions with no digit gives 0.01 too, because 0.01 shows as 1 %. A column
+ * without a number format shows its values as they are, so the step follows
+ * the digits that its rows hold.
+ */
+export function numberStep<Row>(
+	rows: readonly DataRow<Row>[],
+	column: ColumnDef<Row>,
+	locale?: string,
+): number {
+	if (column.format && isNumericFormat(column.format)) {
+		try {
+			const name = column.format as NumericFormatName
+			const options = (column.formatOptions ?? {}) as FormatOptionsByName[NumericFormatName]
+			const plan = numberPlan(name, options, options.locale ?? locale ?? DEFAULT_LOCALE)
+			const resolved = plan.intl.resolvedOptions()
+			// What the format does to a value before its digits are cut: a multiplier,
+			// and the hundred of a percent sign.
+			const factor = Math.abs(plan.scale(1)) * (resolved.style === 'percent' ? 100 : 1)
+			const step = stepOf(resolved.maximumFractionDigits ?? 0) / factor
+			if (Number.isFinite(step) && step > 0) return Number(step.toPrecision(12))
+		} catch {
+			// Options that the format refuses show no number, and the rows say the step.
+		}
+	}
+	let digits = 0
+	walkRows(rows, (node) => {
+		const value = cellValue(node.row, column)
+		if (typeof value !== 'number' || Number.isInteger(value) || !Number.isFinite(value)) return
+		const text = String(value)
+		const point = text.indexOf('.')
+		// A number in the form 1e-7 is smaller than the smallest step.
+		const here = point < 0 || text.includes('e') ? SMALLEST_STEP : text.length - point - 1
+		if (here > digits) digits = here
+	})
+	return stepOf(digits)
+}
+
+/**
+ * The ends of a slider for a range of numbers: `min` goes down and `max` goes
+ * up to the next step, so every value of the range is between them and each
+ * end is a place where the thumb can stop.
+ */
+export function sliderBounds(range: { min: number; max: number; step: number }): {
+	min: number
+	max: number
+	step: number
+} {
+	const { step } = range
+	if (!(step > 0) || !Number.isFinite(step)) return { ...range }
+	// Without the cut, 0.3 / 0.1 is 2.9999999999999996, and the end would be one step off.
+	const steps = (value: number) => Number((value / step).toPrecision(12))
+	const at = (count: number) => Number((count * step).toPrecision(12))
+	return { min: at(Math.floor(steps(range.min))), max: at(Math.ceil(steps(range.max))), step }
 }

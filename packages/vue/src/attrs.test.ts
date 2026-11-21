@@ -329,9 +329,12 @@ test('the group slot gets the totals of its rows as text, with the format of eac
 			},
 		),
 	)
-	expect(wrapper.findAll('tbody td').map((cell) => cell.text())).toEqual([
-		'Design: 115.00 of 2',
-		'Platform: 20.00 of 1',
+	// The label covers the columns before the first total, and each total has its cell.
+	expect(
+		wrapper.findAll('tbody tr').map((row) => row.findAll('td').map((cell) => cell.text())),
+	).toEqual([
+		['Design: 115.00 of 2', '115.00', '2'],
+		['Platform: 20.00 of 1', '20.00', '1'],
 	])
 	wrapper.unmount()
 })

@@ -32,6 +32,8 @@ const query = new URLSearchParams(location.search)
 // scrolls only sideways, as a wide table often has.
 const frame = query.get('frame')
 const pageFrame = frame === 'page' || frame === 'wide'
+// With `bars`, the page has a fixed header and footer of its own over the rows.
+const bars = query.has('bars')
 
 const controller = createTableController()
 const size = shallowRef(SIZES[0] ?? 10000)
@@ -70,6 +72,8 @@ function togglePin(id: string, edge: 'top' | 'bottom') {
 </script>
 
 <template>
+	<div v-if="bars" class="app-bar" data-testid="app-bar">The header of the page</div>
+	<div v-if="bars" class="app-foot" data-testid="app-foot">The footer of the page</div>
 	<h1>Row window</h1>
 	<p>
 		{{ size.toLocaleString('en') }} rows, and only the rows near the scroll frame are in the page.
@@ -128,7 +132,12 @@ function togglePin(id: string, edge: 'top' | 'bottom') {
 		<output data-testid="pinning">{{ JSON.stringify(pinning) }}</output>
 	</div>
 	<div
-		:class="{ scroller: !pageFrame, tall: !pageFrame, sideways: frame === 'wide' }"
+		:class="{
+			scroller: !pageFrame,
+			tall: !pageFrame,
+			sideways: frame === 'wide',
+			'under-bars': bars,
+		}"
 		data-testid="scroller"
 	>
 		<Table

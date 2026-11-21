@@ -1,8 +1,7 @@
 import {
-	aggregateRows,
 	cellValue,
 	toText,
-	walkRows,
+	totalRows,
 	type ColumnDef,
 	type DataRow,
 	type GroupRow,
@@ -96,6 +95,8 @@ export type ExportSource<Row> = {
 	label: (column: ColumnDef<Row>) => string
 	text: (row: Row, column: ColumnDef<Row>) => string
 	groupText: (group: GroupRow<Row>) => string
+	/** The totals of a group, or of every row that passes the filters, as the footer and the group rows show them. */
+	totals: (group?: GroupRow<Row>) => Record<string, unknown>
 	totalText: (column: ColumnDef<Row>, value: unknown) => string
 	locale: () => string | undefined
 }
@@ -167,10 +168,23 @@ export function collectExport<Row>(
 	const valued = columns.map((column) =>
 		column.exportValue ? { ...column, value: column.exportValue } : column,
 	)
-	const totalCells = (list: readonly DataRow<Row>[], label?: string): ExportCell[] => {
-		const all: DataRow<Row>[] = []
-		walkRows(list, (node) => all.push(node))
-		const totals = aggregateRows(all, valued)
+	const exported = valued.filter((column) => column.exportValue)
+	/**
+	 * The cells of a row of totals. `shown` is the totals that the table shows
+	 * for these rows, in its footer or in a group row; a file with those rows
+	 * says the same. Without it, the rows of the file are counted here, in the
+	 * same way.
+	 */
+	const totalCells = (
+		list: readonly DataRow<Row>[],
+		shown?: Record<string, unknown>,
+		label?: string,
+	): ExportCell[] => {
+		const totals = shown
+			? exported.length
+				? { ...shown, ...totalRows(list, exported) }
+				: shown
+			: totalRows(list, valued)
 		const cells = columns.map((column): ExportCell => {
 			if (column.aggregate === undefined) return { value: undefined, text: '' }
 			const value = totals[column.id]
@@ -192,7 +206,12 @@ export function collectExport<Row>(
 		if (node.kind === 'group') {
 			if (options.groups) {
 				const label = source.groupText(node)
-				rows.push({ kind: 'group', level, label, cells: totalCells(node.leaves, label) })
+				rows.push({
+					kind: 'group',
+					level,
+					label,
+					cells: totalCells(node.leaves, source.totals(node), label),
+				})
 			}
 			for (const child of node.children) add(child, options.groups ? level + 1 : level, only)
 			return
@@ -226,8 +245,9 @@ export function collectExport<Row>(
 	}
 
 	if (options.totals) {
-		const counted = set === 'all' || set === 'selected' ? taken : source.filtered()
-		rows.push({ kind: 'total', level: 0, cells: totalCells(counted) })
+		const own = set === 'all' || set === 'selected'
+		const cells = own ? totalCells(taken) : totalCells(source.filtered(), source.totals())
+		rows.push({ kind: 'total', level: 0, cells })
 	}
 
 	return {

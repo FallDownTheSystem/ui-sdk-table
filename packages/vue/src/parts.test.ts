@@ -86,10 +86,10 @@ test('cell, header and group slots get the row and its state', async () => {
 	expect(wrapper.get('table').attributes('role')).toBe('treegrid')
 	expect(wrapper.get('thead i').text()).toBe('TEAM')
 	expect(bodyText(wrapper)).toEqual([
-		['Design 2 115'],
+		['Design 2 115', '115'],
 		['Aino', 'Design', 'Aino:70'],
 		['Helmi', 'Design', 'Helmi:45'],
-		['Platform 1 20'],
+		['Platform 1 20', '20'],
 	])
 	wrapper.unmount()
 })

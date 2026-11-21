@@ -28,8 +28,9 @@ export function groupRows<Row>(
 	const level = (
 		list: readonly DataRow<Row>[],
 		depth: number,
-		parentId: string | null,
+		parent: GroupRow<Row> | null,
 	): TableRow<Row>[] => {
+		const parentId = parent ? parent.id : null
 		const column = columns[depth]
 		if (!column) return [...list]
 
@@ -60,9 +61,12 @@ export function groupRows<Row>(
 				value: bucket.value,
 				depth,
 				parentId,
-				children: level(bucket.rows, depth + 1, id),
+				parent,
+				children: [],
 				leaves: bucket.rows,
 			}
+			// The rows under the group know it, so the group is there before them.
+			group.children = level(bucket.rows, depth + 1, group)
 			result.push(group)
 		}
 		return result

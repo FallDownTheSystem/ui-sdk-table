@@ -55,11 +55,13 @@ import {
 	type ParseTexts,
 	type Checked,
 } from './edit'
+import { createDebounce } from './debounce'
 import { collectExport, type ExportData, type ExportOptions } from './export/data'
 import { formatValue, isNumericFormat } from './format'
 import { defaultMessages, type TableMessages } from './messages'
 import {
 	cellValue,
+	compareValues,
 	createRowModel,
 	dateRange,
 	dayOf,
@@ -68,12 +70,14 @@ import {
 	isEmptyFilter,
 	memo,
 	numberRange,
+	numberStep,
 	sameContent,
 	stabilize,
 	timeZoneOf,
 	toText,
 	toTime,
 	uniqueValues,
+	valueKey,
 	walkRows,
 	type ColumnDef,
 	type DataRow,
@@ -120,8 +124,25 @@ export type RowPinning = { top?: readonly string[]; bottom?: readonly string[] }
 /** The methods of a table that code outside it, or an agent, can call. */
 export type TableController = {
 	sortBy(columnId: string, direction?: SortDirection | null, options?: { append?: boolean }): void
+	/**
+	 * Sorts by a column as a press on its header does: ascending, descending,
+	 * not sorted. Without `append`, the `multiSort` option of the table and
+	 * the keys of the event decide whether the column joins the sort or
+	 * replaces it. With `alwaysSorted`, the last column of the sort turns
+	 * back to ascending and the sort is never empty.
+	 */
 	toggleSort(columnId: string, options?: { append?: boolean; event?: Event }): void
+	/** Gives the table a search text at once. A text that waits from `inputSearch` is dropped. */
 	setSearch(text: string): void
+	/**
+	 * Takes the text of a search field while a person types. `getView().search`
+	 * holds the text at once, and the table filters when the typing pauses for
+	 * `searchDebounce` milliseconds. Pass the event of the field for the details
+	 * of the change.
+	 */
+	inputSearch(text: string, event?: Event): void
+	/** Filters now by the text that waits from `inputSearch`, for example on Enter. Without one, nothing happens. */
+	flushSearch(): void
 	setColumnFilter(columnId: string, value: unknown): void
 	clearFilters(): void
 	/** Takes the filter of every column away, in one change. The search stays. */
@@ -147,6 +168,18 @@ export type TableController = {
 	setColumnVisibility(columnId: string, visible: boolean): void
 	toggleColumnVisibility(columnId: string): void
 	showAllColumns(): void
+	/**
+	 * Hides every column that can be hidden, in one change. A column with
+	 * `hideable: false` and a column that leads the table stay. A table needs
+	 * one column: when no other column would be left, the first one in view stays.
+	 */
+	hideAllColumns(): void
+	/** Brings the hidden columns back to what the table started with: `defaultColumnVisibility`, or every column in view. */
+	resetColumnVisibility(): void
+	/** Brings the column order back to what the table started with: `defaultColumnOrder`, or the order of the definitions. */
+	resetColumnOrder(): void
+	/** Brings the pinned columns back to what the table started with: `defaultColumnPinning`, or no pinned column. */
+	resetColumnPinning(): void
 	/** Moves a column to a place among the columns that can move, from 0. */
 	moveColumn(columnId: string, index: number): void
 	setColumnOrder(columnIds: readonly string[]): void
@@ -199,11 +232,19 @@ export type TableController = {
 	getView(): TableView
 	/**
 	 * What a filter control of a column offers: its kind, and the values, the
-	 * numbers or the dates that the column holds. They come from every row of
-	 * the table, so a filter does not take away its own choices. A column
-	 * that the `facets` option names has the facets of the owner.
+	 * numbers or the dates that the column holds. They follow the search and
+	 * the filters of the other columns, and never the filter of the column
+	 * itself, so a filter does not take away its own choices. `rows: 'all'`
+	 * gives the facets of every row of the table. A column that the `facets`
+	 * option names has the facets of the owner, for both.
 	 */
-	getFacets(columnId: string): ColumnFacets
+	getFacets(columnId: string, options?: FacetOptions): ColumnFacets
+	/**
+	 * The total of each column that has an `aggregate`, with its text in the
+	 * format of the column: of the rows that pass the filters, as the footer
+	 * shows them, or of one group by its id.
+	 */
+	getTotals(groupId?: string): Readonly<Record<string, ColumnTotal>>
 	/**
 	 * Runs the listener after each change of the state, of the rows or of the
 	 * columns, with the keys of the state that changed. Returns the function
@@ -216,6 +257,13 @@ export type TableController = {
 export type TableView = {
 	sort: readonly SortRule[]
 	filter: FilterState
+	/**
+	 * The text that a search field shows: the text that waits from
+	 * `inputSearch`, else the search of the filter.
+	 */
+	search: string
+	/** Whether a text from `inputSearch` waits for its pause, so the rows do not follow `search` yet. */
+	searchPending: boolean
 	groupBy: readonly string[]
 	expanded: readonly string[]
 	selected: readonly string[]
@@ -264,8 +312,8 @@ export type ColumnFacetValue = { value: unknown; text: string; count?: number }
 export type ColumnFacetsSource = {
 	/** The values of a `select` filter, in the order of the list. `text` defaults to the value in the format of the column. */
 	values?: readonly { value: unknown; text?: string; count?: number }[]
-	/** The lowest and the highest number of a `range` filter. */
-	range?: { min: number; max: number }
+	/** The lowest and the highest number of a `range` filter. `step` defaults to the step of the format of the column. */
+	range?: { min: number; max: number; step?: number }
 	/** The first and the last date of a `dateRange` filter: a `Date`, a time in milliseconds or a text that `Date` reads. */
 	dates?: { from: unknown; to: unknown }
 }
@@ -275,8 +323,12 @@ export type ColumnFacets = {
 	kind: FilterKind
 	/** Each different value, sorted. Filled for the kind `select`. */
 	values: readonly ColumnFacetValue[]
-	/** The lowest and the highest number. Filled for the kind `range`. */
-	range: { min: number; max: number } | null
+	/**
+	 * The lowest and the highest number, and the step of a slider between
+	 * them: the smallest change that the format of the column shows. Filled
+	 * for the kind `range`. `sliderBounds` gives ends that are whole steps.
+	 */
+	range: { min: number; max: number; step: number } | null
 	/** The earliest and the latest date. Filled for the kind `dateRange`. */
 	dates: { from: Date; to: Date } | null
 	/**
@@ -287,7 +339,42 @@ export type ColumnFacets = {
 	days: { from: string; to: string } | null
 }
 
-type ReadActions = 'getView' | 'getFacets' | 'subscribe'
+/** Which rows the facets of a column come from. */
+export type FacetOptions = {
+	/**
+	 * `'filtered'` (the default): the rows that pass the search and the
+	 * filters of the other columns. `'all'`: every row of the table.
+	 */
+	rows?: 'filtered' | 'all'
+}
+
+/** The total of one column, and its text in the format of the column. */
+export type ColumnTotal = { value: unknown; text: string }
+
+/**
+ * Totals as the owner of the rows knows them, for the `totals` option: by
+ * column id for the whole table, and by group id and column id for groups.
+ * A column that is not named keeps the total of the rows that the table has.
+ */
+export type TableTotalsSource = {
+	table?: Readonly<Record<string, unknown>>
+	groups?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
+}
+
+/** One step of the way to a group: a group above it, or the group itself. */
+export type GroupPathEntry<Row = unknown> = {
+	group: GroupRow<Row>
+	/** The column that the group is made from. `undefined` when the table has no such column any more. */
+	column: ColumnDef<Row> | undefined
+	value: unknown
+	/** The value as text, with the format of its column. */
+	text: string
+}
+
+/** How a press on a header changes the sort: see the `multiSort` option. */
+export type MultiSortMode = 'none' | 'modifier' | 'always'
+
+type ReadActions = 'getView' | 'getFacets' | 'getTotals' | 'subscribe'
 
 type CellActions =
 	| 'editCell'
@@ -328,6 +415,44 @@ export type TableOptions<Row = unknown> = {
 	/** Texts of the table in another language, or with other words. */
 	messages?: Partial<TableMessages>
 	controller?: TableController
+
+	/**
+	 * Whether a press on a header can add its column to the sort. `'none'`:
+	 * one column at a time, and a modifier key changes nothing. `'modifier'`
+	 * (the default): a press with Shift, Control or Command adds the column.
+	 * `'always'`: each press adds the column. Enter on a header follows the
+	 * same rule. A `sort` that the owner sets is never cut to the mode.
+	 */
+	multiSort?: MultiSortMode
+	/**
+	 * Whether the table keeps a sort once it has one. With it, a press on the
+	 * only column of the sort turns the order, ascending and descending, and
+	 * never takes the sort away. Without it, the third press does. Defaults
+	 * to false. It does not sort a table that starts without a sort; give
+	 * `defaultSort` for that.
+	 */
+	alwaysSorted?: boolean
+	/**
+	 * How long the typing in a search field must pause before the table
+	 * filters, in milliseconds, for a text from `inputSearch`. Defaults to
+	 * 200. With 0, each text filters at once.
+	 */
+	searchDebounce?: number
+	/**
+	 * Whether a group row shows the total of each column in a cell under that
+	 * column, as the footer does. The label of the group then covers the
+	 * columns before the first total. It applies while a column in view has
+	 * an `aggregate`; without one, and with `false`, a group row is one cell
+	 * as wide as the table. Defaults to true.
+	 */
+	groupTotals?: boolean
+	/**
+	 * Totals as the owner of the rows knows them. The footer, the group rows,
+	 * `getTotals` and the totals of an export show them in place of what the
+	 * rows of the table give. For rows from a server: the table has one page
+	 * of them, and its own totals are of that page.
+	 */
+	totals?: TableTotalsSource
 
 	sort?: readonly SortRule[]
 	defaultSort?: readonly SortRule[]
@@ -448,7 +573,8 @@ export type TableOptions<Row = unknown> = {
 	/**
 	 * The rows come from a server with the search and the column filters
 	 * applied. The table does not filter them. Facets and totals are of the
-	 * rows that the table has; give `facets` for the choices of every row.
+	 * rows that the table has; give `facets` for the choices of every row, and
+	 * `totals` for the totals of every row.
 	 */
 	manualFilter?: boolean
 	/**
@@ -462,6 +588,7 @@ export type TableOptions<Row = unknown> = {
 	 * The rows are one page from a server. The table shows them all, and the
 	 * pages come from `rowCount`. Every other feature works on the rows that
 	 * the table has: an export, the totals and "select all" are of this page.
+	 * Give `totals` for the totals that the server knows.
 	 */
 	manualPage?: boolean
 	/**
@@ -489,6 +616,14 @@ type TableState = {
 	columnPinning: ColumnPinning
 	rowPinning: RowPinning
 	cellRange: CellRange | null
+	/**
+	 * The text of a search field that the filter does not hold yet: it waits
+	 * for a pause in the typing, or for the owner of the filter to pass it
+	 * back. `null` when the filter holds what the field shows.
+	 */
+	searchDraft: string | null
+	/** Whether the text of `searchDraft` waits for a pause in the typing. */
+	searchPending: boolean
 	/** The id of the cell that is edited (`cellKey`), or `null`. */
 	editing: string | null
 	/** The id of the cell whose new value is checked now, or `null`. */
@@ -535,6 +670,8 @@ const DEFAULT_COLUMN_WIDTH = 150
 const DEFAULT_COLUMN_MIN_WIDTH = 48
 const RESIZE_STEP = 10
 const RESIZE_LARGE_STEP = 50
+const SORT_MODES: readonly MultiSortMode[] = ['none', 'modifier', 'always']
+const FACET_ROWS = ['filtered', 'all'] as const
 
 /** The ids of the columns that a person can move: the visible ones that are not pinned and do not lead the table. */
 function columnTrack(layout: ColumnLayout): string[] {
@@ -555,6 +692,8 @@ const QUIET = {
 	editing: [],
 	editChecking: [],
 	editErrors: [],
+	searchDraft: [],
+	searchPending: [],
 } as const
 
 /** For a part that reads no state at all. */
@@ -605,6 +744,11 @@ export const table = definePrimitive({
 		columnMaxWidth: 'number',
 		messages: 'value',
 		controller: 'value',
+		multiSort: 'string',
+		alwaysSorted: 'boolean',
+		searchDebounce: 'number',
+		groupTotals: 'boolean',
+		totals: 'value',
 		sort: 'value',
 		defaultSort: 'value',
 		onSortChange: 'callback',
@@ -707,6 +851,8 @@ export const table = definePrimitive({
 			columnDrag: null,
 			columnResize: null,
 			cellRange: options.cellRange ?? options.defaultCellRange ?? null,
+			searchDraft: null,
+			searchPending: false,
 			editing: null,
 			editChecking: null,
 			editErrors: NO_ERRORS,
@@ -833,13 +979,41 @@ export const table = definePrimitive({
 			return formatValue(value, column.format, column.formatOptions, { locale: options().locale })
 		}
 
-		function groupText(group: GroupRow<unknown>): string {
+		/** The value of a group as its column shows it. */
+		function groupValueText(group: GroupRow<unknown>): string {
 			const column = layout().byId.get(group.columnId)
 			const sample = group.leaves[0]
-			return message('groupRow')({
-				text: column && sample ? text(sample.row, column) : toText(group.value),
-				count: group.leaves.length,
-			})
+			return column && sample ? text(sample.row, column) : toText(group.value)
+		}
+
+		function groupText(group: GroupRow<unknown>): string {
+			return message('groupRow')({ text: groupValueText(group), count: group.leaves.length })
+		}
+
+		// A group knows the group above it, so its path is that path and one
+		// entry more. It is kept for the group: a render asks for it for each cell.
+		const groupPaths = new WeakMap<
+			GroupRow<unknown>,
+			{ columns: unknown; locale: string | undefined; path: readonly GroupPathEntry[] }
+		>()
+
+		/** The groups from the outermost one down to a group, with the group itself last. */
+		function groupPath(group: GroupRow<unknown>): readonly GroupPathEntry[] {
+			const columns = definitions()
+			const locale = options().locale
+			const kept = groupPaths.get(group)
+			if (kept && kept.columns === columns && kept.locale === locale) return kept.path
+			const path = [
+				...(group.parent ? groupPath(group.parent) : []),
+				{
+					group,
+					column: layout().byId.get(group.columnId),
+					value: group.value,
+					text: groupValueText(group),
+				},
+			]
+			groupPaths.set(group, { columns, locale, path })
+			return path
 		}
 
 		const idSet = memo((ids: readonly string[]) => new Set(ids))
@@ -1001,6 +1175,93 @@ export const table = definePrimitive({
 		const footerRowCount = () => (hasTotals(layout().leaves) ? 1 : 0)
 		const rowCount = () => headerRowCount() + bodyRowCount() + footerRowCount()
 
+		// The totals of the owner, checked once for each object that the owner gives.
+		const givenTotals = memo((given: TableTotalsSource | undefined, columns: ColumnLayout) => {
+			if (given === undefined) return undefined
+			const wrong = () =>
+				new Error(
+					'`totals` is an object with `table` (totals by column id) and `groups` (totals by group id, then by column id).',
+				)
+			const record = (value: unknown): value is Record<string, unknown> =>
+				typeof value === 'object' && value !== null && !Array.isArray(value)
+			if (!record(given)) throw wrong()
+			if (Object.keys(given).some((key) => key !== 'table' && key !== 'groups')) throw wrong()
+			const check = (totals: unknown) => {
+				if (!record(totals)) throw wrong()
+				for (const id of Object.keys(totals)) {
+					const found = columns.byId.get(id)
+					const withTotal = columns.all.filter((column) => column.aggregate !== undefined)
+					if (!found || found.aggregate === undefined) {
+						throw new Error(
+							`${found ? `Column "${id}" has no \`aggregate\`, so it shows no total` : `No column "${id}" to give a total to`}. Columns with a total: ${listed(withTotal.map((column) => column.id))}.`,
+						)
+					}
+				}
+			}
+			if (given.table !== undefined) check(given.table)
+			if (given.groups !== undefined) {
+				if (!record(given.groups)) throw wrong()
+				for (const totals of Object.values(given.groups)) check(totals)
+			}
+			return given
+		})
+		const mergedTotals = new WeakMap<
+			Record<string, unknown>,
+			{ own: Readonly<Record<string, unknown>>; result: Record<string, unknown> }
+		>()
+
+		/**
+		 * The totals of a group, or of every row that passes the filters. The
+		 * footer, the group rows, `getTotals` and an export all read them here:
+		 * what the rows of the table give, and over it what the owner knows better.
+		 */
+		function totalsOf(group?: GroupRow<unknown>): Record<string, unknown> {
+			const counted = model.aggregate(group)
+			const given = givenTotals(options().totals, layout())
+			const own = group ? given?.groups?.[group.id] : given?.table
+			if (!own) return counted
+			const kept = mergedTotals.get(counted)
+			if (kept && kept.own === own) return kept.result
+			const result = { ...counted, ...own }
+			mergedTotals.set(counted, { own, result })
+			return result
+		}
+
+		// How many columns the label of a group row covers when the row shows
+		// totals: the columns that lead the table, the first column after them,
+		// and the columns after that up to the first one with a total. The label
+		// never crosses from pinned columns to free ones: a cell sticks or scrolls
+		// as a whole.
+		const labelSpan = memo((columns: ColumnLayout, on: boolean): number | undefined => {
+			const leaves = columns.leaves
+			const first = leaves[0]
+			if (!on || !first || !hasTotals(leaves)) return undefined
+			const pin = columns.pins.get(first.id)
+			let span = 1
+			let named = !isLead(first)
+			for (let next = leaves[span]; next; next = leaves[span]) {
+				if (columns.pins.get(next.id) !== pin) break
+				if (named && next.aggregate !== undefined) break
+				if (!isLead(next)) named = true
+				span++
+			}
+			return span
+		})
+		/** The columns that the label cell of a group row covers, or `undefined` when a group row is one wide cell. */
+		const groupSpan = () => labelSpan(layout(), options().groupTotals ?? true)
+
+		/** What a cell of a group row is: its label, the total of a column, or the place of a column without one. */
+		function groupCell(
+			row: number,
+			col: number,
+		): 'group-label' | 'group-total' | 'group-blank' | undefined {
+			const flat = bodyRows()[row - headerRowCount()]
+			if (flat?.node.kind !== 'group') return undefined
+			const span = groupSpan()
+			if (span === undefined || col < span) return 'group-label'
+			return layout().leaves[col]?.aggregate === undefined ? 'group-blank' : 'group-total'
+		}
+
 		function area(cell: GridCell): GridArea {
 			const columns = layout()
 			const head = columns.headerRows.length
@@ -1015,10 +1276,17 @@ export const table = definePrimitive({
 					}
 				}
 			}
-			// A group row is one cell as wide as the table, and so is the row that says "no rows".
-			// So is a detail row.
 			const flat = bodyRows()
 			const at = flat[cell.row - head]
+			// A group row with totals: the label covers the first columns, and each column after it has a cell.
+			const span = at?.node.kind === 'group' ? groupSpan() : undefined
+			if (span !== undefined) {
+				return cell.col < span
+					? { row: cell.row, col: 0, rowSpan: 1, colSpan: span }
+					: { row: cell.row, col: cell.col, rowSpan: 1, colSpan: 1 }
+			}
+			// Else a group row is one cell as wide as the table, and so is the row that says "no rows".
+			// So is a detail row.
 			const wide = flat.length ? at?.node.kind === 'group' || !!at?.detail : cell.row === head
 			if (wide) {
 				return { row: cell.row, col: 0, rowSpan: 1, colSpan: Math.max(1, columns.leaves.length) }
@@ -1726,8 +1994,87 @@ export const table = definePrimitive({
 			if (!sameContent(next, state().sort)) change('sort', next, { reason, event })
 		}
 
-		function setFilter(next: FilterState, reason: TableReason, event?: Event): void {
-			if (!sameContent(next, state().filter)) change('filter', next, { reason, event })
+		function setFilter(next: FilterState, reason: TableReason, event?: Event): boolean {
+			return sameContent(next, state().filter) || change('filter', next, { reason, event })
+		}
+
+		const searchOf = (filter: FilterState) => filter.search ?? ''
+
+		function setSearchDraft(text: string | null, pending: boolean): void {
+			const current = state()
+			if (current.searchDraft !== text || current.searchPending !== pending) {
+				context.store.set({ searchDraft: text, searchPending: pending })
+			}
+		}
+
+		/**
+		 * Gives the filter a search text. A filter of the owner holds the text a
+		 * moment later, when the owner passes it back; until then the field
+		 * shows the text that was asked for, and not the text before it.
+		 */
+		function applySearch(text: string, reason: TableReason, event?: Event): void {
+			searchWait.cancel()
+			// The text that the filter holds is no change: an empty search and no search are one.
+			const accepted =
+				text === searchOf(state().filter) ||
+				setFilter({ ...state().filter, search: text }, reason, event)
+			setSearchDraft(accepted && searchOf(state().filter) !== text ? text : null, false)
+		}
+
+		// The text of a search field waits here for a pause in the typing.
+		const searchWait = createDebounce(
+			(text: string, event?: Event) => applySearch(text, 'input-change', event),
+			{ debounce: () => options().searchDebounce },
+		)
+		// A table that is gone filters nothing.
+		context.onDestroy(() => searchWait.cancel())
+		// A new search text in the state is what the field shows from now on:
+		// the text of a pause that ended, or a text from outside, which wins
+		// over a text that waits.
+		let seenSearch = searchOf(state().filter)
+		context.onDestroy(
+			context.store.subscribe((liveOnly) => {
+				if (liveOnly) return
+				const now = searchOf(state().filter)
+				if (now === seenSearch) return
+				seenSearch = now
+				searchWait.cancel()
+				setSearchDraft(null, false)
+			}),
+		)
+
+		function sortMode(): MultiSortMode {
+			const mode = options().multiSort ?? 'modifier'
+			if (SORT_MODES.includes(mode)) return mode
+			throw new Error(`\`multiSort\` is one of: ${SORT_MODES.join(', ')}. It is "${String(mode)}".`)
+		}
+
+		/** Whether a sort action adds its column to the sort, for what the caller asked and the mode of the table. */
+		function appends(asked: unknown, event?: Event): boolean {
+			const mode = sortMode()
+			if (asked !== undefined && typeof asked !== 'boolean') {
+				throw new Error('`append` of a sort is true or false.')
+			}
+			if (asked && mode === 'none') {
+				throw new Error(
+					`This table sorts by one column at a time: its \`multiSort\` option is "none", so \`append\` cannot add a column to the sort. Leave \`append\` out, or set \`multiSort\` to "modifier" or "always".`,
+				)
+			}
+			if (asked !== undefined) return asked
+			if (mode !== 'modifier') return mode === 'always'
+			const keys = event as { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean } | undefined
+			return !!(keys?.shiftKey || keys?.ctrlKey || keys?.metaKey)
+		}
+
+		// What the table started with, for the actions that bring it back.
+		const started = {
+			columnVisibility: options().defaultColumnVisibility ?? NO_VISIBILITY,
+			columnOrder: options().defaultColumnOrder ?? NO_IDS,
+			columnPinning: options().defaultColumnPinning ?? NO_PINNING,
+		}
+
+		function resetColumns(key: keyof typeof started): void {
+			if (!sameContent(started[key], state()[key])) change(key, started[key], { reason: 'reset' })
 		}
 
 		function setExpanded(id: string, open: boolean, reason: TableReason, event?: Event): void {
@@ -1759,18 +2106,21 @@ export const table = definePrimitive({
 		}
 
 		const controller: Omit<TableController, OtherActions> = {
-			sortBy(columnId, direction = 'asc', { append = false } = {}) {
+			sortBy(columnId, direction = 'asc', sortOptions = {}) {
 				column(columnId, 'sort by')
 				if (direction !== null && direction !== 'asc' && direction !== 'desc') {
 					throw new Error(`A sort direction is "asc", "desc" or null, not "${String(direction)}".`)
 				}
+				// Code that names its direction asks for one column unless it says otherwise, in every mode.
+				const append = appends(sortOptions.append ?? false)
 				const rest = append ? state().sort.filter((rule) => rule.id !== columnId) : []
 				const next = direction ? [...rest, { id: columnId, desc: direction === 'desc' }] : rest
 				setSort(next, 'imperative')
 			},
 			toggleSort(columnId, toggle = {}) {
-				const { append = false, event } = toggle
+				const { event } = toggle
 				column(columnId, 'sort by')
+				const append = appends(toggle.append, event)
 				const current = state().sort.find((rule) => rule.id === columnId)
 				// The order of one press after the other: ascending, descending, not sorted.
 				const direction = !current ? 'asc' : current.desc ? null : 'desc'
@@ -1782,11 +2132,34 @@ export const table = definePrimitive({
 				// A column that is already in the sort keeps its place among the rules.
 				else if (current) next = sort.map((other) => (other.id === columnId ? rule : other))
 				else next = [...sort, rule]
+				// A table that keeps its sort turns the last column back to ascending.
+				if (!next.length && (options().alwaysSorted ?? false)) {
+					next = [{ id: columnId, desc: false }]
+				}
 				setSort(next, event ? 'press' : 'imperative', event)
 			},
 			setSearch(search) {
 				if (typeof search !== 'string') throw new Error('The search text must be a string.')
-				setFilter({ ...state().filter, search }, 'imperative')
+				applySearch(search, 'imperative')
+			},
+			inputSearch(search, event) {
+				if (typeof search !== 'string') throw new Error('The search text must be a string.')
+				// The text that the filter holds already: nothing has to wait. A search
+				// field of a browser empties itself on Escape, after the key did.
+				if (search === searchOf(state().filter)) {
+					searchWait.cancel()
+					setSearchDraft(null, false)
+					return
+				}
+				setSearchDraft(search, true)
+				searchWait.call(search, event)
+				// A pause of 0 ran the search at once, and it said what the field shows.
+				if (!searchWait.pending() && state().searchPending) {
+					setSearchDraft(state().searchDraft, false)
+				}
+			},
+			flushSearch() {
+				searchWait.flush()
 			},
 			setColumnFilter(columnId, value) {
 				column(columnId, 'filter')
@@ -1797,7 +2170,10 @@ export const table = definePrimitive({
 				setFilter(Object.keys(columns).length ? { ...rest, columns } : rest, 'imperative')
 			},
 			clearFilters() {
-				setFilter(NO_FILTER, 'imperative')
+				// A text that waits is a search too, and it goes with the others.
+				searchWait.cancel()
+				const accepted = setFilter(NO_FILTER, 'imperative')
+				setSearchDraft(accepted && searchOf(state().filter) !== '' ? '' : null, false)
 			},
 			clearColumnFilters() {
 				const search = state().filter.search
@@ -1944,6 +2320,23 @@ export const table = definePrimitive({
 					change('columnVisibility', NO_VISIBILITY, { reason: 'imperative' })
 				}
 			},
+			hideAllColumns() {
+				const columns = layout()
+				const next: Record<string, boolean> = { ...state().columnVisibility }
+				for (const found of columns.all) {
+					if (!isLead(found) && found.hideable !== false) next[found.id] = false
+				}
+				// A table needs one column, and a column that leads the table is a control of its rows, not one of them.
+				const stays = columns.leaves.some((found) => !isLead(found) && found.hideable === false)
+				const first = stays ? undefined : columns.leaves.find((found) => !isLead(found))
+				if (first) delete next[first.id]
+				if (!sameContent(next, state().columnVisibility)) {
+					change('columnVisibility', next, { reason: 'imperative' })
+				}
+			},
+			resetColumnVisibility: () => resetColumns('columnVisibility'),
+			resetColumnOrder: () => resetColumns('columnOrder'),
+			resetColumnPinning: () => resetColumns('columnPinning'),
 			moveColumn(columnId, index) {
 				requireVisible(columnId, 'move')
 				const track = state().columnTrack
@@ -2036,9 +2429,11 @@ export const table = definePrimitive({
 			return isNumericFormat(found.format) ? 'range' : 'text'
 		}
 
-		// The facets of a column are kept while the rows, the column, the locale
-		// and the facets of the owner are the same: a filter control asks for
-		// them at each render.
+		// The facets of a column are kept while their rows, the column, the
+		// locale, the facets of the owner and the values that its own filter
+		// names are the same: a filter control asks for them at each render. The
+		// rows are a stage of the row model, so a new filter of the column itself
+		// keeps them, and so does a new sort or a new page.
 		const facetCache = new Map<
 			string,
 			{
@@ -2046,9 +2441,42 @@ export const table = definePrimitive({
 				column: ColumnDef
 				locale: string | undefined
 				given: unknown
+				chosen: unknown
+				/** The values that the rows hold, by key, and whether the list has a value that no row holds. */
+				held: ReadonlySet<string>
+				extra: boolean
 				result: ColumnFacets
 			}
 		>()
+
+		/** The values that a filter names and no row holds, each once. */
+		function goneValues(own: unknown, held: ReadonlySet<string>): unknown[] {
+			const chosen = isEmptyFilter(own) ? [] : Array.isArray(own) ? own : [own]
+			const seen = new Set<string>()
+			return chosen.filter((value: unknown) => {
+				const key = valueKey(value)
+				if (key === '' || held.has(key) || seen.has(key)) return false
+				seen.add(key)
+				return true
+			})
+		}
+		const stepCache = new Map<
+			string,
+			{ rows: unknown; column: ColumnDef; locale: string | undefined; step: number }
+		>()
+
+		/** The step of a slider over a column: from its format, or from the digits of every row. */
+		function stepOf(found: ColumnDef): number {
+			const rows = model.source().rows
+			const locale = options().locale
+			const kept = stepCache.get(found.id)
+			if (kept && kept.rows === rows && kept.column === found && kept.locale === locale) {
+				return kept.step
+			}
+			const step = numberStep(rows, found, locale)
+			stepCache.set(found.id, { rows, column: found, locale, step })
+			return step
+		}
 
 		/** The facets of the owner for a column, checked, or `undefined` for a column without them. */
 		function givenFacets(found: ColumnDef): ColumnFacetsSource | undefined {
@@ -2073,6 +2501,9 @@ export const table = definePrimitive({
 			}
 			if (range !== undefined && !(Number.isFinite(range?.min) && Number.isFinite(range?.max))) {
 				throw wrong('`range` as { min, max } with two numbers')
+			}
+			if (range?.step !== undefined && !(Number.isFinite(range.step) && range.step > 0)) {
+				throw wrong('`range.step` as a number above 0')
 			}
 			if (
 				dates !== undefined &&
@@ -2104,6 +2535,20 @@ export const table = definePrimitive({
 			return count
 		})
 
+		// Every group of the table by its id, on all pages.
+		const groupsById = memo((rows: readonly TableRow<unknown>[]) => {
+			const groups = new Map<string, GroupRow<unknown>>()
+			const walk = (list: readonly TableRow<unknown>[]) => {
+				for (const node of list) {
+					if (node.kind !== 'group') continue
+					groups.set(node.id, node)
+					walk(node.children)
+				}
+			}
+			walk(rows)
+			return groups
+		})
+
 		const subscriptions = new Set<() => void>()
 		context.onDestroy(() => {
 			for (const stop of subscriptions) stop()
@@ -2118,6 +2563,8 @@ export const table = definePrimitive({
 				return {
 					sort: current.sort,
 					filter: current.filter,
+					search: current.searchDraft ?? searchOf(current.filter),
+					searchPending: current.searchPending,
 					groupBy: current.groupBy,
 					expanded: current.expanded,
 					selected: current.selected,
@@ -2139,12 +2586,25 @@ export const table = definePrimitive({
 					loading: options().loading ?? false,
 				}
 			},
-			getFacets(columnId) {
+			getFacets(columnId, facetOptions = {}) {
 				const found = column(String(columnId), 'read the facets of')
-				const rows = model.source().rows
+				const set =
+					typeof facetOptions === 'object' && facetOptions !== null ? facetOptions.rows : null
+				if (set !== undefined && (set === null || !FACET_ROWS.includes(set))) {
+					throw new Error(
+						`\`getFacets\` takes a column id and \`{ rows }\`, where \`rows\` is one of: ${FACET_ROWS.join(', ')}.`,
+					)
+				}
+				const every = set === 'all'
+				const rows = every ? model.source().rows : model.facetRows(found.id)
 				const locale = options().locale
 				const all = options().facets
-				const kept = facetCache.get(found.id)
+				const kind = filterKind(found)
+				// The values that the filter of the column names stay in its list, also
+				// when another filter leaves no row that holds them.
+				const own = every || kind !== 'select' ? undefined : state().filter.columns?.[found.id]
+				const key = `${every ? 'all' : 'filtered'}|${found.id}`
+				const kept = facetCache.get(key)
 				if (
 					kept &&
 					kept.rows === rows &&
@@ -2152,10 +2612,14 @@ export const table = definePrimitive({
 					kept.locale === locale &&
 					kept.given === all
 				) {
-					return kept.result
+					if (sameContent(kept.chosen, own)) return kept.result
+					// Another choice among the values that the rows hold gives the same list.
+					if (!kept.extra && !goneValues(own, kept.held).length) {
+						kept.chosen = own
+						return kept.result
+					}
 				}
 				const given = givenFacets(found)
-				const kind = filterKind(found)
 				const valueText = (value: unknown) =>
 					found.format
 						? formatValue(value, found.format, found.formatOptions, { locale })
@@ -2163,17 +2627,23 @@ export const table = definePrimitive({
 				const zone = timeZoneOf(found)
 				const dayOn = (value: unknown, time: number) => (isDay(value) ? value : dayOf(time, zone))
 				let values: readonly ColumnFacetValue[] = []
-				if (kind === 'select') {
-					values = given?.values
-						? given.values.map(({ value, text, count }) => ({
-								value,
-								text: text ?? valueText(value),
-								...(count === undefined ? undefined : { count }),
-							}))
-						: uniqueValues(rows, found, locale).map((facet) => ({
-								...facet,
-								text: valueText(facet.value),
-							}))
+				let held: ReadonlySet<string> = new Set()
+				let extra = false
+				if (kind === 'select' && given?.values) {
+					values = given.values.map(({ value, text, count }) => ({
+						value,
+						text: text ?? valueText(value),
+						...(count === undefined ? undefined : { count }),
+					}))
+				} else if (kind === 'select') {
+					const present = uniqueValues(rows, found, locale)
+					held = new Set(present.map((facet) => valueKey(facet.value)))
+					const gone = goneValues(own, held).map((value) => ({ value, count: 0 }))
+					extra = gone.length > 0
+					const list = extra
+						? [...present, ...gone].sort((a, b) => compareValues(a.value, b.value, locale))
+						: present
+					values = list.map((facet) => ({ ...facet, text: valueText(facet.value) }))
 				}
 				let dates: ColumnFacets['dates'] = null
 				let days: ColumnFacets['days'] = null
@@ -2188,15 +2658,44 @@ export const table = definePrimitive({
 						days = dayRange(rows, found)
 					}
 				}
-				const result: ColumnFacets = {
-					kind,
-					values,
-					range: kind === 'range' ? (given?.range ?? numberRange(rows, found)) : null,
-					dates,
-					days,
+				let range: ColumnFacets['range'] = null
+				if (kind === 'range') {
+					const ends = given?.range ?? numberRange(rows, found)
+					if (ends) {
+						range = { min: ends.min, max: ends.max, step: given?.range?.step ?? stepOf(found) }
+					}
 				}
-				facetCache.set(found.id, { rows, column: found, locale, given: all, result })
+				const result: ColumnFacets = { kind, values, range, dates, days }
+				facetCache.set(key, {
+					rows,
+					column: found,
+					locale,
+					given: all,
+					chosen: own,
+					held,
+					extra,
+					result,
+				})
 				return result
+			},
+			getTotals(groupId) {
+				let group: GroupRow<unknown> | undefined
+				if (groupId !== undefined) {
+					const groups = groupsById(model.grouped())
+					group = groups.get(String(groupId))
+					if (!group) {
+						throw new Error(
+							`No group "${String(groupId)}" to read the totals of. Groups: ${listed(groups.keys())}.`,
+						)
+					}
+				}
+				const values = totalsOf(group)
+				const totals: Record<string, ColumnTotal> = {}
+				for (const found of layout().all) {
+					if (found.aggregate === undefined) continue
+					totals[found.id] = { value: values[found.id], text: totalText(found, values[found.id]) }
+				}
+				return totals
 			},
 			subscribe(listener) {
 				if (typeof listener !== 'function') throw new Error('`subscribe` takes a function.')
@@ -2366,6 +2865,7 @@ export const table = definePrimitive({
 						label: (column) => column.header ?? column.id,
 						text,
 						groupText,
+						totals: totalsOf,
 						totalText,
 						locale: () => options().locale,
 					},
@@ -2520,8 +3020,11 @@ export const table = definePrimitive({
 				return rule ? (rule.desc ? 'desc' : 'asc') : undefined
 			},
 			isTree: () => !!options().getChildren || state().groupBy.length > 0,
-			/** Column totals of a group, or of all filtered rows. */
-			totals: (group?: GroupRow<unknown>) => model.aggregate(group),
+			/** Column totals of a group, or of all filtered rows, with the totals of the owner over them. */
+			totals: totalsOf,
+			groupSpan,
+			groupCell,
+			groupPath,
 			/** A total as text. A count is a plain number, whatever the format of its column. */
 			totalText,
 			/** The text of a group row: the value of the group as its column shows it, and its count. */
@@ -2545,6 +3048,8 @@ export const table = definePrimitive({
 				editing: [],
 				editChecking: [],
 				editErrors: [],
+				searchDraft: [],
+				searchPending: [],
 			}),
 			// A resize changes the width of the table at each step, and the rows must
 			// not render for it. So the two attributes that follow the widths are
@@ -2793,7 +3298,12 @@ export const table = definePrimitive({
 			attrs: (state, { props, api }) => {
 				const header = props.header ? api.headerAt(props.row, props.col) : undefined
 				const column = props.header ? header?.column : api.columns()[props.col]
-				const wide = (props.colspan ?? 1) > 1
+				const span = props.colspan ?? 1
+				const wide = span > 1
+				const inGroup = props.header ? undefined : api.groupCell(props.row, props.col)
+				// The label of a group row that shows totals covers some columns, and
+				// sticks with them. A cell as wide as the table has no side to stick to.
+				const label = inGroup === 'group-label' && api.groupSpan() !== undefined
 				// The header of one column, and not a header group.
 				const leaf = !!header?.leaf
 				const sortable = leaf && !!column?.sortable
@@ -2803,16 +3313,26 @@ export const table = definePrimitive({
 				// can be next to the columns that scroll.
 				const leaves = api.columns()
 				const first = header ? leaves[header.col] : column
-				const last = header ? leaves[header.col + header.colSpan - 1] : column
-				const pin = header ? header.pin : wide || !column ? undefined : api.columnPin(column.id)
+				const last = header
+					? leaves[header.col + header.colSpan - 1]
+					: label
+						? leaves[props.col + span - 1]
+						: column
+				const pin = header
+					? header.pin
+					: (wide && !label) || !column
+						? undefined
+						: api.columnPin(column.id)
 				const near = pin === 'end' ? last : first
 				const far = pin === 'end' ? first : last
 				const offset = pin && near ? api.pins.offset(near.id) : undefined
 				const id = props.header ? undefined : api.cellIdAt(props.row, props.col)
 				const editable = id !== undefined && api.canEditCell(id)
-				const ranged = !props.header && api.cellSelection() && api.inBody(props.row)
+				// A group row holds no values, so its cells are never cells of a range.
+				const ranged = !props.header && !inGroup && api.cellSelection() && api.inBody(props.row)
 				return {
 					...(ranged ? api.rangeAttrs(state, props) : undefined),
+					'data-kind': inGroup,
 					// In a grid, a cell can be edited unless it says that it cannot.
 					'aria-readonly': id !== undefined && api.hasEditing() && !editable ? 'true' : undefined,
 					'data-editable': editable ? '' : undefined,
@@ -2865,7 +3385,8 @@ export const table = definePrimitive({
 					// cell, because a header often holds a sort button for the pointer.
 					if (onCell && leaf && event.key === 'Enter' && column.sortable) {
 						event.preventDefault()
-						api.toggleSort(column.id, { append: event.shiftKey, event })
+						// The mode of the table reads the modifier keys of the event.
+						api.toggleSort(column.id, { event })
 						return
 					}
 					const row = props.header ? undefined : api.rows()[props.row - api.headerRowCount()]
@@ -3109,6 +3630,7 @@ export const table = definePrimitive({
 			'sortBy',
 			'toggleSort',
 			'setSearch',
+			'flushSearch',
 			'setColumnFilter',
 			'clearFilters',
 			'clearColumnFilters',
@@ -3131,9 +3653,14 @@ export const table = definePrimitive({
 			'selectRows',
 			'deselectRows',
 			'getFacets',
+			'getTotals',
 			'setColumnVisibility',
 			'toggleColumnVisibility',
 			'showAllColumns',
+			'hideAllColumns',
+			'resetColumnVisibility',
+			'resetColumnOrder',
+			'resetColumnPinning',
 			'moveColumn',
 			'setColumnOrder',
 			'setColumnWidth',

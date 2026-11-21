@@ -1,4 +1,4 @@
-export { aggregateRows, aggregates } from './aggregate'
+export { aggregateRows, aggregates, totalRows } from './aggregate'
 export {
 	cellValue,
 	dayEnd,
@@ -11,7 +11,15 @@ export {
 	toTime,
 	valueKey,
 } from './columns'
-export { dateRange, dayRange, numberRange, uniqueValues, type FacetValue } from './facets'
+export {
+	dateRange,
+	dayRange,
+	numberRange,
+	numberStep,
+	sliderBounds,
+	uniqueValues,
+	type FacetValue,
+} from './facets'
 export { createRowPredicate, filterRows, isEmptyFilter, type FilterOptions } from './filter'
 export { detailRowId, flattenRows, type FlatRow } from './flatten'
 export { groupRows, type GroupOptions } from './group'

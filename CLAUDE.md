@@ -2,7 +2,7 @@
 
 ## What this is
 
-A headless table for Vue, built on UI SDK (`@ui-sdk/core`, `@ui-sdk/vue`, public beta). It replaces the `CustomDataTable` of the sibling project `dashboard-template`. Work in progress; nothing is published and every package is `private`.
+A headless table for Vue, built on UI SDK (`@ui-sdk/core`, `@ui-sdk/vue`, public beta). UI SDK gives the logic primitives, this library builds the headless table on them, and a consumer builds its styled table on this library. Work in progress; nothing is published and every package is `private`.
 
 ## Layers
 
@@ -11,13 +11,13 @@ The folder borders are the design. Do not import against the arrows.
 ```
 packages/core    framework-free: table primitive, behaviors, pure row helpers   → @ui-sdk/core only
 packages/vue     Vue parts, slots, v-model, controllers                         → core, @ui-sdk/vue, vue
-packages/styled  styled table, installed into an app through a registry        → vue, UI SDK components
-apps/docs        demo pages, benchmark page, browser tests                      → everything
+apps/docs        demo pages with plain CSS, benchmark page, browser tests       → everything
 docs/proof       frozen feasibility proof; reference only, not built or linted
 ```
 
 - `packages/core` has no Vue import and no Vue dependency. Its `tsconfig.json` sets `types: []` for that reason.
-- The styled table uses UI SDK components for every control. No reka-ui, no shadcn-vue.
+- The library has no styled table and no control of a toolbar. What a styled table needs is logic here: state, data for controls (`getView`, `getFacets`, `getTotals`, `subscribe`), attributes and CSS variables. A feature that only gives looks belongs to the consumer.
+- The docs pages use plain CSS (`apps/docs/src/style.css`) and native controls. No CSS framework, no component library for looks.
 - Vue is a first-class citizen: slot-based cells, `v-model` for each controlled state, Vue-idiomatic types. If the framework-free core blocks one of these, stop and say so.
 
 ## Design rules (from UI SDK)
@@ -70,28 +70,33 @@ Follow the `ui-sdk` skill. Read `node_modules/@ui-sdk/vue/docs/llms.txt`; search
 - The text of a cell in a file is the text of the screen. An Excel cell is a number or a date with a pattern only when a spreadsheet shows it as the screen does; when in doubt, `numberWriter` or `dateSection` returns `null` and the cell is text.
 - `ssf` (a dev dependency) reads patterns in the tests. A new pattern rule needs a test that formats the written value with the written pattern and compares it with the screen.
 
-## Styled table (`packages/styled`)
+## Group rows and totals (`table.ts`, `rows/aggregate.ts`)
 
-An app installs `src/data-table/` as owned source through `registry/data-table.json`, so each file must work after a copy to `src/components/DataTable/`.
+- A group row has a label cell and one cell for each column after it, when a column in view has an `aggregate` and `groupTotals` is not false. `groupSpan()` says how many columns the label covers, and `area()`, the cell attributes and the Vue renderer all read it. Change the rule in `labelSpan` only.
+- The label never crosses from pinned columns to free ones: a cell sticks or scrolls as a whole.
+- Every total comes from `totalsOf` in `table.ts`: the footer, the cells of a group row, `getTotals` and the export. It reads `model.aggregate` and puts the `totals` of the owner over it. Do not count rows for a total anywhere else; `totalRows` is the one place that walks child rows.
+- A group row holds no values. Its cells carry no range attributes, a copy gives an empty line for it and a paste skips it. Enter and Space act on the group from every cell of its row.
+- A group knows the group above it (`GroupRow.parent`), so `groupPath` walks no tree. Keep `parent` when a stage builds a group.
 
-- Every `.vue` file name starts with `DataTable`: the app registers components by file name. The modules `index.ts`, `messages.ts`, `types.ts` and `DataTableClasses.ts` are not components.
-- A shipped file imports only its neighbours (`./`), `vue`, `@/lib/utils`, `ui-sdk-table-vue`, `@ui-sdk/vue`, `@ui-sdk/core` and `@lucide/vue`. The registry build refuses anything else, and a file in `src/data-table/` that is neither `.vue` nor `.ts`. `src/lib/utils.ts` and `src/tests/` are not shipped.
-- Every control is a UI SDK component. No raw `<button>`, `<input>` or `<select>`, no reka-ui, no shadcn-vue.
-- Looks are Tailwind CSS 4 utilities with the token names of the app. No colour literal, no arbitrary value with `px`, `rem`, `em`, `ms` or `s`, no `<style>` block, no inline style, no `@apply`. State goes through `data-*` and `aria-*` variants. Sides are logical (`ps-`, `pe-`, `start-`, `end-`), never `pl-`, `pr-`, `left-`, `right-`.
-- The looks of the controls live in `DataTableClasses.ts`, the focus ring too (`focusRingClass`, `focusInsetClass`). The line around a control is `border-foreground/50`, because `border-input` is under 3 to 1.
-- `outline-none` sets the outline style to none in Tailwind 4. A focus ring needs `focus-visible:outline-solid` next to `focus-visible:outline-2`.
-- A `dark:` class wins over an `aria-*` or `data-*` class of the same property. Give the state its own `dark:` class (see the current page in `DataTablePagination.vue`).
-- A sticky header, footer or pinned cell is opaque. Lines sit on the cells (`border-separate`), so sticky cells keep them. An opaque cell paints the tint of its row as a gradient layer (`tinted` in `DataTable.vue`): a new row state with a fill needs its `group-…/row:from-…` class there, or pinned cells do not show it.
-- A control that a page can hold once for each table has the name of its table in its accessible name (`messages.ts`: `named`, `namesOf`). A new control of the toolbar, the header or the pages follows this, and the agent test with two tables covers it.
-- The checkbox column and the expand column are `lead` columns of core: always first, never in `columnOrder` or `columnPinning`. Do not order or pin them in the styled table.
-- An app with a fixed header offsets the sticky rows through `--table-sticky-top` and `--table-sticky-bottom`, which `packages/core/src/behaviors/sticky.ts` adds to each offset. Do not make the caller override `top` with a class.
-- Texts go through `messages.ts` and the `messages` prop. No text in a template.
-- A change that a person can see only (rows found, sort, page, a failed export) is also said: the polite live region of `DataTable.vue`, after a pause, or `role="alert"`. A control that leaves the page gives focus to the control it belongs to.
-- The export writers load with `import('ui-sdk-table-vue/export')` on the first export. No static import of them, also not in a docs page that the styled page shares a chunk with.
-- After a change in `src/data-table/`, run `pnpm --filter ui-sdk-table-styled build` and commit `registry/data-table.json`. `scripts/build-registry.test.ts` fails when it is stale. The UI SDK version of the item comes from the `catalog`; the test holds the `peerDependencies` of the packages to it.
-- `scripts/install-data-table.mjs <app root> [--check]` is how an app copies the item. Keep it free of dependencies: an app runs it with plain `node`.
-- A new control gets a unit test in `src/tests/data-table.test.ts`, a step in `src/tests/agent.test.ts`, a Playwright test in `apps/docs/e2e/styled.spec.ts` or `styled-grid.spec.ts` for its keyboard and focus rules, and its colour pairs in `apps/docs/e2e/styled-contrast.spec.ts` (WCAG AA in light and dark; a line against both of its sides). Never change a token to pass; change the class that picks the pair.
-- `apps/docs` loads one stylesheet per page: `styled.css` (Tailwind and the tokens) for `?page=styled`, `style.css` for the others. Pages load lazily (`src/page.ts`).
+## Facets (`rows/model.ts`, `rows/facets.ts`, `getFacets` in `table.ts`)
+
+- The facets of a column follow the search and the filters of the other columns, never its own filter. `model.facetRows(columnId)` gives the rows: the list of `filtered` for a column without a filter, and a stage of its own for a column that filters.
+- A facet is counted on the first call and kept by its rows. Nothing computes a facet that no control asked for.
+- A value that the filter of the column names stays in its list with the count 0. The facets of the owner (`facets` option) are never changed by the rows.
+- `range.step` is the smallest change that the format of the column shows (`numberStep`). A new number format needs its case there, and a test.
+
+## Search with a pause (`debounce.ts`, `table.ts`)
+
+- `createDebounce` is the only timer for a pause. It has no dependency and knows nothing of the table.
+- The text of a search field is state: `searchDraft` and `searchPending`. `getView().search` is the draft, else the search of the filter. The filter changes once, after the pause, through `createChange` with the reason `input-change`.
+- Whatever sets the search of the filter wins over a text that waits: `setSearch`, `clearFilters`, a controlled `filter` with another search text. The rule follows the state (a store subscription), not the actions.
+- With a controlled `filter`, the draft stays until the owner passes the text back, so the field never shows the text before.
+- The table announces nothing for a search. A consumer announces the rows found on a change of `filter`.
+
+## Sort modes (`toggleSort` in `table.ts`)
+
+- The rule for a press on a header is in `toggleSort`: `multiSort` and the modifier keys of the event decide `append` when the caller gives none. Renderers pass the event and never read the keys themselves.
+- An action that asks for what the mode forbids throws with the mode and the valid values. The `sort` state of the owner is never cut to the mode.
 
 ## Commands
 
@@ -112,7 +117,7 @@ Run `vp check`, `vp run type-check` and `vp test` before you call work done; add
 - **Versions live in the `catalog` of `pnpm-workspace.yaml`.** UI SDK is pinned to an exact beta; do not bump it without reading what changed.
 - **A package with a Vite plugin must list `vite` (`catalog:`) itself.** Otherwise pnpm gives the plugin plain `vite` as its peer, the plugin's types no longer match `vite-plus`, and `vue-tsc --build` crashes with `Debug Failure. False expression: parameter should have errors when reporting errors` instead of a type error.
 - **Do not alias `vitest`.** `vite-plus` 1.7 depends on the real `vitest`; the old `@voidzero-dev/vite-plus-test` alias makes `vp test` fail with `Could not find 'vitest' bin entry`. Import test helpers from `vite-plus/test`.
-- **TypeScript stays on `~6.0.3` and `vue-tsc` on `3.3.11`**, for the same reasons as in `dashboard-template` (TS 7 has no compiler API; vue-tsc 3.3.12-3.3.14 break `//` inside static attributes).
+- **TypeScript stays on `~6.0.3` and `vue-tsc` on `3.3.11`**, for these reasons (TS 7 has no compiler API; vue-tsc 3.3.12-3.3.14 break `//` inside static attributes).
 - **The packages build JavaScript only, no `.d.ts`.** `definePrimitive` returns a type that names `BaseSlotProps`, `Feature`, `Listener` and `SlotProps`, which `@ui-sdk/core` 0.1.0-beta.13 does not export, so declaration emit fails with TS2883. Types come from the TypeScript source (`exports` points at `src`). Re-evaluate when UI SDK exports those types.
 - **The type-aware lint does not read `.vue` files.** `apps/docs/env.d.ts` declares `*.vue` for it.
 
@@ -123,3 +128,5 @@ Run `vp check`, `vp run type-check` and `vp test` before you call work done; add
 - Comments explain why. No comment describes a change.
 - A keyboard or focus rule is not done until a Playwright test covers it. jsdom passed the tab order, the page reset through `v-model` and Enter on a group row while all three were wrong in a browser.
 - Tests: `mount` from `@ui-sdk/core/testing` for a primitive; `@vue/test-utils` for Vue parts; Playwright for real keyboard, pointer and layout. A new behavior gets its own tests.
+- The `testing` entry of `@ui-sdk/core` has no way to give a mounted primitive new options. A test that needs them after the mount (a controlled state) is a Vue test.
+- A browser test of a headless rule lives on a headless docs page. `?page=groups` has group rows, totals, facets, the search field, the sort mode switch, a `lead` column and caller attributes; `?page=window&frame=page&bars` has a fixed header and footer of the page for `--table-sticky-top` and `--table-sticky-bottom`.

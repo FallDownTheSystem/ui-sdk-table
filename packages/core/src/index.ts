@@ -1,3 +1,4 @@
+export { createDebounce, type Debounce, type DebounceOptions } from './debounce'
 export * from './edit'
 export * from './format'
 export * from './rows'
@@ -19,6 +20,11 @@ export type { CellBounds, CellRange } from './behaviors/range'
 export {
 	table,
 	type CellRef,
+	type ColumnTotal,
+	type FacetOptions,
+	type GroupPathEntry,
+	type MultiSortMode,
+	type TableTotalsSource,
 	type ColumnFacets,
 	type ColumnFacetsSource,
 	type ColumnFacetValue,

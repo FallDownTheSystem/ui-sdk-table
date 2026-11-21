@@ -76,7 +76,7 @@ test('the keyboard moves between cells and into a cell', async ({ page }) => {
 	await expect(cell(1, 1)).toBeFocused()
 })
 
-test('groups open and close, and a group row is one wide cell', async ({ page }) => {
+test('groups open and close, and a group row has its label and its total', async ({ page }) => {
 	await page.goto('/')
 	const table = page.getByRole('treegrid', { name: 'People' })
 
@@ -86,16 +86,23 @@ test('groups open and close, and a group row is one wide cell', async ({ page })
 	await expect(billing).toHaveAttribute('aria-expanded', 'false')
 	await expect(billing).toHaveAttribute('aria-level', '1')
 
-	await billing.getByRole('gridcell').focus()
+	// The label covers the columns before the total of the score, and the total is under its header.
+	const label = billing.getByRole('gridcell').first()
+	await expect(label).toHaveAttribute('colspan', '3')
+	await expect(billing.getByRole('gridcell')).toHaveCount(3)
+	await expect(billing.locator('td[data-column="score"]')).toHaveText(/^[\d.]+$/)
+	await label.focus()
 	await page.keyboard.press('Enter')
 	await expect(billing).toHaveAttribute('aria-expanded', 'true')
 	await expect(table.locator('tbody tr').nth(1)).toHaveAttribute('aria-level', '2')
 
-	// From the wide group cell, the arrow keys still reach the rows below and the header above.
+	// From the label, the arrow keys still reach the rows below and the header above.
 	await page.keyboard.press('ArrowDown')
 	await expect(table.locator('tbody tr').nth(1).getByRole('gridcell').first()).toBeFocused()
 	await page.keyboard.press('ArrowUp')
-	await expect(billing.getByRole('gridcell')).toBeFocused()
+	await expect(label).toBeFocused()
+	await page.keyboard.press('ArrowUp')
+	await expect(table.locator('thead th').first()).toBeFocused()
 })
 
 test('after a sort, the arrow keys move from the place the cell has now', async ({ page }) => {
