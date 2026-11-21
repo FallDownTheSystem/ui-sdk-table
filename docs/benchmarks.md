@@ -141,6 +141,10 @@ Each value is the median of 9 runs (5 for a parse), in milliseconds, on the clou
 | Slice 5: the same with a new index of readers | not estimated | 378 |
 | Slice 5: `follow`, 1,000 ranges of 50 rows and 50,000 changed cells | not estimated | 129 |
 | Slice 5: `follow`, a running sum over 5,000 rows (12.5 million reads), refused by `maxReads` | not estimated | 5.1 |
+| Slice 6: the mount of a table without formulas, for the line below | not estimated | 60.1 |
+| Slice 6: the mount with 50,010 formula cells | nothing more than the line above | 39.1 (nothing is computed; the line above warms the code up) |
+| Slice 6: `getView` after a move of the active cell, a table without formulas | not estimated | 0.27 |
+| Slice 6: the same with 50,010 formula cells (the formula of the active cell only) | as the line above | 0.19 |
 | Slice 6: one edit in a table without formulas, for the line below | not estimated | 0.03 |
 | Slice 6: one edit that 11 formulas read, 50,010 formula cells in the table | under 2 more than the line above | 0.10 |
 | Slice 6: the first edit of that table: the index of the readers and 11 results | under 15 for the index | 50.3 |
@@ -187,6 +191,7 @@ The formula engine is the entry `ui-sdk-table-core/formulas` (`vp pack src/index
 | Slice 2, with the date functions, built with the entry | 131.29 kB, the row helpers 2.17 kB | 44.71 kB, and 1.01 kB | 25.38 kB | 9.05 kB |
 | Slice 2 with the fix of P2, built with the entry | 131.60 kB, the row helpers 2.17 kB | 44.82 kB, and 1.01 kB | 25.38 kB | 9.05 kB |
 | Slice 3, the glue of column formulas, built with the entry | 134.44 kB, and a chunk of 2.32 kB with the error codes and the row helpers | 45.65 kB, and 1.10 kB | 30.61 kB | 10.74 kB |
+| Slice 9, every slice of the formulas up to the reads of an agent, built with the entry | 139.69 kB, and a chunk of 5.08 kB with the error codes, the row helpers and the shared write helpers | 47.23 kB, and 2.25 kB | 44.92 kB | 15.18 kB |
 
 The glue of the formulas in the main entry has a limit of 12 kB minified, which `src/formulas-size.test.ts` checks with a build: the main entry and every chunk that it loads, against 147,528 bytes before the fix of P2 (131.60 kB, the row helpers 2.17 kB, the formats 13.76 kB). The rule that keeps it: the main entry holds only what must touch the inside of the table (the state key, its change path, the shells of the actions, the hooks, the attributes and the view). Everything that runs only with an engine is in the formulas entry and comes in through the engine object: the words of the issues, `setFormulas` and `revertFormulas`, the build of the columns with their formulas and the check for a circle of columns.
 

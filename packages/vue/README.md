@@ -35,6 +35,7 @@ const columns: ColumnDef<Person>[] = [
 | A search field | `useTableSearch(controller)`: see below |
 | Filter controls | `getFacets(columnId)`: see below. `sliderBounds(range, { steps: 100 })` gives a slider its ends and a step that a thumb can use: 1, 2 or 5 times a power of ten of the step of a cell, and about a hundred stops |
 | A data sheet | The `sheet` option: see below |
+| Formulas | The `formulas` option and the entry `ui-sdk-table-vue/formulas`: see "Formulas" below |
 | Totals | The footer row, the cells of a group row, `getTotals()`, and the `totals` option for totals that only a server knows |
 
 ## Group rows
@@ -247,3 +248,166 @@ controller.getCellFormat(rowId, columnId)                              // for th
 - **Attributes:** `data-row-header`, `data-corner`, `data-kind="letters"` on a row and `data-kind="letter"` on a cell, `data-filling`, `data-fill-target`, `data-fill-edge`, `data-aggregate`, `data-align`, `data-bold`, `data-italic`, `data-color`, `data-fill`; the part `table-fill-handle`.
 - **Messages:** `rowNumber`, `cornerCell`, `cellsFilled`, `fillRefused`, `fillNowhere`, `fillOverPinned`, `cellsFormatted`, `aggregateLabel`, `totalLabel`.
 - **Exports:** `rowNumberColumn`, `columnLetter`, `lettersByColumn`, `useSelectionSummary`, `summarize`, `fillValues`, `fillLine`, `setFormats`, `revertFormats`, `pruneFormats`, `resolveFormat`, `aggregateName`, `CELL_FORMAT_NAMES`, `CELL_ALIGNS`, `CELL_DATE_STYLES`, `TableFillHandle`, and the types `CellFormat`, `CellFormats`, `CellFormatPatch`, `CellFormatName`, `FormatPlace`, `FormatTarget`, `ColumnAggregates`, `AggregateName`, `RangeSummary`, `FillWay`, `FillDirection`, `FillDraft`, `RowHeaderSlotProps`, `LetterSlotProps`, `TableStepReason`.
+
+## Formulas
+
+Formulas as in a spreadsheet, in two kinds. A **column formula** makes a computed column: every row gets the value of the formula of its own row, also a row that comes later, and a group, a sort, a filter and a total read it as any column. A **cell formula** belongs to one cell: the table computes it, reports the result through `cell-edit` as a plain value in the row, and reports again the cells that follow when a cell they read changes.
+
+The engine is an entry of its own, so a table without formulas does not carry it:
+
+```ts
+import { createFormulaEngine, formulaColumn, useFormulaBar } from 'ui-sdk-table-vue/formulas'
+```
+
+`ui-sdk-table-vue/formulas` holds everything of `ui-sdk-table-core/formulas` and `useFormulaBar`. Create one engine for the life of the table; a new engine at each render computes every formula again.
+
+### A column formula
+
+```vue
+<script setup lang="ts">
+import { Table, type ColumnDef } from 'ui-sdk-table-vue'
+import { formulaColumn } from 'ui-sdk-table-vue/formulas'
+
+type Order = { id: string; product: string; price: number; qty: number }
+const base: ColumnDef<Order>[] = [
+	{ id: 'product', header: 'Product' },
+	{ id: 'price', header: 'Price', format: 'currency' },
+	{ id: 'qty', header: 'Quantity', format: 'integer' },
+]
+const columns = [
+	...base,
+	formulaColumn({ id: 'total', header: 'Total', format: 'currency', aggregate: 'sum', formula: '=[price]*[qty]' }, base),
+	formulaColumn(
+		{ id: 'band', header: 'Band', groupable: true, formula: '=IFS([price]<10, "small", [price]<100, "medium", TRUE, "large")' },
+		base,
+	),
+]
+</script>
+
+<template>
+	<Table :rows="orders" :columns="columns" label="Orders" />
+</template>
+```
+
+`formulaColumn(definition, columns, { timeZone? })` needs no engine and no option of the table: it is a column with a `value` function. It reads the columns of its own row by id (`[price]`) or by header (`[Price]`), throws with the words that say why for a formula that cannot be read, and keeps the value of each row object, so an owner that changes a row passes a new object for it. Its cells cannot be edited.
+
+A column formula that a person sets at run time is state instead: `cell-formulas` with a `columns` layer, and `controller.setColumnFormula(columnId, text | null)`, which throws with the words of the issue. The column is a plain column of the owner (`{ id: 'custom', header: 'Custom' }`); the formula gives it its values. It is one change of `cellFormulas` and one step of the history, and it reports no value. A formula of the owner that cannot be read, or column formulas that read each other in a circle, show an error in every row of the column.
+
+### A date group with the `period` format
+
+```ts
+const week = formulaColumn({ id: 'week', header: 'Week', groupable: true, sortable: true, formula: '=WEEKOF([created], 2)' }, base)
+```
+
+```vue
+<Table :rows="orders" :columns="[...base, week]" :group-by="['week']" :sort="[{ id: 'week', desc: false }]" label="Orders" />
+```
+
+`WEEKOF`, `MONTHOF`, `QUARTEROF`, `YEAROF` and `DAYOF` give the first day of the period as a day (`2026-11-16`), so each period is one group, a sort puts the groups in time order, and the date filter, the facets, a fill and an export treat it as a day. `HOUROF` gives the moment at which the hour began. A column formula whose outer function gives a period gets the format `period` when its definition has no `format`: "Nov 16 – 22, 2026", "November 2026", "Q4 2026", "2026". Set it by hand with `format: 'period'` and `formatOptions: { unit: 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year' | 'weekday', weekdays?, timeZone? }`; `unit: 'weekday'` writes the name of the day for a number of `WEEKDAY` (`weekdays` is the type that gave it). The label of a group is the text of the format.
+
+- **The zone.** A date function that reads a column reads the moment on the clock of the `timeZone` of that column's `formatOptions`, so a moment that reads 23:30 on the 21st falls on the 21st. Any other date uses the `timeZone` of `formulaColumn` or of `createFormulaEngine`, else local time. Pass a zone when a saved result must be the same for every person.
+- **The week.** `WEEKOF(d, [type])` takes the type of `WEEKNUM` of Excel for the first day: Sunday without it or with 1, Monday with 2 or 11, 12 to 16 Tuesday to Saturday, 17 Sunday, 21 Monday; another type gives `#NUM!`. The locale never changes what a formula computes, only what a person types and reads.
+
+### Cell formulas
+
+```vue
+<script setup lang="ts">
+import { applyEdits, createTableController, rowNumberColumn, Table, type CellFormulas } from 'ui-sdk-table-vue'
+import { createFormulaEngine } from 'ui-sdk-table-vue/formulas'
+import { shallowRef } from 'vue'
+
+const engine = createFormulaEngine()
+const formulas = shallowRef<CellFormulas>({ cells: { l1: { total: '=[price]*[qty]' } } })
+const columns = [rowNumberColumn<Line>(), { id: 'item' }, { id: 'price' }, { id: 'qty' }, { id: 'total' }]
+</script>
+
+<template>
+	<Table
+		v-model:cell-formulas="formulas"
+		:formulas="engine"
+		:rows="lines"
+		:columns="columns"
+		sheet
+		column-letters
+		label="Lines"
+		@cell-edit="(edits) => (lines = applyEdits(lines, edits))"
+	/>
+</template>
+```
+
+- **Typing.** A text that starts with `=` in the editor of a cell, the formula bar, a paste, a fill or `editCell` is a formula: `=C1*D1`, `=SUM(D1:D4)`, `=$C$1*D2`, `=SUM(D:D)`. A refusal keeps the editor open with the words of the issue. `'=text` is the text `=text`. A column with `allowFormula: false` keeps such a text as its value; a cell that cannot be edited, a computed column and a table with `manual-page` hold no formula. A formula that would read its own cell is refused, with its path ("D2 reads B2, and B2 reads D2").
+- **Addresses** are places in the document, not on the screen: the number of a row is its place in `rows` (children after their parent), and the letter of a column its place among `columns`, without the columns that lead. A sort, a filter, a page, a pin and a move change neither: after a sort the row numbers read 7, 2, 9, and a hidden column leaves a gap in the row of letters (A, C). Without `formulas`, the numbers and the letters are places of the view, as before.
+- **The stored form** holds ids, so it survives a sort and a new row before it: `=C1*D1` in row 1 is `=[price]*[qty]` ("this row"), another row is `[price@l3]`, a whole column `[price@*]`, and `$` signs stay. `.` is the decimal sign and `,` separates arguments in every locale. A person types and reads the signs of the `locale` of the table: with a decimal comma (`fi-FI`) a number is `1,5` and only `;` separates arguments. Function names are English in every locale.
+- **One act, one report.** An edit reports its cell and every formula cell that follows, in order, through one `cell-edit` (`CellEdit.formula` is the formula that was set, or `null` for one that went), then `cellFormulas` changes. A listener that refuses the values refuses all of it; one that refuses the formulas keeps the values. It is one step of the history, and its undo puts the values and the formulas back without computing.
+- **Fill, paste, cut, copy, clear.** A copy puts the values on the clipboard and remembers the formulas; a paste of that same text pastes the formulas, with each reference without `$` moved by the distance the cell moved (past the edge, `#REF!`). A cut moves its formulas once, unmoved. A fill gives the formula of its source to its targets, moved. Delete takes values and formulas. A paste of the formula that a cell holds is no change.
+- **New rows of the owner.** After new `rows` the table checks the formula cells that they change, in a microtask, and reports the differences with the reason `recalculate`, which is no step. A row that a formula names and that is gone turns it into `#REF!`. An owner that does not take a result gets it once, not in a loop. At the mount nothing is computed: `controller.recalculate()` checks every formula cell, for a check after a load. With `manual-page` there is no check.
+- **Errors** are texts in the row: `#DIV/0!`, `#VALUE!`, `#REF!`, `#NAME?`, `#NUM!`, `#N/A`, `#CYCLE!` (`FORMULA_ERRORS`, `isFormulaError`). A formula that reads an error passes it on, a sum skips it, a range filter leaves it out, and the text of the cell is the code in every format. Type a column that can hold a formula so that it can hold such a text.
+- **Rendering.** A new formula renders its cell and the cells that read it, when the table holds the formulas (`default-cell-formulas`). `v-model:cell-formulas` renders the table at each change, as every prop of the owner does.
+
+### A formula bar
+
+```vue
+<script setup lang="ts">
+const controller = createTableController()
+const bar = useFormulaBar(controller)
+</script>
+
+<template>
+	<form @submit.prevent="bar.commit()">
+		<output>{{ bar.address.value }}</output>
+		<input
+			:value="bar.text.value"
+			:disabled="!bar.ready.value"
+			:aria-invalid="!!bar.error.value"
+			@input="bar.input(($event.target as HTMLInputElement).value)"
+			@keydown.escape.prevent="bar.cancel()"
+		/>
+		<output role="status">{{ bar.error.value }}</output>
+	</form>
+	<Table :controller="controller" :formulas="engine" sheet ... />
+</template>
+```
+
+`useFormulaBar(controller)` gives `address` (`D7`), `text` (the draft, else the formula as a person reads it, else the value as the field of the cell shows it), `error` (why the last commit was refused), `dirty`, `ready` (a cell is active), `input(text)`, `commit()` (saves through `editCell`, so a text with `=` is a formula and any other text a value; returns whether it saved) and `cancel()`. A draft stays with the cell where it started, also when the active cell moves. After a commit or a cancel, give focus back to the active cell (`[data-active]`).
+
+### Functions
+
+`controller.getFormulaFunctions()` and `FORMULA_FUNCTIONS` list each with its arguments and one line of help.
+
+| Group | Functions |
+| --- | --- |
+| Operators | `+ - * / ^`, a leading `-`, `%` after a number, `&` (joins texts), `= <> < <= > >=` |
+| Numbers | `SUM`, `AVERAGE`, `MIN`, `MAX`, `COUNT`, `COUNTA`, `ROUND`, `ROUNDUP`, `ROUNDDOWN`, `FLOOR`, `CEILING`, `ABS`, `INT`, `MOD` |
+| Conditions | `IF`, `IFS`, `SWITCH`, `AND`, `OR`, `NOT`, `IFERROR`, `ISBLANK`, `ISNUMBER`, `ISTEXT`, `ISERROR` |
+| Texts | `CONCAT`, `LEN`, `LEFT`, `RIGHT`, `MID`, `UPPER`, `LOWER`, `TRIM` |
+| Periods of a date | `DAYOF`, `WEEKOF(d, [type])`, `MONTHOF`, `QUARTEROF`, `YEAROF`, `HOUROF` |
+| Parts of a date | `YEAR`, `QUARTER`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `WEEKDAY(d, [type])`, `ISOWEEKNUM`, `ISOYEAR` |
+| Date math | `DATE(year, month, day)`, `DAYS(end, start)`, `DATEADD(date, count, unit)` |
+
+A function whose name Excel has behaves as in Excel, with its arguments and edges: `MONTH` gives 1 to 12, `WEEKDAY` counts from Sunday by default and takes the types of Excel, `IF`, `IFS`, `SWITCH`, `AND`, `OR` and `IFERROR` read only the arguments they need. The differences:
+
+- `DAYOF`, `WEEKOF`, `MONTHOF`, `QUARTEROF`, `YEAROF`, `HOUROF`, `QUARTER`, `ISOYEAR` and `DATEADD` are not in Excel. `DATEADD` takes the units `year`, `quarter`, `month`, `week`, `day`, `hour` and `minute`; a month at its end stays at the end of a shorter month.
+- A day is a text `YYYY-MM-DD` and a moment a `Date`, not a serial number: `DATE(2026, 11, 21)` gives `2026-11-21`, and `DAYS` and the parts read both kinds. A date before 1900 gives `#NUM!`, and a year under 1900 gets 1900 added, as in Excel.
+- The date functions read the clock of a zone (above); Excel has no zone.
+- `#CYCLE!` is not in Excel: a circle that comes with the `cell-formulas` of the owner. Excel stores such a formula and warns; here an entry that makes a circle is refused.
+- No other sheets, names, arrays, lookups, `SUMIF`, `TODAY()` or `NOW()`.
+
+### Names
+
+- **Options:** `formulas` (the engine), `cell-formulas` and `default-cell-formulas` (`v-model:cell-formulas`), column key `allowFormula`. `createFormulaEngine({ timeZone?, maxReads? })`: `maxReads` (5,000,000 by default) refuses one change that would read more cells, such as a running sum by ranges over 50,000 rows.
+- **Value:** `CellFormulas` is `{ columns?: { [columnId]: formula }, cells?: { [rowId]: { [columnId]: formula } } }`, in the stored form: plain data that an app saves with its document. `setFormulas`, `revertFormulas`, `pruneFormulas` and `formulaAt` of the formulas entry are the pure functions behind it.
+- **Events:** `cell-formulas-change` (`details.cancel()` refuses), `update:cell-formulas`; `cell-edit` with `CellEdit.formula` and the reason `recalculate` for a check.
+- **Controller and agent actions:** `getCellFormula`, `setCellFormula`, `getColumnFormula`, `setColumnFormula`, `getAddress`, `cellAt`, `recalculate`, `getFormulaSummary`, `evaluateFormula`, `getFormulaFunctions`. Each throws "This table has no formulas: pass `formulas`." without an engine. `getFormulaSummary(limit?)` gives each text of a column once with its count, so an agent reads 50,000 cells as one line.
+- **View:** `formulas` (the option is on), `cellFormulas`, `formula` (`FormulaView` of the active cell: `rowId`, `columnId`, `address`, `formula`, `text`, `value`, `error`, `ofColumn`).
+- **Slot props:** `formula` in `#cell` and `#col-{id}` (`{ text, error?: { code, message } }`), in `#editor` and `#edit-{id}` (the formula as a person reads it; a save of a text with `=` sets a formula), and in `#header` (the formula of a computed column).
+- **Attributes:** `data-formulas` on the table; `data-formula` on a cell with a formula of its own; `data-formula-error` (`div0`, `value`, `ref`, `name`, `num`, `na`, `cycle`) with the words of the error as `aria-description`; `data-formula-column` on the header and the cells of a computed column.
+- **Messages:** `formulaIssue(issue)`, `formulaError(code)`, `recalculated({ cells })`. Without them, the English words of the engine (`describeFormulaIssue`).
+- **Exports of the formulas entry:** `createFormulaEngine`, `formulaColumn`, `compileRowFormula`, `parseFormula`, `printFormula`, `formulaShows`, `formulaSigns`, `describeFormulaIssue`, `FORMULA_FUNCTIONS`, `setFormulas`, `revertFormulas`, `pruneFormulas`, `formulaAt`, `useFormulaBar`.
+
+### What a styled table needs
+
+- A formula bar: the address, a text field bound to `useFormulaBar`, the words of an error in a plain element with `role="status"`.
+- A look for `[data-formula]` (a small mark in a corner), for `[data-formula-error]` (a colour of the alert kind; the `aria-description` as a tooltip if you want one) and for `[data-formula-column]` in a header.
+- A field or a menu item for the formula of a column (`setColumnFormula`, and the `error` of `getColumnFormula`), and a list of functions from `getFormulaFunctions()`.
+- A choice "group by day, week, month, quarter, year" for a date column: it sets a column formula (`=WEEKOF([created], 2)`) and `groupBy`.
+- The row numbers (`rowNumberColumn()`) and `column-letters`, so a person sees the addresses that a formula names.

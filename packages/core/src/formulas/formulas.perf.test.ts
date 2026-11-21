@@ -318,8 +318,18 @@ describe.runIf(requested)('formulas of cells in a table with 50,000 rows', () =>
 		const edit = (view: ReturnType<typeof mountWith>) => () =>
 			void view.api.editCell('r7', 'price', ++price)
 
+		const view = (mounted: ReturnType<typeof mountWith>) => () => {
+			mounted.api.selectCells({ rowId: `r${++price % ROWS}`, columnId: 'total' })
+			return mounted.api.getView()
+		}
+		// The rows are made inside each round, the same for both lines.
+		results['mount, a table without formulas'] = median(() => mountWith().unmount(), 5)
 		const plain = mountWith()
 		results['one edit, a table without formulas'] = median(edit(plain), 21)
+		results['getView after a move of the active cell, a table without formulas'] = median(
+			view(plain),
+			21,
+		)
 		plain.unmount()
 
 		// Every row has a total of its own row, and ten cells read the price of row r7.
@@ -328,7 +338,12 @@ describe.runIf(requested)('formulas of cells in a table with 50,000 rows', () =>
 		for (let index = 100; index < 110; index++) {
 			shared[`r${index}`] = { total: '=[price]*[qty]', sum: '=[price@r7]+1' }
 		}
+		results['mount with 50,010 formula cells'] = median(() => mountWith(shared).unmount(), 5)
 		const many = mountWith(shared)
+		results['getView after a move of the active cell, 50,010 formula cells'] = median(
+			view(many),
+			21,
+		)
 		let start = performance.now()
 		void many.api.editCell('r7', 'price', ++price)
 		results['the first edit with 50,010 formula cells: the index and 11 results'] =
