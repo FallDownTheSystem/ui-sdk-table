@@ -288,7 +288,7 @@ function typed(text: string, details: { reason: string }) {
 				<template #col-stage="{ row }">
 					<span
 						class="cell-tag"
-						:data-state="row.stage === 'Won' ? 'done' : row.stage === 'Lost' ? 'late' : undefined"
+						:data-state="row.stage === 'Won' ? 'won' : row.stage === 'Lost' ? 'late' : undefined"
 						>{{ row.stage }}</span
 					>
 				</template>

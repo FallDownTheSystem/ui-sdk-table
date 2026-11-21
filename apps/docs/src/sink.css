@@ -1728,6 +1728,12 @@ input {
 	color: var(--tile-accent-ink);
 }
 
+/* A deal that is won reads as good news: green, never the orange accent, which sits too close to the red of a loss. */
+.cell-tag[data-state='won'] {
+	background: oklch(0.5 0.12 152);
+	color: oklch(1 0 0);
+}
+
 .cell-link {
 	color: var(--tile-accent);
 	text-decoration: underline;
