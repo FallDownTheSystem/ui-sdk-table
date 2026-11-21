@@ -111,6 +111,30 @@ describe('table primitive', () => {
 		}
 	})
 
+	test('`searchMode: "fuzzy"` finds a row from letters in order, and `fuzzyThreshold` makes it stricter', () => {
+		const exact = setup()
+		const fuzzy = setup({ searchMode: 'fuzzy' })
+		const strict = setup({ searchMode: 'fuzzy', fuzzyThreshold: 0.9 })
+		try {
+			// "hlm" is in "Helmi" as letters in order, and in no value as it is.
+			exact.api.setSearch('hlm')
+			expect(ids(exact.api.rows())).toEqual([])
+			fuzzy.api.setSearch('hlm')
+			expect(ids(fuzzy.api.rows())).toEqual(['c'])
+			strict.api.setSearch('hlm')
+			expect(ids(strict.api.rows())).toEqual([])
+			strict.api.setSearch('helmi')
+			expect(ids(strict.api.rows())).toEqual(['c'])
+			// The order of the rows stays the order of the data, not of the score of the match.
+			fuzzy.api.setSearch('e')
+			expect(ids(fuzzy.api.rows())).toEqual(['a', 'b', 'c'])
+		} finally {
+			exact.unmount()
+			fuzzy.unmount()
+			strict.unmount()
+		}
+	})
+
 	test('selection marks only the selected row', () => {
 		const view = setup({ selection: 'multiple' })
 		try {

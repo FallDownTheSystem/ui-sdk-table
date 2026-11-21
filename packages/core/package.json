@@ -19,7 +19,7 @@
 		"@types/jsdom": "catalog:",
 		"@ui-sdk/core": "catalog:",
 		"jsdom": "catalog:",
-		"ssf": "0.11.2",
+		"ssf": "catalog:",
 		"vite-plus": "catalog:"
 	},
 	"peerDependencies": {

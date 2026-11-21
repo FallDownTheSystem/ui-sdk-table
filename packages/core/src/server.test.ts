@@ -176,3 +176,97 @@ describe('a table whose rows come from a server', () => {
 		}
 	})
 })
+
+describe('pages of a server that gives no count', () => {
+	const six = (page: number): Person[] =>
+		Array.from({ length: 6 }, (_, index) => ({
+			id: `r${index}`,
+			name: `Person ${index}`,
+			team: index % 2 ? 'Design' : 'Platform',
+			score: index,
+		})).slice((page - 1) * 3, page * 3)
+
+	/** A table with a page of the server, and the pages that it asked for. */
+	function setup(options: Partial<TableOptions<Person>> = {}) {
+		const pages: { page: number; reason: string | undefined }[] = []
+		const view = mount(
+			table,
+			{
+				rows: six(1),
+				columns,
+				manualPage: true,
+				defaultPage: { page: 1, pageSize: 3 },
+				onPageChange: (page: PageState, details: TableChangeDetails) =>
+					pages.push({ page: page.page, reason: details.reason }),
+				...options,
+			} as TableOptions,
+			'<root aria-label="People"></root>',
+		)
+		return { view, pages }
+	}
+
+	test('a full page has a next page, also with groups or a pinned row', () => {
+		for (const options of [
+			{ defaultGroupBy: ['team'] },
+			{ defaultRowPinning: { top: ['r0'] } },
+			{ defaultFilter: { search: 'Person 1' } },
+		]) {
+			const { view, pages } = setup(options)
+			try {
+				expect(view.api.model.pageCount()).toBe(2)
+				view.api.nextPage()
+				expect(pages).toEqual([{ page: 2, reason: 'imperative' }])
+			} finally {
+				view.unmount()
+			}
+		}
+	})
+
+	test('a page state or a count that is no number reads as page 1 and as no count', () => {
+		const model = createRowModel<Person>({
+			rows: () => people,
+			columns: () => columns,
+			page: () => ({ page: Number.NaN, pageSize: 3 }),
+			manual: () => ({ page: true }),
+			serverRowCount: () => Number.NaN,
+		})
+		expect(model.page()).toBe(1)
+		expect(model.pageCount()).toBe(2)
+		expect(model.rowCount()).toBe(4)
+	})
+
+	test('an empty page after the first says that the page before is the last', () => {
+		const model = createRowModel<Person>({
+			rows: () => [],
+			columns: () => columns,
+			page: () => ({ page: 3, pageSize: 3 }),
+			manual: () => ({ page: true }),
+			loading: () => loading,
+		})
+		let loading = false
+		expect(model.pageCount()).toBe(2)
+		expect(model.rowCount()).toBe(6)
+		// While the rows load, an empty list says nothing about the server.
+		loading = true
+		expect(model.pageCount()).toBe(3)
+	})
+
+	test('`setPage` goes to any page, `lastPage` says that it knows none, and a step to the same page size reports nothing', () => {
+		const { view, pages } = setup()
+		try {
+			view.api.setPage(7)
+			expect(pages).toEqual([{ page: 7, reason: 'imperative' }])
+			expect(() => view.api.setPage(0.5)).toThrow('A page must be a whole number from 1.')
+			expect(() => view.api.lastPage()).toThrow(
+				'This table does not know its last page: its rows come in pages from a server (`manualPage`), and it has no `rowCount`.',
+			)
+			view.api.setPage(1)
+			view.api.setPageSize(3)
+			expect(pages).toHaveLength(2)
+			view.api.setPageSize(5)
+			expect(view.state.page).toEqual({ page: 1, pageSize: 5 })
+		} finally {
+			view.unmount()
+		}
+	})
+})

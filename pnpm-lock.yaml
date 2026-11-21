@@ -21,6 +21,9 @@ catalogs:
     jsdom:
       specifier: ^31.0.1
       version: 31.0.1
+    ssf:
+      specifier: 0.11.2
+      version: 0.11.2
     vite-plus:
       specifier: ^1.7.0
       version: 1.7.0
@@ -100,7 +103,7 @@ importers:
         specifier: 'catalog:'
         version: 31.0.1
       ssf:
-        specifier: 0.11.2
+        specifier: 'catalog:'
         version: 0.11.2
       vite-plus:
         specifier: 'catalog:'

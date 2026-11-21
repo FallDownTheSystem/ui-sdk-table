@@ -721,3 +721,326 @@ describe('the archive', () => {
 		expect(unzip(bytes).get('a.txt')).toBe('123456789')
 	})
 })
+
+describe('edges of an export', () => {
+	test('a group row keeps its name when the first column has a total', () => {
+		const first = setup({
+			columns: [columns[2], columns[0], columns[1]].filter((column) => !!column),
+			defaultGroupBy: ['team'],
+		})
+		try {
+			const data = first.view.api.exportData({ groups: true })
+			const groups = data.rows.filter((row) => row.kind === 'group')
+			expect(groups.map((row) => row.cells.map((cell) => cell.text))).toEqual([
+				['1,512', 'Design (2)', ''],
+				['-3', 'Platform (2)', ''],
+			])
+			expect(groups.map((row) => row.label)).toEqual(['Design (2)', 'Platform (2)'])
+		} finally {
+			first.view.unmount()
+		}
+		// Every column has a total: the name shares the first cell with the total.
+		const full = setup({
+			columns: [columns[2], columns[3], columns[1]].filter((column) => !!column),
+			defaultColumnVisibility: { team: false },
+			defaultGroupBy: ['team'],
+		})
+		try {
+			const data = full.view.api.exportData({ groups: true })
+			expect(data.rows[0]?.cells.map((cell) => cell.text)).toEqual([
+				'Design (2): 1,512',
+				'1,234.50',
+			])
+		} finally {
+			full.view.unmount()
+		}
+	})
+
+	test('the totals row is of the rows in the file for the selected rows and for all rows', () => {
+		const { view } = setup({
+			selection: 'multiple',
+			defaultSelected: ['a', 'b'],
+			defaultFilter: { search: 'Design' },
+		})
+		try {
+			const last = (data: ExportData) => data.rows.at(-1)?.cells.map((cell) => cell.text)
+			// The footer on the screen: the rows that pass the filter.
+			expect(last(view.api.exportData({ totals: true }))).toEqual(['', '', '1,512', '1,234.50'])
+			expect(last(view.api.exportData({ rows: 'page', totals: true }))).toEqual([
+				'',
+				'',
+				'1,512',
+				'1,234.50',
+			])
+			expect(last(view.api.exportData({ rows: 'selected', totals: true }))).toEqual([
+				'',
+				'',
+				'9',
+				'1,134.50',
+			])
+			expect(last(view.api.exportData({ rows: 'all', totals: true }))).toEqual([
+				'',
+				'',
+				'1,509',
+				'1,134.50',
+			])
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a column with `exportValue` has totals of those values, in group rows too', async () => {
+		const { view } = setup({
+			columns: [
+				{ id: 'name', header: 'Name' },
+				{ id: 'team', header: 'Team' },
+				{
+					id: 'cents',
+					key: 'price',
+					header: 'Cents',
+					format: 'decimal',
+					aggregate: 'mean',
+					exportValue: (row) => (row.price === null ? null : Math.round(row.price * 100)),
+				},
+			],
+			defaultGroupBy: ['team'],
+		})
+		try {
+			const data = view.api.exportData({ groups: true, totals: true })
+			expect(data.rows.map((row) => row.cells[2]?.value)).toEqual([
+				61725,
+				123450,
+				0,
+				-10000,
+				-10000,
+				null,
+				37816.666666666664,
+			])
+			const cells = await readSheet(data)
+			expect(cells.get('C2')).toEqual({ type: 'n', value: '61725', pattern: '', bold: true })
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('child rows come with their row, open or not', () => {
+		const rows = sales()
+		const [first, second, third] = rows
+		if (!first || !second || !third) throw new Error('three rows')
+		first.children = [second]
+		for (const expanded of [[], ['a']]) {
+			const view = mount(
+				table,
+				{
+					rows: [first, third],
+					columns,
+					getChildren: (row: Sale) => row.children,
+					defaultExpanded: expanded,
+				} as TableOptions,
+				'<root aria-label="Sales"></root>',
+			)
+			try {
+				expect(view.api.rows()).toHaveLength(expanded.length ? 3 : 2)
+				expect(names(view.api.exportData())).toEqual(['Aino', 'Eero', 'Helmi'])
+			} finally {
+				view.unmount()
+			}
+		}
+	})
+
+	test('`exportData` says what its options are when it gets another thing', () => {
+		const { view } = setup()
+		try {
+			const call = view.api.exportData as (options: unknown) => ExportData
+			expect(() => call(null)).toThrow(
+				'`exportData` takes an object with the options rows, columns, children, groups, totals.',
+			)
+			expect(() => call('csv')).toThrow('`exportData` takes an object with the options')
+			expect(() => call({ format: 'csv' })).toThrow(
+				'An export has no option "format". Its options: rows, columns, children, groups, totals.',
+			)
+		} finally {
+			view.unmount()
+		}
+	})
+})
+
+describe('edges of CSV', () => {
+	test('a negative amount that is a text of digits in the data gets no quote before it', () => {
+		const { view } = setup({
+			rows: [{ ...sales()[0], id: 'x', price: '-5.5' as unknown as number, name: '-5.5' } as Sale],
+			columns: [
+				{ id: 'eur', key: 'price', format: 'currency', formatOptions: { showUnit: true } },
+				{ id: 'kg', key: 'price', format: 'decimal', formatOptions: { suffix: ' kg' } },
+				{ id: 'name' },
+				{ id: 'calc', exportValue: () => '-5.5+cmd' },
+			],
+		})
+		try {
+			const lines = toCsv(view.api.exportData(), { bom: false, header: false }).split('\r\n')
+			expect(lines[0]).toBe("-€5.50,-5.50 kg,-5.5,'-5.5+cmd")
+		} finally {
+			view.unmount()
+		}
+	})
+
+	test('a no-break space that a person typed stays; the one of a format becomes a space', () => {
+		const { view } = setup({
+			rows: [{ ...sales()[0], id: 'x', name: 'Anna\u00a0Aalto' } as Sale],
+			columns: [
+				{ id: 'name' },
+				{ id: 'price', format: 'decimal', formatOptions: { locale: 'fi-FI' } },
+			],
+		})
+		try {
+			expect(toCsv(view.api.exportData(), { bom: false, header: false })).toBe(
+				'Anna\u00a0Aalto,"1 234,50"\r\n',
+			)
+		} finally {
+			view.unmount()
+		}
+	})
+})
+
+describe('edges of Excel', () => {
+	/** What a spreadsheet shows for the first cell of each column, next to the screen. */
+	async function firstRow(cases: ColumnDef<Sale>[], row: Partial<Sale> = {}) {
+		const { view } = setup({ columns: cases, rows: [{ ...sales()[0], ...row } as Sale] })
+		try {
+			const data = view.api.exportData()
+			const cells = await readSheet(data)
+			return cases.map((column, index) => {
+				const cell = cells.get(`${String.fromCharCode(65 + index)}2`)
+				return {
+					id: column.id,
+					screen: plain(data.rows[0]?.cells[index]?.text ?? ''),
+					file:
+						cell?.type === 'n'
+							? plain(SSF.format(cell.pattern, Number(cell.value)))
+							: `text: ${plain(cell?.value ?? '')}`,
+					type: cell?.type,
+				}
+			})
+		} finally {
+			view.unmount()
+		}
+	}
+
+	test('the digits after the point are the digits of the screen, not the noise of binary numbers', async () => {
+		const seen = await firstRow(
+			[
+				{ id: 'price', format: 'decimal', formatOptions: { maximumFractionDigits: 8 } },
+				{
+					id: 'units',
+					format: 'decimal',
+					formatOptions: { maximumFractionDigits: 15 },
+				},
+			],
+			{ price: 1000000000.1, units: 1234.567 },
+		)
+		expect(seen.map((cell) => [cell.screen, cell.file])).toEqual([
+			['1,000,000,000.10', '1,000,000,000.10'],
+			['1,234.567', '1,234.567'],
+		])
+	})
+
+	test('a cell whose words or digits a pattern would show in another way is the text of the screen', async () => {
+		const seen = await firstRow(
+			[
+				// The name of a currency has a plural, and a pattern holds one text.
+				{
+					id: 'dollars',
+					key: 'units',
+					format: 'currency',
+					formatOptions: {
+						showUnit: true,
+						currency: 'USD',
+						currencyDisplay: 'name',
+						maximumFractionDigits: 0,
+					},
+				},
+				// A calendar with other years.
+				{ id: 'thai', key: 'day', format: 'date', formatOptions: { locale: 'th-TH' } },
+				// The names of months and days are in the language of the spreadsheet program.
+				{
+					id: 'finnish',
+					key: 'day',
+					format: 'date',
+					formatOptions: { locale: 'fi-FI', dateStyle: 'long' },
+				},
+				{ id: 'june', key: 'seen', format: 'date', formatOptions: { locale: 'en-AU' } },
+				{
+					id: 'pm',
+					key: 'seen',
+					format: 'time',
+					formatOptions: { locale: 'en-GB', hour12: true, timeZone: 'UTC' },
+				},
+				{
+					id: 'japan',
+					key: 'seen',
+					format: 'time',
+					formatOptions: { locale: 'ja-JP', hour12: true, timeZone: 'UTC' },
+				},
+				{
+					id: 'narrow',
+					key: 'day',
+					format: 'date',
+					formatOptions: { weekday: 'narrow', month: 'narrow', day: 'numeric' },
+				},
+				// Digits and groups that a pattern cannot say.
+				{ id: 'arabic', key: 'price', format: 'decimal', formatOptions: { locale: 'ar-EG' } },
+				{ id: 'lakh', key: 'price', format: 'decimal', formatOptions: { locale: 'en-IN' } },
+			],
+			{ units: 5, seen: '2026-06-01T12:30:00Z', price: 12345678.5 },
+		)
+		expect(seen.map((cell) => cell.type)).toEqual(seen.map(() => 'inlineStr'))
+		for (const cell of seen) expect(cell.file).toBe(`text: ${cell.screen}`)
+		expect(seen.map((cell) => cell.screen)).toEqual([
+			'5 US dollars',
+			'21 พ.ย. 2569',
+			'21. marraskuuta 2026',
+			'1 June 2026',
+			'12:30 pm',
+			'午後0:30',
+			'S, N 21',
+			'١٢٬٣٤٥٬٦٧٨٫٥٠',
+			'1,23,45,678.50',
+		])
+	})
+
+	test('English names of months and days, and AM and PM, are still a date in the file', async () => {
+		const seen = await firstRow(
+			[
+				{ id: 'full', key: 'day', format: 'date', formatOptions: { dateStyle: 'full' } },
+				{ id: 'short', key: 'day', format: 'date' },
+				{ id: 'time', key: 'seen', format: 'datetime', formatOptions: { timeZone: 'UTC' } },
+			],
+			{ seen: '2026-06-01T22:30:59.789Z' },
+		)
+		expect(seen.map((cell) => [cell.type, cell.file])).toEqual([
+			['n', 'Saturday, November 21, 2026'],
+			['n', 'Nov 21, 2026'],
+			// The seconds are cut off as on the screen, and not rounded up to 10:31.
+			['n', 'Jun 1, 2026, 10:30 PM'],
+		])
+		for (const cell of seen) expect(cell.file).toBe(cell.screen)
+	})
+
+	test('a date after the year 9999 is text, and a text that reads as an escape stays as it is', async () => {
+		const { view } = setup({
+			rows: [{ ...sales()[0], id: 'x', name: 'a_x000D_b', day: '+010000-01-01T00:00:00Z' } as Sale],
+			columns: [{ id: 'name' }, { id: 'day', format: 'date' }],
+		})
+		try {
+			const data = view.api.exportData()
+			const files = unzip(await toXlsx(data, { compress: false, sheetName: "'May's'" }))
+			const sheet = files.get('xl/worksheets/sheet1.xml') ?? ''
+			expect(sheet).toContain('>a_x005F_x000D_b</t>')
+			expect((await readSheet(data)).get('B2')?.type).toBe('inlineStr')
+			// A spreadsheet refuses a sheet name with a quote at its start or end.
+			expect(files.get('xl/workbook.xml')).toContain(`<sheet name="May's"`)
+		} finally {
+			view.unmount()
+		}
+	})
+})

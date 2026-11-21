@@ -65,6 +65,11 @@ export type RowModelOptions<Row> = RowNodeOptions<Row> & {
 	 * a full page can have a next page.
 	 */
 	serverRowCount?: () => number | undefined
+	/**
+	 * Whether the rows of the page are on their way. An empty list then says
+	 * nothing about the last page of the server.
+	 */
+	loading?: () => boolean | undefined
 }
 
 export type ManualStages = { sort?: boolean; filter?: boolean; page?: boolean }
@@ -182,18 +187,26 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 
 	// The number of top-level rows that the pages divide, and the last page.
 	const total = (page: PageState | undefined): { rows: number; pages: number } => {
-		const here = grouped().length
-		if (!page) return { rows: here, pages: 1 }
-		if (!manual('page')) return { rows: here, pages: pageCount(here, page.pageSize) }
-		const known = options.serverRowCount?.()
-		if (known !== undefined) return { rows: known, pages: pageCount(known, page.pageSize) }
-		// Without a count, a full page says that a next page can exist.
-		const current = Math.max(1, Math.trunc(page.page))
-		const more = here >= page.pageSize
-		return {
-			rows: (current - 1) * page.pageSize + here + (more ? 1 : 0),
-			pages: current + (more ? 1 : 0),
+		if (!page || !manual('page')) {
+			const here = grouped().length
+			return { rows: here, pages: page ? pageCount(here, page.pageSize) : 1 }
 		}
+		const known = options.serverRowCount?.()
+		if (known !== undefined && !Number.isNaN(known)) {
+			return { rows: known, pages: pageCount(known, page.pageSize) }
+		}
+		// Without a count, a full page says that a next page can exist. The rows
+		// that count are the rows that the server sent: a group, a pinned row or
+		// a filter of this side makes the list shorter and the page no less full.
+		const here = source(options.rows()).rows.length
+		const current = Number.isFinite(page.page) ? Math.max(1, Math.trunc(page.page)) : 1
+		const before = (current - 1) * page.pageSize
+		// An empty page after the first: the server has no such page.
+		if (here === 0 && current > 1 && !options.loading?.()) {
+			return { rows: before, pages: current - 1 }
+		}
+		const more = here >= page.pageSize
+		return { rows: before + here + (more ? 1 : 0), pages: current + (more ? 1 : 0) }
 	}
 
 	const sorted = () =>
@@ -245,9 +258,9 @@ export function createRowModel<Row>(options: RowModelOptions<Row>): RowModel<Row
 		page: () => {
 			const page = options.page?.()
 			if (!page) return 1
-			return manual('page')
-				? Math.min(Math.max(1, Math.trunc(page.page)), total(page).pages)
-				: clampPage(page, grouped().length)
+			if (!manual('page')) return clampPage(page, grouped().length)
+			const asked = Number.isFinite(page.page) ? Math.trunc(page.page) : 1
+			return Math.min(Math.max(1, asked), total(page).pages)
 		},
 		aggregate: (group) => {
 			const rows = group ? group.leaves : filtered()

@@ -336,12 +336,16 @@ export type TableOptions<Row = unknown> = {
 	manualFilter?: boolean
 	/**
 	 * The rows are one page from a server. The table shows them all, and the
-	 * pages come from `rowCount`.
+	 * pages come from `rowCount`. Every other feature works on the rows that
+	 * the table has: an export, the totals and "select all" are of this page.
 	 */
 	manualPage?: boolean
 	/**
 	 * How many rows the server has after its filter, for `manualPage`. Without
 	 * it, a full page has a next page and a page that is not full is the last.
+	 * An empty page after the first then sends the table one page back, so
+	 * keep the rows of the page before, or set `loading`, while a page loads.
+	 * `lastPage` needs the count.
 	 */
 	rowCount?: number
 	/** Whether new rows are on their way. The table says so to assistive technology and keeps its rows. */
@@ -609,11 +613,23 @@ export const table = definePrimitive({
 
 		let seenRows = options().rows
 		let seenColumns = options().columns
+		let seenPages = `${options().manualPage}|${options().rowCount}|${options().loading}`
 		context.onOptions((next) => {
-			if (next.rows === seenRows && next.columns === seenColumns) return
+			// The count and the end of a load can come after the rows, and each
+			// can change the last page as new rows can.
+			const pages = `${next.manualPage}|${next.rowCount}|${next.loading}`
+			if (next.rows === seenRows && next.columns === seenColumns && pages === seenPages) return
 			seenRows = next.rows
 			seenColumns = next.columns
+			seenPages = pages
 			context.store.set({ revision: state().revision + 1 })
+		})
+		// A person who cannot see the table hears that rows are on their way.
+		let wasLoading = options().loading ?? false
+		context.onOptions((next) => {
+			const loading = next.loading ?? false
+			if (loading && !wasLoading) announce(message('loading')())
+			wasLoading = loading
 		})
 
 		const stableVisibility = stabilize<ColumnVisibility>()
@@ -757,6 +773,7 @@ export const table = definePrimitive({
 				page: options().manualPage,
 			}),
 			serverRowCount: () => options().rowCount,
+			loading: () => options().loading,
 		})
 
 		// The pinned rows that exist, for each edge. A row that is named for both edges is at the top.
@@ -1589,15 +1606,22 @@ export const table = definePrimitive({
 			change('expanded', next, { reason, event })
 		}
 
+		/** Whether the pages come from a server that gave no count, so the last page is not known. */
+		const openEnded = () => (options().manualPage ?? false) && options().rowCount === undefined
+
 		function goToPage(page: number, reason: TableReason): void {
 			const current = state().page
 			if (!current) {
 				throw new Error('This table has no pages. Set its `page` or `defaultPage` option.')
 			}
+			// Without a count, the pages that the table knows are no limit for a jump.
+			const last = openEnded() ? Infinity : model.pageCount()
 			if (!Number.isInteger(page)) {
-				throw new Error(`A page must be a whole number from 1 to ${model.pageCount()}.`)
+				throw new Error(
+					`A page must be a whole number from 1${last === Infinity ? '' : ` to ${last}`}.`,
+				)
 			}
-			const clamped = Math.min(Math.max(1, page), model.pageCount())
+			const clamped = Math.min(Math.max(1, page), last)
 			// A step past the last page changes nothing, and a listener that loads rows must not load them again.
 			if (clamped !== current.page) change('page', { ...current, page: clamped }, { reason })
 		}
@@ -1652,12 +1676,23 @@ export const table = definePrimitive({
 				if (!Number.isInteger(pageSize) || pageSize < 1) {
 					throw new Error('A page size must be a whole number above 0.')
 				}
+				const current = state().page
+				// The size that the table has, on its first page: a listener that loads rows must not load them again.
+				if (current?.page === 1 && current.pageSize === pageSize) return
 				change('page', { page: 1, pageSize }, { reason: 'imperative' })
 			},
-			nextPage: () => goToPage(model.page() + 1, 'imperative'),
+			// A step forward stops at the last page that the table knows, with or without a count.
+			nextPage: () => goToPage(Math.min(model.page() + 1, model.pageCount()), 'imperative'),
 			previousPage: () => goToPage(model.page() - 1, 'imperative'),
 			firstPage: () => goToPage(1, 'imperative'),
-			lastPage: () => goToPage(model.pageCount(), 'imperative'),
+			lastPage() {
+				if (openEnded()) {
+					throw new Error(
+						'This table does not know its last page: its rows come in pages from a server (`manualPage`), and it has no `rowCount`.',
+					)
+				}
+				goToPage(model.pageCount(), 'imperative')
+			},
 			expand(rowId) {
 				requireExpandable(rowId)
 				setExpanded(rowId, true, 'imperative')
@@ -1950,6 +1985,7 @@ export const table = definePrimitive({
 					{
 						all: () => model.source().rows,
 						sorted: () => model.sorted(),
+						filtered: () => model.filtered(),
 						listed: () => model.grouped(),
 						page: () => model.paged(),
 						pinned: () => ({
@@ -1964,7 +2000,6 @@ export const table = definePrimitive({
 						label: (column) => column.header ?? column.id,
 						text,
 						groupText,
-						totals: (group) => model.aggregate(group),
 						totalText,
 						locale: () => options().locale,
 					},
@@ -2712,6 +2747,7 @@ export const table = definePrimitive({
 			'selectCells',
 			'clearCellSelection',
 			'copyCells',
+			'exportData',
 			'pasteCells',
 		],
 	},

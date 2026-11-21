@@ -105,6 +105,15 @@ function numberWriter(
 	if (resolved.notation !== 'standard' || resolved.minimumSignificantDigits !== undefined) {
 		return null
 	}
+	// A pattern writes the digits 0 to 9 in groups of three. Other digits, or
+	// groups of another size such as "12,34,567", are the text of the screen.
+	if (resolved.numberingSystem !== 'latn') return null
+	const groups = plan.intl
+		.formatToParts(plan.scale(1234567890))
+		.filter((part) => part.type === 'integer')
+	if (groups.slice(1).some((group) => group.value.length !== 3)) return null
+	// The name of a currency has a plural ("1 US dollar", "5 US dollars"), and a pattern holds one text.
+	if (resolved.style === 'currency' && resolved.currencyDisplay === 'name') return null
 	const whole = resolved.minimumIntegerDigits
 	if (whole > 3) return null
 	const min = resolved.minimumFractionDigits ?? 0
@@ -155,8 +164,10 @@ function numberWriter(
 		const value = round ? round(Number((scaled * factor).toPrecision(15))) / factor : scaled
 		let digits = max
 		if (min < max) {
-			const shown = Math.abs(value * shift).toFixed(max)
-			digits = Math.max(min, shown.replace(/0+$/, '').length - shown.indexOf('.') - 1)
+			// The digits that the screen shows. A count of the digits of the
+			// number itself would show the noise of a binary number.
+			const fraction = plan.intl.formatToParts(scaled).find((part) => part.type === 'fraction')
+			digits = Math.max(min, fraction?.value.length ?? 0)
 		}
 		return { value, pattern: patternFor(digits) }
 	}
@@ -173,8 +184,47 @@ function nameCode(value: string, locale: string, field: 'month' | 'weekday'): st
 	return code.repeat(letters(value) <= letters(short) ? 3 : 4)
 }
 
+// Every month, every day of the week, and a time before and after noon.
+const NAME_PROBES = [
+	...Array.from({ length: 12 }, (_, month) => Date.UTC(2001, month, 3, 4, 5, 6)),
+	...Array.from({ length: 7 }, (_, day) => Date.UTC(2001, 1, day + 1, 16, 5, 6)),
+]
+const ENGLISH = {
+	mmm: getDateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' }),
+	mmmm: getDateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }),
+	mmmmm: getDateTimeFormat('en-US', { month: 'narrow', timeZone: 'UTC' }),
+	ddd: getDateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' }),
+	dddd: getDateTimeFormat('en-US', { weekday: 'long', timeZone: 'UTC' }),
+}
+
+/**
+ * Whether the format writes its names as a spreadsheet does. A spreadsheet
+ * program writes the names of months and days, and AM and PM, in its own
+ * language, which a file cannot set. The English ones are the ones that
+ * every program can show, so only a format that writes those gets a pattern.
+ */
+function englishNames(format: Intl.DateTimeFormat, locale: string): boolean {
+	return NAME_PROBES.every((probe) =>
+		format.formatToParts(probe).every((part) => {
+			if (part.type === 'dayPeriod') {
+				return part.value === (new Date(probe).getUTCHours() < 12 ? 'AM' : 'PM')
+			}
+			if ((part.type !== 'month' && part.type !== 'weekday') || /^\d+$/.test(part.value)) {
+				return true
+			}
+			const code = nameCode(part.value, locale, part.type)
+			return code in ENGLISH && ENGLISH[code as keyof typeof ENGLISH].format(probe) === part.value
+		}),
+	)
+}
+
 function dateSection(format: Intl.DateTimeFormat, locale: string): string | null {
-	if (format.resolvedOptions().numberingSystem !== 'latn') return null
+	const resolved = format.resolvedOptions()
+	// A pattern counts years as the Gregorian calendar does, and writes the digits 0 to 9.
+	if (resolved.numberingSystem !== 'latn' || resolved.calendar !== 'gregory') return null
+	// A spreadsheet counts the hours of half a day from 12 to 11, and of a day from 0 to 23.
+	if (resolved.hourCycle === 'h11' || resolved.hourCycle === 'h24') return null
+	if (!englishNames(format, locale)) return null
 	const parts = format.formatToParts(PROBE)
 	const has = (type: string) => parts.some((part) => part.type === type)
 	// Without an hour before it or a second after it, a spreadsheet reads `m` as a month.
@@ -229,11 +279,16 @@ function wallTime(date: Date, timeZone: string | undefined): number {
 	)
 }
 
-/** The day number of a moment on the wall clock, or `undefined` before the days that a spreadsheet counts right. */
+// The day number of 9999-12-31, the last day that a spreadsheet shows.
+const LAST_DAY = 2_958_465
+
+/** The day number of a moment on the wall clock, or `undefined` outside the days that a spreadsheet counts right. */
 function dayNumber(wall: number): number | undefined {
-	const day = wall / DAY + EPOCH_DAY
+	// Intl cuts the parts of a second off, and a spreadsheet rounds them:
+	// 22:30:59.789 must not read as 22:31.
+	const day = (Math.floor(wall / 1000) * 1000) / DAY + EPOCH_DAY
 	// Day 60 is 1900-02-29, a day that never was; the numbers before it are one off.
-	return day >= 61 ? day : undefined
+	return day >= 61 && day < LAST_DAY + 1 ? day : undefined
 }
 
 function dateWriter(
@@ -331,6 +386,11 @@ function xml(text: string): string {
 		.replace(/"/g, '&quot;')
 }
 
+/** The text of a cell. A reader takes `_x000D_` in it for an escaped character, so the first `_` is escaped. */
+function cellText(text: string): string {
+	return xml(text).replace(/_(?=x[0-9A-Fa-f]{4}_)/g, '_x005F_')
+}
+
 function columnName(index: number): string {
 	let name = ''
 	for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) {
@@ -349,11 +409,14 @@ const TYPES = 'application/vnd.openxmlformats-officedocument.spreadsheetml'
 export const XLSX_TYPE = `${TYPES}.sheet`
 
 function sheetName(name: string | undefined): string {
-	// These characters are not allowed in the name of a sheet, and it holds 31 at most.
+	// These characters are not allowed in the name of a sheet, it holds 31 at
+	// most, and a quote cannot be its first or its last character.
 	const clean = (name ?? '')
 		.replace(/[[\]:*?/\\]/g, ' ')
 		.trim()
 		.slice(0, 31)
+		.replace(/^'+|'+$/g, '')
+		.trim()
 	return clean || 'Sheet1'
 }
 
@@ -388,7 +451,7 @@ export async function toXlsx(data: ExportData, options: XlsxOptions = {}): Promi
 		if (typed.kind === 'text') {
 			const style = bold ? ` s="${styleOf(true)}"` : ''
 			out.push(
-				`<c r="${ref}"${style} t="inlineStr"><is><t xml:space="preserve">${xml(typed.text)}</t></is></c>`,
+				`<c r="${ref}"${style} t="inlineStr"><is><t xml:space="preserve">${cellText(typed.text)}</t></is></c>`,
 			)
 		} else if (typed.kind === 'boolean') {
 			const style = bold ? ` s="${styleOf(true)}"` : ''

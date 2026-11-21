@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { expect, test } from 'vite-plus/test'
-import { h, nextTick, ref, shallowRef } from 'vue'
+import { Comment, h, nextTick, ref, shallowRef } from 'vue'
 import { Table, type ColumnDef, type FilterState, type PageState, type SortRule } from './index'
 
 type Person = { id: string; name: string; team: string; score: number; reports?: Person[] }
@@ -153,5 +153,93 @@ test('without `messages`, a tree row has a button with a name, and a group row s
 	expect(treeTable?.get('tbody td button').text()).toBe('+')
 	expect(treeTable?.get('tbody td button').attributes('aria-label')).toBe('Expand row')
 	expect(groupTable?.get('tbody td button').text()).toBe('Design (2)')
+	wrapper.unmount()
+})
+
+test('a slot for the loading text or the "no rows" text that shows nothing leaves the text of the table', async () => {
+	const loading = ref(true)
+	const wrapper = mount(() =>
+		h(
+			Table<Person>,
+			{ rows: [], columns, loading: loading.value, 'aria-label': 'People' },
+			// As a template with a `v-if` that is false gives them.
+			{ loading: () => [h(Comment)], empty: () => [] },
+		),
+	)
+	expect(wrapper.get('tbody td').text()).toBe('Loading rows.')
+	loading.value = false
+	await nextTick()
+	expect(wrapper.get('tbody td').text()).toBe('No rows.')
+	wrapper.unmount()
+})
+
+/** A table on pages of a server with six people, three on a page. */
+function served(extra: () => Record<string, unknown>) {
+	const all = Array.from({ length: 6 }, (_, index) => ({
+		id: `r${index}`,
+		name: `Person ${index}`,
+		team: 'Design',
+		score: index,
+	}))
+	const serve = (page: number) => all.slice((page - 1) * 3, page * 3)
+	const rows = shallowRef<Person[]>(serve(1))
+	const page = ref<PageState | undefined>({ page: 1, pageSize: 3 })
+	const asked: number[] = []
+	const wrapper = mount(() =>
+		h(Table<Person>, {
+			rows: rows.value,
+			columns,
+			manualPage: true,
+			page: page.value,
+			'onUpdate:page': (value: PageState | undefined) => {
+				page.value = value
+				if (value) asked.push(value.page)
+			},
+			...extra(),
+		}),
+	)
+	return { wrapper, rows, page, asked, serve, api: wrapper.getComponent(Table).vm.api }
+}
+
+test('a count that comes after the rows moves a page that is past the last page', async () => {
+	const count = ref<number | undefined>(30)
+	const { rows, page, asked, api } = served(() => ({ rowCount: count.value }))
+	api.setPage(5)
+	await nextTick()
+	expect(asked).toEqual([5])
+	// The server deleted rows: the answer for page 5 is empty, and the count comes a moment later.
+	rows.value = []
+	await nextTick()
+	expect(page.value?.page).toBe(5)
+	count.value = 6
+	await nextTick()
+	expect(page.value?.page).toBe(2)
+	expect(asked).toEqual([5, 2])
+})
+
+test('without a count, an empty page sends the table one page back, after the load', async () => {
+	const loading = ref(false)
+	const { wrapper, rows, page, asked, serve, api } = served(() => ({ loading: loading.value }))
+	api.nextPage()
+	await nextTick()
+	rows.value = serve(2)
+	await nextTick()
+	// Page 2 is full, so a page 3 can exist. The owner empties the rows while it loads.
+	api.nextPage()
+	loading.value = true
+	rows.value = []
+	await nextTick()
+	expect(page.value?.page).toBe(3)
+	expect(wrapper.get('tbody td').text()).toBe('Loading rows.')
+	// A person who cannot see the table hears it too.
+	await new Promise((resolve) => setTimeout(resolve, 150))
+	const live = [...document.querySelectorAll('[aria-live="polite"]')]
+	expect(live.map((region) => region.textContent)).toContain('Loading rows.')
+
+	// The answer: no rows. Page 2 was the last.
+	loading.value = false
+	await nextTick()
+	expect(page.value?.page).toBe(2)
+	expect(asked).toEqual([2, 3, 2])
 	wrapper.unmount()
 })

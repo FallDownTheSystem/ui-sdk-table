@@ -4,6 +4,11 @@ import { toXlsx, XLSX_TYPE, type XlsxOptions } from './xlsx'
 
 /** Saves a text or bytes as a file on the computer of the person. It needs a browser. */
 export function downloadFile(content: string | Uint8Array, filename: string, type: string): void {
+	if (typeof document === 'undefined') {
+		throw new Error(
+			'A download needs a browser. Outside one, write the result of `toCsv` or `toXlsx` to a file.',
+		)
+	}
 	const url = URL.createObjectURL(new Blob([content as BlobPart], { type }))
 	const link = document.createElement('a')
 	link.href = url

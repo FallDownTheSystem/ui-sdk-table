@@ -1,6 +1,8 @@
 import {
+	aggregateRows,
 	cellValue,
 	toText,
+	walkRows,
 	type ColumnDef,
 	type DataRow,
 	type GroupRow,
@@ -12,7 +14,8 @@ export type ExportOptions = {
 	 * Which rows to take. `'filtered'` (the default) is every row that passes
 	 * the filters, on all pages, in the order of the screen. `'page'` is the
 	 * rows of the page in view. `'all'` is every row of the data, in the order
-	 * of the data. `'selected'` is the selected rows, in sort order.
+	 * of the data. `'selected'` is the selected rows, in sort order. A table
+	 * with `manualPage` has one page of a server, so each set is of that page.
 	 */
 	rows?: 'filtered' | 'page' | 'all' | 'selected'
 	/**
@@ -24,9 +27,16 @@ export type ExportOptions = {
 	columns?: 'visible' | 'all' | readonly string[]
 	/** Whether the child rows of a tree row come with it, open or not. Defaults to true. */
 	children?: boolean
-	/** Whether each group gets a row of its own before its rows. Defaults to false. */
+	/**
+	 * Whether each group gets a row of its own before its rows, for `'filtered'`
+	 * and `'page'`. Defaults to false. `'all'` and `'selected'` have no groups.
+	 */
 	groups?: boolean
-	/** Whether a last row holds the totals of the footer. Defaults to false. */
+	/**
+	 * Whether a last row holds totals. Defaults to false. For `'filtered'` and
+	 * `'page'` they are the totals of the footer on the screen. For `'all'` and
+	 * `'selected'` they are the totals of the rows in the file.
+	 */
 	totals?: boolean
 }
 
@@ -50,6 +60,12 @@ export type ExportRow<Row = unknown> = {
 	row?: Row
 	/** Tree and group levels above this row, from 0. */
 	level: number
+	/**
+	 * The name of a group, for a row of kind `'group'`. It is also in a cell:
+	 * the first one without a total, or the first one before its total when
+	 * every column has a total.
+	 */
+	label?: string
 	/** One cell for each column of the export. */
 	cells: ExportCell[]
 }
@@ -67,6 +83,8 @@ export type ExportSource<Row> = {
 	all: () => readonly DataRow<Row>[]
 	/** Every row, in sort order. */
 	sorted: () => readonly DataRow<Row>[]
+	/** The rows that pass the filters, pinned or not, without groups. */
+	filtered: () => readonly DataRow<Row>[]
 	/** The rows and groups that pass the filters, on all pages. */
 	listed: () => readonly TableRow<Row>[]
 	/** The rows and groups of the page in view. */
@@ -78,12 +96,12 @@ export type ExportSource<Row> = {
 	label: (column: ColumnDef<Row>) => string
 	text: (row: Row, column: ColumnDef<Row>) => string
 	groupText: (group: GroupRow<Row>) => string
-	totals: (group?: GroupRow<Row>) => Record<string, unknown>
 	totalText: (column: ColumnDef<Row>, value: unknown) => string
 	locale: () => string | undefined
 }
 
 const ROW_SETS = ['filtered', 'page', 'all', 'selected'] as const
+const OPTIONS = ['rows', 'columns', 'children', 'groups', 'totals']
 
 function exportColumns<Row>(
 	source: ExportSource<Row>,
@@ -119,6 +137,13 @@ export function collectExport<Row>(
 	source: ExportSource<Row>,
 	options: ExportOptions = {},
 ): ExportData<Row> {
+	if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+		throw new Error(`\`exportData\` takes an object with the options ${OPTIONS.join(', ')}.`)
+	}
+	const unknown = Object.keys(options).find((key) => !OPTIONS.includes(key))
+	if (unknown !== undefined) {
+		throw new Error(`An export has no option "${unknown}". Its options: ${OPTIONS.join(', ')}.`)
+	}
 	const set = options.rows ?? 'filtered'
 	if (!ROW_SETS.includes(set)) {
 		throw new Error(`\`rows\` of an export is one of: ${ROW_SETS.join(', ')}.`)
@@ -137,29 +162,44 @@ export function collectExport<Row>(
 		return { value: cellValue(row, column), text: source.text(row, column) }
 	}
 
-	const totalCells = (totals: Record<string, unknown>, first?: string): ExportCell[] =>
-		columns.map((column, index) => {
-			const value = column.aggregate === undefined ? undefined : totals[column.id]
-			const text = column.aggregate === undefined ? '' : source.totalText(column, value)
-			return index === 0 && first !== undefined && !text
-				? { value: first, text: first }
-				: { value, text }
+	// A total is of the values that the file holds, so a column with
+	// `exportValue` gives those values to its total too.
+	const valued = columns.map((column) =>
+		column.exportValue ? { ...column, value: column.exportValue } : column,
+	)
+	const totalCells = (list: readonly DataRow<Row>[], label?: string): ExportCell[] => {
+		const all: DataRow<Row>[] = []
+		walkRows(list, (node) => all.push(node))
+		const totals = aggregateRows(all, valued)
+		const cells = columns.map((column): ExportCell => {
+			if (column.aggregate === undefined) return { value: undefined, text: '' }
+			const value = totals[column.id]
+			return { value, text: column.exportValue ? toText(value) : source.totalText(column, value) }
 		})
+		if (label === undefined) return cells
+		// The name of the group goes where no total is. A file in which every
+		// column has a total still names its groups.
+		const free = cells.findIndex((cell) => !cell.text)
+		const first = cells[0]
+		if (free >= 0) cells[free] = { value: label, text: label }
+		else if (first) cells[0] = { value: label, text: `${label}: ${first.text}` }
+		return cells
+	}
 
+	// The rows of the data that the file holds, for totals of them.
+	const taken: DataRow<Row>[] = []
 	const add = (node: TableRow<Row>, level: number, only?: ReadonlySet<string>): void => {
 		if (node.kind === 'group') {
 			if (options.groups) {
-				rows.push({
-					kind: 'group',
-					level,
-					cells: totalCells(source.totals(node), source.groupText(node)),
-				})
+				const label = source.groupText(node)
+				rows.push({ kind: 'group', level, label, cells: totalCells(node.leaves, label) })
 			}
 			for (const child of node.children) add(child, options.groups ? level + 1 : level, only)
 			return
 		}
-		const taken = !only || only.has(node.id)
-		if (taken) {
+		const here = !only || only.has(node.id)
+		if (here) {
+			taken.push({ ...node, children: undefined })
 			rows.push({
 				kind: 'row',
 				row: node.row,
@@ -169,7 +209,7 @@ export function collectExport<Row>(
 		}
 		// Each selected row is a row of its own, so its child rows come only when they are selected too.
 		if (withChildren || only) {
-			for (const child of node.children ?? []) add(child, taken ? level + 1 : level, only)
+			for (const child of node.children ?? []) add(child, here ? level + 1 : level, only)
 		}
 	}
 
@@ -185,7 +225,10 @@ export function collectExport<Row>(
 		for (const node of pinned.bottom) add(node, 0)
 	}
 
-	if (options.totals) rows.push({ kind: 'total', level: 0, cells: totalCells(source.totals()) })
+	if (options.totals) {
+		const counted = set === 'all' || set === 'selected' ? taken : source.filtered()
+		rows.push({ kind: 'total', level: 0, cells: totalCells(counted) })
+	}
 
 	return {
 		columns: columns.map((column) => ({ id: column.id, header: source.label(column), column })),

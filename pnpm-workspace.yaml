@@ -8,6 +8,7 @@ catalog:
   '@ui-sdk/vue': 0.1.0-beta.13
   '@vitejs/plugin-vue': ^6.0.11
   jsdom: ^31.0.1
+  ssf: 0.11.2
   '@types/jsdom': ^30.0.0
   vite: npm:@voidzero-dev/vite-plus-core@latest
   vite-plus: ^1.7.0

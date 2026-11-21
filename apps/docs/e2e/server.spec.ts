@@ -104,7 +104,14 @@ test('the first load says so in the body', async ({ page }) => {
 	const table = page.getByRole('grid', { name: 'People' })
 	await expect(table).toHaveAttribute('aria-busy', 'true')
 	await expect(table.locator('tbody')).toHaveText('Loading rows.')
+	// The row that says so is a row of the grid. Focus on it goes to the rows when they come.
+	await table.locator('thead th').first().focus()
+	await page.keyboard.press('ArrowDown')
+	await expect(table.locator('tbody td')).toBeFocused()
 	await expect(table.locator('tbody tr')).toHaveCount(25)
+	await expect(table.locator('tbody tr').first().locator('td').first()).toBeFocused()
+	await page.keyboard.press('ArrowDown')
+	await expect(table.locator('tbody tr').nth(1).locator('td').first()).toBeFocused()
 })
 
 test('the CSV file and the Excel file hold the rows as the screen shows them', async ({ page }) => {

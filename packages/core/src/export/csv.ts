@@ -1,3 +1,6 @@
+import { isNumericFormat } from '../format'
+import { readNumber } from '../format/number'
+import type { ColumnDef } from '../rows'
 import type { ExportData } from './data'
 
 export type CsvOptions = {
@@ -39,11 +42,22 @@ export function toCsv(data: ExportData, options: CsvOptions = {}): string {
 		`["\\r\\n]|^\\s|\\s$|${separator.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}`,
 	)
 
-	const cell = (text: string, value?: unknown): string => {
-		let clean = text.replace(NO_BREAK_SPACES, ' ')
+	// The text of such a cell is written by a number format, from a number or
+	// from a text of digits, as many servers send a decimal number.
+	const formatted = (value: unknown, column: ColumnDef | undefined): boolean =>
+		typeof value === 'number' ||
+		(!!column?.format &&
+			!column.exportValue &&
+			isNumericFormat(column.format) &&
+			readNumber(value) !== undefined)
+
+	const cell = (text: string, value?: unknown, column?: ColumnDef): string => {
+		// A space that a person typed stays as it is. A format writes its own.
+		const made = typeof value === 'number' || (!!column?.format && !column.exportValue)
+		let clean = made ? text.replace(NO_BREAK_SPACES, ' ') : text
 		if (
 			escapeFormulas &&
-			typeof value !== 'number' &&
+			!formatted(value, column) &&
 			FORMULA_START.test(clean) &&
 			!NUMBER_TEXT.test(clean)
 		) {
@@ -57,7 +71,14 @@ export function toCsv(data: ExportData, options: CsvOptions = {}): string {
 		lines.push(data.columns.map((column) => cell(column.header)).join(separator))
 	}
 	for (const row of data.rows) {
-		lines.push(row.cells.map((item) => cell(item.text, item.value)).join(separator))
+		lines.push(
+			row.cells
+				// The cells of a row of data only: a group row holds a name in a column of numbers.
+				.map((item, index) =>
+					cell(item.text, item.value, row.kind === 'row' ? data.columns[index]?.column : undefined),
+				)
+				.join(separator),
+		)
 	}
 	return (
 		(options.bom === false ? '' : '\uFEFF') + lines.join(lineEnd) + (lines.length ? lineEnd : '')

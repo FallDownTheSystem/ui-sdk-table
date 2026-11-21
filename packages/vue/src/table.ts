@@ -27,17 +27,37 @@ import {
 	type TableOptions,
 } from 'ui-sdk-table-core'
 import {
+	Comment,
 	defineComponent,
 	h,
 	onBeforeUnmount,
 	shallowRef,
+	Text,
 	type ComponentObjectPropsOptions,
 	type PropType,
 	type PublicProps,
 	type SetupContext,
 	type TableHTMLAttributes,
+	type VNode,
 	type VNodeChild,
 } from 'vue'
+
+/**
+ * What a slot rendered, or `undefined` when that is nothing a person can
+ * see. A slot whose `v-if` is false still gives a list, with a comment in it.
+ */
+function shown(content: VNodeChild): VNodeChild | undefined {
+	const visible = (item: VNodeChild): boolean => {
+		if (item === null || item === undefined || typeof item === 'boolean') return false
+		if (Array.isArray(item)) return item.some(visible)
+		if (typeof item !== 'object') return String(item).trim() !== ''
+		const node: VNode = item
+		if (node.type === Comment) return false
+		// The text of a text node is a string. Any other node shows something.
+		return node.type !== Text || typeof node.children !== 'string' || node.children.trim() !== ''
+	}
+	return visible(content) ? content : undefined
+}
 import {
 	TableBody,
 	TableCell,
@@ -420,11 +440,7 @@ const TableImpl = defineComponent(
 							toggleExpanded,
 						})
 					}
-					return h(
-						'button',
-						{ type: 'button', onClick: toggleExpanded },
-						api.message('groupRow')({ text, count: group.leaves.length }),
-					)
+					return h('button', { type: 'button', onClick: toggleExpanded }, api.groupText(group))
 				}),
 			)
 		}
@@ -610,8 +626,8 @@ const TableImpl = defineComponent(
 			return h(TablePlainRow, { key: 'empty', index, 'data-kind': 'empty' }, () =>
 				h(TableCell, { value: 'empty', row: index, col: 0, colspan: span }, () =>
 					api.loading()
-						? (slots.loading?.({}) ?? api.message('loading')())
-						: (slots.empty?.({}) ?? api.message('noRows')()),
+						? (shown(slots.loading?.({})) ?? api.message('loading')())
+						: (shown(slots.empty?.({})) ?? api.message('noRows')()),
 				),
 			)
 		}
