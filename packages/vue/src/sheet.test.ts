@@ -462,6 +462,23 @@ test('`v-model:cell-formats`: two changes in one turn both reach the owner, and 
 	expect(fixed.controller.getCellFormat('a', 'name')).toEqual({})
 })
 
+test('`v-model:cell-formats`: an undo in the turn of the format reaches the owner, and the cell loses the format', async () => {
+	const { controller, formats, formatReasons, cell } = setup({ sheet: true })
+	await nextTick()
+	controller.formatCells({ bold: true }, { from: cellRef('a', 'name') })
+	// The undo goes back to the formats of the last render, which the owner still passes.
+	controller.undo()
+	expect(formatReasons).toEqual(['imperative', 'undo'])
+	await nextTick()
+	expect(formats.value).toEqual({})
+	expect(cell('a', 'name').attributes('data-bold')).toBeUndefined()
+	expect(controller.getCellFormat('a', 'name')).toEqual({})
+	controller.redo()
+	await nextTick()
+	expect(formats.value).toEqual({ cells: { a: { name: { bold: true } } } })
+	expect(cell('a', 'name').attributes('data-bold')).toBe('')
+})
+
 test('a format stays with its row through a sort, and a row that comes later has the format of its column', async () => {
 	const { controller, rows, cell, texts } = setup({ sheet: true })
 	await nextTick()

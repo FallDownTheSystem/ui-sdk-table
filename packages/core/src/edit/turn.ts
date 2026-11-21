@@ -65,6 +65,52 @@ export function createTurnValues(rows: () => unknown): TurnValues {
 	}
 }
 
+export type HeldChangeDetails<Reason extends string = string> = { reason: Reason; event?: Event }
+
+export type HeldKey<Value, Reason extends string = string> = TurnValue<Value> & {
+	/**
+	 * Reports a new value of the key, and keeps it for the turn when it was
+	 * taken. Returns whether it was taken.
+	 */
+	change(next: Value, details: HeldChangeDetails<Reason>): boolean
+}
+
+/**
+ * A state key that the owner can hold, read through `createTurnValue`, with
+ * the one way to report a change of it.
+ *
+ * A change goes through `createChange`, as every change. But `createChange`
+ * compares the new value with the state of the last render. In the turn of a
+ * first change the owner has not passed its value back yet, so a second
+ * change that goes back to the state (an undo of the first one) would be "no
+ * change", and the owner would never hear it. Only in that case the change
+ * is told with `dispatch`, which calls the listener without the comparison;
+ * a canceled dispatch is a refusal.
+ */
+export function createHeldKey<Value, Reason extends string>(keyed: {
+	/** What the owner passes for the key, or `undefined` when the table keeps it. */
+	given: () => Value | undefined
+	/** The state of the last render. */
+	state: () => Value
+	/** `createChange` for this key. */
+	change: (next: Value, details: HeldChangeDetails<Reason>) => boolean
+	/** `dispatch` of the listener of this key; returns whether it was canceled. */
+	dispatch: (next: Value, details: HeldChangeDetails<Reason>) => boolean
+}): HeldKey<Value, Reason> {
+	const turn = createTurnValue(keyed.given, keyed.state)
+	return {
+		...turn,
+		change(next, details) {
+			const told =
+				Object.is(next, keyed.state()) && !Object.is(next, turn.read())
+					? !keyed.dispatch(next, details)
+					: keyed.change(next, details)
+			if (told) turn.took(next)
+			return told
+		},
+	}
+}
+
 export type TurnValue<Value> = {
 	/** The value of now: what the table reported in this turn, else what the state holds. */
 	read(): Value

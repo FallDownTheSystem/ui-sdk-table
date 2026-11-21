@@ -82,7 +82,7 @@ import {
 	type ParseTexts,
 	type Checked,
 } from './edit'
-import { createTurnValue, createTurnValues } from './edit/turn'
+import { createHeldKey, createTurnValues } from './edit/turn'
 import { fillValues } from './sheet/fill'
 import { moveFrom, type Move } from './sheet/moves'
 import { stepSize, type HistoryEntry, type TableStep } from './sheet/steps'
@@ -1361,16 +1361,20 @@ export const table = definePrimitive({
 		 * here, so the footer, the group rows, `getTotals` and an export agree.
 		 */
 		const aggregateOf = (column: ColumnDef) => pickAggregate(state().columnAggregates, column)
-		const aggregatesNow = createTurnValue(
-			() => options().columnAggregates,
-			() => state().columnAggregates,
-		)
+		const aggregatesNow = createHeldKey<Record<string, AggregateName | null>, TableReason>({
+			given: () => options().columnAggregates,
+			state: () => state().columnAggregates,
+			change: (next, details) => change('columnAggregates', next, details),
+			dispatch: (next, details) => dispatch(context, 'onColumnAggregatesChange', next, details),
+		})
 		// The formats of now for a change that starts from them. What a cell
 		// shows is the state, which follows the owner.
-		const formatsNow = createTurnValue(
-			() => options().cellFormats,
-			() => state().cellFormats,
-		)
+		const formatsNow = createHeldKey<CellFormats, TableReason>({
+			given: () => options().cellFormats,
+			state: () => state().cellFormats,
+			change: (next, details) => changeFormatsThrough('cellFormats', next, details),
+			dispatch: (next, details) => dispatch(formatsContext, 'onCellFormatsChange', next, details),
+		})
 
 		function totalText(column: ColumnDef, value: unknown): string {
 			const aggregate = aggregateOf(column)
@@ -2044,10 +2048,7 @@ export const table = definePrimitive({
 					direction === 'undo'
 						? revertFormats(now, after, before)
 						: revertFormats(now, before, after)
-				if (next !== now) {
-					if (!change('cellFormats', next, { reason: direction, event })) return 'refused'
-					formatsNow.took(next)
-				}
+				if (next !== now && !formatsNow.change(next, { reason: direction, event })) return 'refused'
 				applied = { cells: next === now ? 0 : cells, gone: 0, hidden: 0 }
 				return 'done'
 			}
@@ -3195,11 +3196,7 @@ export const table = definePrimitive({
 			const next: Record<string, AggregateName | null> = { ...current }
 			if (aggregate === undefined) delete next[found.id]
 			else next[found.id] = aggregate
-			const taken = change('columnAggregates', next, {
-				reason: event ? 'item-press' : 'imperative',
-				event,
-			})
-			if (taken) aggregatesNow.took(next)
+			aggregatesNow.change(next, { reason: event ? 'item-press' : 'imperative', event })
 		}
 
 		function resetColumns(key: keyof typeof started): void {
@@ -4321,7 +4318,7 @@ export const table = definePrimitive({
 		 * `tell` does for an edit.
 		 */
 		let formatSource: ChangeSource = 'programmatic'
-		const changeFormatsThrough = createChange({
+		const formatsContext = {
 			...context,
 			options: () => ({
 				...options(),
@@ -4330,7 +4327,8 @@ export const table = definePrimitive({
 					options().onCellFormatsChange?.(value, details)
 				},
 			}),
-		})
+		}
+		const changeFormatsThrough = createChange(formatsContext)
 
 		/** Changes the formats. A change that was taken is one step of the history. */
 		function changeFormats(
@@ -4342,8 +4340,7 @@ export const table = definePrimitive({
 			const before = formatsNow.read()
 			if (next === before) return false
 			formatSource = 'programmatic'
-			if (!changeFormatsThrough('cellFormats', next, { reason, event })) return false
-			formatsNow.took(next)
+			if (!formatsNow.change(next, { reason, event })) return false
 			if (historyOn()) {
 				history.record({
 					id: ++stepIds,
