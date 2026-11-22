@@ -10,7 +10,7 @@ The logic of a data table, and no looks:
 - Every cell is a slot, every state has a `v-model`, and a controller gives each action to code outside the table and to an agent.
 - Plain data for the controls around a table: `getView`, `getFacets`, `getTotals`, `subscribe`.
 
-The styled table is the work of the consumer. The library renders elements with `data-slot`, `data-*` and `aria-*` attributes and a few CSS variables, and a consumer gives them the looks and the controls of its own design system: a toolbar, a search field, filter controls, a column menu, the pages. The page [Styling](https://falldownthesystem.github.io/ui-sdk-table/?page=styling) of the docs lists what a styled table builds on.
+The styled table is the work of the consumer. The library renders elements with `data-slot`, `data-*` and `aria-*` attributes and a few CSS variables, and a consumer gives them the looks and the controls of its own design system: a toolbar, a search field, filter controls, a column menu, the pages. The pages [Styling](https://falldownthesystem.github.io/ui-sdk-table/?page=styling) and [A styled table for an app](https://falldownthesystem.github.io/ui-sdk-table/?page=styled-table) of the docs say what a styled table builds on.
 
 ## Layout
 

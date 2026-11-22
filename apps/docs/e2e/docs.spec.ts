@@ -683,3 +683,37 @@ test('An Excel file with formulas: the file holds the formula of each profit cel
 	expect(sheet).toMatch(/<c r="D2"(?: s="\d+")?><f>B2-C2<\/f><v>3100<\/v><\/c>/)
 	expect(sheet).toMatch(/<c r="D4"(?: s="\d+")?><f>B4-C4<\/f><v>4050<\/v><\/c>/)
 })
+
+test('How the table is built: a table from the parts has the roles of a grid, and the arrow keys move focus', async ({
+	page,
+}) => {
+	await page.goto('/?page=how-the-table-is-built')
+	const table = grid(page, 'how-the-table-is-built/parts', 'Planets and their moons')
+	await expect(table.getByRole('columnheader')).toHaveText(['Planet', 'Moons'])
+	await expect(table.getByRole('row').nth(2)).toHaveAttribute('aria-rowindex', '3')
+	await table.getByRole('gridcell', { name: 'Mars' }).click()
+	await page.keyboard.press('ArrowRight')
+	await expect(table.getByRole('gridcell', { name: '2', exact: true })).toBeFocused()
+	await page.keyboard.press('ArrowDown')
+	await expect(table.getByRole('gridcell', { name: '95' })).toBeFocused()
+})
+
+test('A styled table for an app: the search, the box of a column and the pages work from outside the table', async ({
+	page,
+}) => {
+	await page.goto('/?page=styled-table')
+	const example = page.locator('[data-example="styled-table/toolbar"]')
+	const table = grid(page, 'styled-table/toolbar', 'Books')
+	await expect(table.locator('tbody tr')).toHaveCount(2)
+	await expect(example.getByRole('status')).toHaveText('Page 1 of 3')
+	await example.getByRole('button', { name: 'Next' }).click()
+	await expect(example.getByRole('status')).toHaveText('Page 2 of 3')
+
+	await example.getByRole('checkbox', { name: 'Year' }).click()
+	await expect(table.locator('th[data-column="year"]')).toHaveCount(0)
+	await expect(example.getByRole('checkbox', { name: 'Title' })).toHaveCount(0)
+
+	await example.getByRole('searchbox', { name: 'Search the books' }).fill('Ashby')
+	await expect(table.locator('tbody tr')).toHaveCount(2)
+	await expect(example.getByRole('status')).toHaveText('Page 1 of 1')
+})

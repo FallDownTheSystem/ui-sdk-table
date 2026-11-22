@@ -4,6 +4,13 @@ import { defineComponent, h, nextTick, onUpdated, ref, shallowRef } from 'vue'
 import {
 	createTableController,
 	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeaderCell,
+	TableHeaderRow,
+	TableRoot,
+	TableRow,
 	type CellSlotProps,
 	type ColumnDef,
 	type DetailSlotProps,
@@ -459,5 +466,82 @@ test('a detail row renders the `detail` slot in one wide cell, and sticky rows a
 
 	await wrapper.get('tbody button').trigger('click')
 	expect(wrapper.findAll('tbody tr[data-kind="detail"]')).toHaveLength(0)
+	wrapper.unmount()
+})
+
+test('a table built by hand from the parts has the roles, the row and column numbers and the arrow keys of a grid', async () => {
+	const few = people.slice(0, 2)
+	// `TableRoot` is not generic: its columns are `ColumnDef` of rows of an unknown type.
+	const shown: ColumnDef[] = [
+		{ id: 'name', header: 'Name' },
+		{ id: 'team', header: 'Team' },
+	]
+	// The markup is the caller's: each part gets a key of its own as `value`, and its place in the grid.
+	const wrapper = mount(
+		() =>
+			h(TableRoot, { rows: few, columns: shown, 'aria-label': 'People' }, () => [
+				h(TableHead, null, () =>
+					h(TableHeaderRow, { value: 'header', index: 0 }, () =>
+						shown.map((column, col) =>
+							h(
+								TableHeaderCell,
+								{ key: column.id, value: `h|${column.id}`, row: 0, col, header: true },
+								() => column.header,
+							),
+						),
+					),
+				),
+				h(TableBody, null, () =>
+					few.map((person, index) =>
+						h(TableRow, { key: person.id, value: person.id, index: index + 1 }, () =>
+							shown.map((column, col) =>
+								h(
+									TableCell,
+									{ key: column.id, value: `${person.id}|${column.id}`, row: index + 1, col },
+									() => String(person[column.id as keyof Person]),
+								),
+							),
+						),
+					),
+				),
+			]),
+		{ attachTo: document.body },
+	)
+
+	const root = wrapper.get('table')
+	expect(root.attributes('role')).toBe('grid')
+	expect(root.attributes('aria-label')).toBe('People')
+	expect(root.attributes('aria-rowcount')).toBe('3')
+	expect(root.attributes('aria-colcount')).toBe('2')
+	expect(wrapper.get('thead tr').attributes()).toMatchObject({ role: 'row', 'aria-rowindex': '1' })
+	expect(wrapper.findAll('thead th').map((cell) => cell.attributes('role'))).toEqual([
+		'columnheader',
+		'columnheader',
+	])
+	const rows = wrapper.findAll('tbody tr')
+	expect(rows.map((row) => [row.attributes('role'), row.attributes('aria-rowindex')])).toEqual([
+		['row', '2'],
+		['row', '3'],
+	])
+	const cell = (row: number, col: number) =>
+		wrapper.get(`tbody tr:nth-child(${row}) td:nth-child(${col})`)
+	expect(
+		[cell(1, 1), cell(1, 2)].map((td) => [td.attributes('role'), td.attributes('aria-colindex')]),
+	).toEqual([
+		['gridcell', '1'],
+		['gridcell', '2'],
+	])
+	expect(cell(2, 2).text()).toBe('Platform')
+
+	// The arrow keys move focus from cell to cell, as in a `Table`.
+	;(cell(1, 1).element as HTMLElement).focus()
+	await cell(1, 1).trigger('keydown', { key: 'ArrowRight' })
+	await nextTick()
+	expect(document.activeElement).toBe(cell(1, 2).element)
+	await cell(1, 2).trigger('keydown', { key: 'ArrowDown' })
+	await nextTick()
+	expect(document.activeElement).toBe(cell(2, 2).element)
+	expect(cell(2, 2).attributes('tabindex')).toBe('0')
+	expect(cell(1, 1).attributes('tabindex')).toBe('-1')
 	wrapper.unmount()
 })
