@@ -487,3 +487,65 @@ Date: 2026-11-22, later again. The library is on `master` at `0192773` (version 
 26. The docs: the "Names" lists of the guides are cut to what the reference does not hold, `FormatOptions` gets its export, and the skill `skills/ui-sdk-table` follows.
 27. The table cannot put an address into a formula by a press or a drag on cells while a person types. The owner asked whether it can; nobody asked for it to be built.
 28. The draft of `useEditDraft` holds no formulas, so Cancel does not take back a formula that was typed in the mode. An app keeps `v-model:cell-formulas` and puts it back on Cancel.
+
+## After that: a formula writer, formulas in the draft, a pick with the keys, the sink columns, versions 0.2.2 to 0.2.6
+
+Date: 2026-11-22, in the evening. The library is on `master` at `56e6d8d` (version 0.2.6), and the app on `master` at `dcf346a`.
+
+**The "Names" lists and the skill** (`ff8a6d2`, released as 0.2.2; `e07cc0e`).
+- The "Names" list at the end of each guide page holds only what the reference does not hold, and links the reference pages. The format options have their export.
+- The skill `skills/ui-sdk-table` (`SKILL.md` and `references/`) sends a reader to `llms.txt` and the pages, and holds only what the pages do not: when to use the table, the order of the work, and the rules that an app breaks most easily. A test fails for a page, a heading or a reference file that the skill names and that does not exist. Open item 26 is closed.
+
+**The primitives for a formula writer** (`f0cb4ea`, released as 0.2.3). The library gives the logic for a field that helps a person write a formula; the field, the list and the colours are the app's. Open item 27 is closed.
+- The pick mode: the option `pickCells` with the state `pickedCells`. While it is on, a press or a drag on cells picks them, and a press on a letter picks its column. The active cell, the selected cells, an open editor, focus and the caret of the field stay where they are. The table has `data-pick`, and a picked cell `data-picked` and `data-pick-edge`.
+- `getRangeAddress(pick)` gives the text of a pick (`B2`, `B2:C5`, `B:B`), and `insertReference(text, selection, address)` of the formulas entry puts it into the text of the field.
+- `formulaHelp(text, caret)` reads a text that is not a whole formula yet, and tells the token at the caret, the call around it with the argument at the caret, and whether a reference fits there.
+- Each function of the list has a `group` and its `arguments` as a list.
+- `getFormulaReferences(text, at?)` gives each reference of a text with its place in the text and its cells by ids.
+- The docs page "A formula writer", the sink tile `formula-pick` and the test page `?page=pick`.
+
+**Formulas in the edit draft** (`ea06c4b`, `94607ab`, released as 0.2.4). `useEditDraft(rows, { formulas })` holds the formulas of both layers as changes over the formulas of the owner, so Cancel takes back a formula that was typed in the entry mode. Open item 28 is closed.
+- New members: `formulas`, `onCellFormulasChange` and `changedColumn`.
+- `save()` gives the list of edits as before, and the list has a `formulas` property with the formulas to store.
+
+**A pick with the arrow keys** (`cdcf48b`, released as 0.2.5).
+- `controller.movePick(key, { extend, edge, start })` moves the pick through the same change path as a press, with the reason `list-navigation`. The first arrow picks the cell next to the cell of the field; `extend` grows a range from the first cell; `edge` goes to the edge of the body. A cell outside the row window is scrolled into view, and focus and the caret stay in the field. It is also an action for an agent.
+- In the text field of the table's own editor, the table hears the arrows itself while `pickCells` is on. A typed character, Backspace or Delete ends the pick.
+- The keys follow a right-to-left table, as the keys of the active cell do.
+- A first arrow with no cell in its direction picks nothing and changes no text. A later arrow at the edge keeps the pick.
+- Different from Excel: Control with an arrow goes to the edge of the body and not to the edge of the data. The edge of the data needs a walk over the cell values for each key.
+- With `pickCells` off, an arrow in an editor does what it did before. `sheet-off.test.ts` and the browser test of the sheet keys hold that.
+
+**Two fixes of the pick mode** (`5552e53`, released as 0.2.6). Both came from the work in the app.
+- In the pick mode, a press on a cell that picks nothing changes nothing: a header cell, a footer cell, a cell of a group row or a detail row, a row number and the corner. Nothing sorts, moves a column, selects or opens, and focus stays in the field. A control inside a cell (a button, a field, the resize handle) keeps its press. So a sort button inside a header cell still sorts; an app that renders one blocks it itself while its field picks.
+- `controller.getReferenceMarks(references)` gives a function that tells for a row id and a column id whether a reference holds the cell, with the `index` of the reference and the `edges` of its block. An app needs no map of its own from ids to places. Each question costs two reads of a map, also for a whole column of 50,000 rows. Measured on 50,000 rows with a new formula text at each key: a median of 26.4 ms with the marks, against 23.9 ms without.
+
+**Bytes.** The main entry with its chunks is 165,337 bytes minified, from 160,823 after the entry mode. The formulas entry is 72,453 bytes, from 67,608 at version 0.2.1. The limit for the glue of the formulas in the main entry is 12,270 bytes.
+
+**The columns of the sink page** (`56e6d8d`). The owner asked for four columns, then two, then one.
+- The grid has one column up to 709 px of window, two from 710 px and four from 1378 px, and never three. A column is at least 320px. Before, a window of 1280 px had three columns.
+- Container queries set `--columns`, and the page gives that number to `pack`. The count of the grid tracks was wrong in one column: a tile that was placed for two columns added a track.
+- A table that is wider than its tile scrolls sideways inside its frame. The page itself scrolls 0 px sideways at twelve widths from 360 to 1920 px.
+- In one column a tile grows to hold its whole table when its controls and its copy wrap. Only the four tiles about scrolling (`rows-window`, `rows-pin`, `rows-sticky`, `rows-measured`; frame class `scrolls`) keep their height and cut rows. A browser test at seven widths fails for any other cut row.
+- The tile `formula-pick` had lost 17 px of its last row at three widths when the arrow keys gave it a status line. Its blurb is shorter now, and the table shows whole. The margin is 4 px at 710 and 1378 px.
+- The commit changes the docs app and CLAUDE.md only, so no release follows.
+
+**The app.**
+- Pull request 57 (`5cf981b`): English names in the example and test data, the names rule in its CLAUDE.md, more room for the two contrast tests, and version 0.2.1 of the library. Open item 25 is closed.
+- Pull request 58 (`f602f74`): the number keyboard of a phone, column by column, for the number columns that can be edited and whose values are never below zero. It is no default of `DataTable`.
+- Pull request 59 (`8229796`): the formula bar of `DataTable` on 0.2.3. A list under the field suggests functions, a hint shows the arguments with the one at the caret marked, a press or a drag on cells writes the address at the caret, and the cells of each reference have a colour. The hint keeps its line under the field all the time, so the table does not move while a person aims.
+- Pull request 60 (`dcf346a`): the formula bar on 0.2.6. Where a reference fits at the caret, an arrow picks the cell next to the cell of the bar, Shift with an arrow grows a range, and Control (or Command) with an arrow goes to the edge of the body. A typed character ends the pick. While the list of functions is open, Arrow Down and Arrow Up move in the list and pick nothing. A status line that only a screen reader gets says each picked address (`Picked D1:D3`).
+- The colours of the references come from `getReferenceMarks`; the app parses no address text now.
+- While the bar picks, a press on the sort button of a header neither sorts nor takes focus. The rule is in `DataTable` (`keepBarFocus`), because the library leaves a press on a control inside a cell to the control. The columns Item and Price of the Price list on `/data-formulas` can be sorted, so the page shows the rule.
+
+**Checks.** Library at `56e6d8d`: `pnpm check`, `pnpm type-check`, 1,379 unit tests (14 skipped), 236 browser tests and `pnpm build` pass. CI and the deploy of the docs passed for that commit. App at `8d8d187`, the commit of pull request 60 before the merge: check, type-check, ESLint (0 errors), the unit tests, `ds:audit` and the build pass. Of 109 browser tests, 108 passed at once and one passed on its retry: a test of `/data-table`, a page without the formula bar, whose heading did not show within 5 seconds. Tried by hand in a browser on `/data-formulas`: the arrows wrote E2, D3, D1:D3 and D5, a comma ended the pick, the next arrow started from the cell of the bar, the open list kept its arrows, and a press on the header "Price" sorted only without the pick.
+
+**Not verified, added.** Firefox, WebKit, touch input, a real phone and a real screen reader, for the pick mode and for the sink columns. The point mode of Excel itself, also at the edge of a sheet and in a right-to-left sheet. Command on macOS and an input method editor in the pick mode. The right-to-left keys in a field of the `editor` slot (it calls the same `movePick` as the bar), and the bar of the app in a right-to-left table. In the app, a pick with the keys that scrolls a row window, and a sort button in a `header-<id>` slot of a page while the bar picks. In a browser, a press in the pick mode on a group row, a detail row, a row number and the corner; the code path is that of the header, which a browser test covers.
+
+**Open, added.**
+29. The owner wrote "4 by 1 grid can just have a horizontal scrollbar for the table". It was read as: a table that is wider than its tile, in a layout with fewer columns, scrolls sideways inside the tile. The owner did not confirm the reading.
+30. The app has no example of a draft that holds formulas (`useEditDraft` with `formulas`). The owner did not say whether he wants one.
+31. The sink data and the app data keep city names, also Helsinki. The owner did not say whether Helsinki goes too.
+32. Two bold cards of the sink touch at 1280 px and at 768 px. The rule of CLAUDE.md is for 1440 px only, where none touch.
+33. The branches of finished work are still on the remote of the library (`pick-keys`, `pick-keys-2`, `pick-fixes`, `sink-columns`, `sink-columns-2`, `draft-formulas`, `formula-writer` and older ones), and `formula-keys` on that of the app. A deletion needs a word of the owner.
+34. In the pick mode the library leaves a press on a control inside a header cell to the control, so each app stops its own sort button, as the app does. An option of the table for that is not built; nobody asked for one.
