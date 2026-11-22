@@ -32,6 +32,10 @@ To add a page:
 3. For an example, write `apps/docs/src/docs/examples/<id>/<name>.vue` with its own data, and put `<Example name="<id>/<name>" caption="What to try." />` on a line of its own in the page.
 4. Run `pnpm docs:write`, then `vp test`.
 
+## Skill
+
+`skills/ui-sdk-table` is the skill for a project that builds tables with the library: when to use the table, the order of the work, the rules that are easy to break, and which page of the docs to read. It goes with the `ui-sdk` skill of UI SDK. A project adds it with `npx skills@latest add FallDownTheSystem/ui-sdk-table --skill ui-sdk-table`.
+
 ## Sink page
 
 The sink page (`?page=sink`) shows many small tables in a grid of tiles. Each tile is one working table that shows one thing the library does, such as "Sort by two columns." or "Totals under their columns.", and under it stand the names of the library that its code uses. Press a name to see every tile that uses it; the address keeps the choice (`?uses=sort,multiSort&mode=all`), and `?only=edit` or `?only=edit-price` shows one group or one tile.
