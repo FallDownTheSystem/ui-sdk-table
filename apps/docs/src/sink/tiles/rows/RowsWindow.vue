@@ -19,7 +19,7 @@ const controller = createTableController()
 			<Button @click="controller.scrollToRow('p0', 'start')">First row</Button>
 			<Button @click="controller.scrollToRow('p49999', 'end')">Last row</Button>
 		</div>
-		<div class="sink-frame">
+		<div class="sink-frame scrolls">
 			<Table
 				:rows="people"
 				:columns="columns"

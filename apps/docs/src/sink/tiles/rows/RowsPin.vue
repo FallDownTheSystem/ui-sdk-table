@@ -15,7 +15,7 @@ const pinning = shallowRef<RowPinning>({ top: ['p5'] })
 
 <template>
 	<div class="demo">
-		<div class="sink-frame">
+		<div class="sink-frame scrolls">
 			<Table
 				v-model:row-pinning="pinning"
 				:rows="products"
