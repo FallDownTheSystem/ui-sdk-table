@@ -1725,7 +1725,9 @@ input {
 
 .tile [data-slot='table-editor'] {
 	display: block;
-	inline-size: 100%;
+	/* A text field has a width of its own, 20 characters, and a table without column widths would count it as the content of the column. */
+	inline-size: 0;
+	min-inline-size: 100%;
 	block-size: calc(var(--row) - 1px);
 	padding: 0 9px;
 	border: 0;

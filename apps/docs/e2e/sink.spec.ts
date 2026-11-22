@@ -435,10 +435,13 @@ test('a sheet in a tile takes a typed number, goes down, and Control+Z takes it 
 	const food = cell(table, 'Food', 'mar')
 	const total = table.locator('tfoot td[data-column="mar"]')
 	await expect(total).toHaveText('1,271')
+	const columns = await headerBoxes(table)
 
 	await food.click()
 	await page.keyboard.type('402')
 	await expect(table.locator('[data-slot="table-editor"]')).toHaveValue('402')
+	// The text field has a width of its own, and it must not make its column wider.
+	expect(await headerBoxes(table)).toEqual(columns)
 	await page.keyboard.press('Enter')
 	await expect(food).toHaveText('402')
 	await expect(total).toHaveText('1,673')
