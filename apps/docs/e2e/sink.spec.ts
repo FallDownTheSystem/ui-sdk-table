@@ -827,6 +827,27 @@ for (const { width, columns, pinScrolls = true } of [
 	})
 }
 
+// The closing table is wider than a phone, and its two pinned columns are nearly as wide as the frame there.
+for (const { width, sticks } of [
+	{ width: 390, sticks: false },
+	{ width: 768, sticks: true },
+]) {
+	test(`at ${width} px the pinned columns of the closing table ${sticks ? 'stay at the start of the frame' : 'scroll with the rest'}`, async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width, height: 800 })
+		await open(page, '&only=more-app')
+		const deal = header(tableOf(page, 'more-app'), 'deal')
+		await deal.scrollIntoViewIfNeeded()
+		const start = (await box(deal)).x
+		await frameOf(page, 'more-app').evaluate((element) =>
+			element.scrollTo({ left: 300, behavior: 'instant' }),
+		)
+		expect(Math.round((await box(deal)).x)).toBe(Math.round(start) - (sticks ? 0 : 300))
+		expect(await pageOverflow(page)).toBe(0)
+	})
+}
+
 // The tiles that hold, between them, every kind of text and control of the page.
 const CONTRAST_TILES = [
 	'filter-search',

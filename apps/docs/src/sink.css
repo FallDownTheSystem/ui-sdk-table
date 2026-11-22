@@ -1668,6 +1668,24 @@ input {
 	border-inline-start: 1px solid color-mix(in oklab, var(--tile-ink) 32%, var(--tile-bg));
 }
 
+/*
+ * The real table in a tile as narrow as a phone: its two pinned columns are nearly as wide as the frame,
+ * so they scroll with the rest, and a cell that gets focus keeps no room beside them.
+ */
+@container tile (width < 500px) {
+	.tile .app [data-slot='table-cell'][data-pinned] {
+		inset-inline: auto;
+	}
+
+	.tile .app [data-slot='table-cell'][data-pinned-edge] {
+		border-inline: 0;
+	}
+
+	.tile .app [data-slot='table-cell']:not([data-pinned]) {
+		scroll-margin-inline: 0;
+	}
+}
+
 .tile [data-slot='table-cell'][data-active]:focus-visible,
 /* In a sheet the active cell is the target of the next action, also after a click and while a button beside it has focus. */
 .tile [data-slot='table'][data-cell-selection] [data-slot='table-cell'][data-active] {
