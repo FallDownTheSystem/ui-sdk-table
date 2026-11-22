@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.5...v0.2.6) (2026-11-22)
+
+
+### Bug Fixes
+
+* a press in the pick mode picks or does nothing, and the table marks the cells of a reference ([5552e53](https://github.com/FallDownTheSystem/ui-sdk-table/commit/5552e53cbb3e7e605e303362aae08682d8e007d4))
+
 ## [0.2.5](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.4...v0.2.5) (2026-11-22)
 
 
