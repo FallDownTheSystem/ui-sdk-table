@@ -25,9 +25,9 @@ import {
 type Person = { id: string; name: string; team: string; score: number }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', team: 'Design', score: 70 },
-	{ id: 'b', name: 'Eero', team: 'Platform', score: 20 },
-	{ id: 'c', name: 'Helmi', team: 'Design', score: 45 },
+	{ id: 'a', name: 'Alice', team: 'Design', score: 70 },
+	{ id: 'b', name: 'Edward', team: 'Platform', score: 20 },
+	{ id: 'c', name: 'Hannah', team: 'Design', score: 45 },
 ]
 
 const columns: ColumnDef<Person>[] = [
@@ -50,9 +50,9 @@ test('Table renders real table elements with grid roles', () => {
 	expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual(['Name', 'Team', 'Score'])
 	expect(wrapper.get('thead th').attributes('role')).toBe('columnheader')
 	expect(bodyText(wrapper)).toEqual([
-		['Aino', 'Design', '70'],
-		['Eero', 'Platform', '20'],
-		['Helmi', 'Design', '45'],
+		['Alice', 'Design', '70'],
+		['Edward', 'Platform', '20'],
+		['Hannah', 'Design', '45'],
 	])
 	expect(wrapper.get('tfoot').text()).toBe('135')
 	wrapper.unmount()
@@ -94,8 +94,8 @@ test('cell, header and group slots get the row and its state', async () => {
 	expect(wrapper.get('thead i').text()).toBe('TEAM')
 	expect(bodyText(wrapper)).toEqual([
 		['Design 2 115', '115'],
-		['Aino', 'Design', 'Aino:70'],
-		['Helmi', 'Design', 'Helmi:45'],
+		['Alice', 'Design', 'Alice:70'],
+		['Hannah', 'Design', 'Hannah:45'],
 		['Platform 1 20', '20'],
 	])
 	wrapper.unmount()
@@ -119,7 +119,7 @@ test('v-model follows the state, and a controller drives it', async () => {
 	controller.sortBy('score', 'desc')
 	await nextTick()
 	expect(sort.value).toEqual([{ id: 'score', desc: true }])
-	expect(bodyText(wrapper).map((row) => row[0])).toEqual(['Aino', 'Helmi', 'Eero'])
+	expect(bodyText(wrapper).map((row) => row[0])).toEqual(['Alice', 'Hannah', 'Edward'])
 	expect(wrapper.findAll('thead th')[2]?.attributes('aria-sort')).toBe('descending')
 	wrapper.unmount()
 })
@@ -235,7 +235,7 @@ test('column state has a v-model for each key, and a resize ends with one commit
 	await nextTick()
 	expect(visibility.value).toEqual({ team: false })
 	expect(headers()).toEqual(['Name', 'Score'])
-	expect(bodyText(wrapper)[0]).toEqual(['Aino', '70'])
+	expect(bodyText(wrapper)[0]).toEqual(['Alice', '70'])
 
 	controller.setColumnOrder(['score'])
 	await nextTick()
@@ -301,7 +301,7 @@ test('a table without rows has one row that says so, and it is a row of the grid
 test('a page that arrives together with a new filter stays, also when a cell is active', async () => {
 	const many = Array.from({ length: 60 }, (_item, index) => ({
 		id: `p${index}`,
-		name: index < 30 ? `Aino ${index}` : `Eero ${index}`,
+		name: index < 30 ? `Alice ${index}` : `Edward ${index}`,
 		team: 'Design',
 		score: index,
 	}))
@@ -323,7 +323,7 @@ test('a page that arrives together with a new filter stays, also when a cell is 
 	cell.focus()
 	await nextTick()
 
-	filter.value = { search: 'Aino' }
+	filter.value = { search: 'Alice' }
 	page.value = { page: 2, pageSize: 25 }
 	await nextTick()
 	await nextTick()
@@ -458,7 +458,7 @@ test('a detail row renders the `detail` slot in one wide cell, and sticky rows a
 	expect(detail.attributes('aria-rowindex')).toBe('3')
 	expect(detail.findAll('td')).toHaveLength(1)
 	expect(detail.get('td').attributes('colspan')).toBe('3')
-	expect(detail.text()).toBe('More about Aino')
+	expect(detail.text()).toBe('More about Alice')
 	expect(wrapper.get('tbody tr').attributes('aria-expanded')).toBe('true')
 	expect(wrapper.get('table').attributes('aria-rowcount')).toBe('6')
 	// A table with detail rows and no tree rows stays a grid.

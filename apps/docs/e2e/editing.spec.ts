@@ -171,11 +171,11 @@ test('Tab saves and goes to the next cell, and focus that leaves the editor save
 	await expect(page.getByRole('button', { name: 'Clear the list' })).toBeFocused()
 
 	await cell(table, 4, 2).dblclick()
-	await page.keyboard.type('Hilla Ellis')
+	await page.keyboard.type('Holly Ellis')
 	await page.getByRole('heading', { name: 'Last edits' }).click()
 	await expect(editor(table)).toHaveCount(0)
-	await expect(cell(table, 4, 2)).toHaveText('Hilla Ellis')
-	await expect(log(page).first()).toHaveText('focus-out: e3.name="Hilla Ellis"')
+	await expect(cell(table, 4, 2)).toHaveText('Holly Ellis')
+	await expect(log(page).first()).toHaveText('focus-out: e3.name="Holly Ellis"')
 	// Focus stays where the person put it.
 	await expect(table.locator(':focus')).toHaveCount(0)
 
@@ -464,15 +464,15 @@ test('a check that takes time: the editor waits, Escape takes the edit back, and
 
 	// The person goes to another field while the check runs. Focus is theirs.
 	await page.keyboard.press('Enter')
-	await page.keyboard.type('Aili Adams')
+	await page.keyboard.type('Abby Adams')
 	await page.keyboard.press('Enter')
 	await expect(editor(table)).toHaveAttribute('aria-busy', 'true')
 	const box = page.getByRole('checkbox', { name: 'Row selection' })
 	await box.focus()
-	await expect(name).toHaveText('Aili Adams')
+	await expect(name).toHaveText('Abby Adams')
 	await expect(editor(table)).toHaveCount(0)
 	await expect(box).toBeFocused()
-	await expect(log(page).first()).toHaveText('enter-key: e1.name="Aili Adams"')
+	await expect(log(page).first()).toHaveText('enter-key: e1.name="Abby Adams"')
 })
 
 test('Tab goes to the next cell also when the save moves the row', async ({ page }) => {

@@ -19,9 +19,9 @@ import {
 type Person = { id: string; name: string; team: string; score: number; active: boolean }
 
 const people = (): Person[] => [
-	{ id: 'a', name: 'Aino', team: 'Design', score: 70, active: true },
-	{ id: 'b', name: 'Eero', team: 'Platform', score: 20, active: false },
-	{ id: 'c', name: 'Helmi', team: 'Design', score: 45, active: true },
+	{ id: 'a', name: 'Alice', team: 'Design', score: 70, active: true },
+	{ id: 'b', name: 'Edward', team: 'Platform', score: 20, active: false },
+	{ id: 'c', name: 'Hannah', team: 'Design', score: 45, active: true },
 ]
 
 const TEAMS = ['Design', 'Platform', 'Sales']
@@ -104,7 +104,7 @@ test('a cell shows a text field while it is edited, and the owner of the rows ge
 	const input = name.get('input')
 	expect(input.attributes('data-slot')).toBe('table-editor')
 	expect(input.attributes('aria-label')).toBe('Edit Name')
-	expect((input.element as HTMLInputElement).value).toBe('Aino')
+	expect((input.element as HTMLInputElement).value).toBe('Alice')
 	expect(document.activeElement).toBe(input.element)
 	expect(name.attributes('data-editing')).toBe('')
 	// One text field in the table: the other cells show their values.
@@ -117,7 +117,7 @@ test('a cell shows a text field while it is edited, and the owner of the rows ge
 	expect(edits[0]?.edits[0]).toMatchObject({ rowId: 'a', columnId: 'name', value: 'Anna' })
 	expect(rows.value[0]?.name).toBe('Anna')
 	// The rows of the owner before the edit are as they were.
-	expect(before[0]?.name).toBe('Aino')
+	expect(before[0]?.name).toBe('Alice')
 	expect(wrapper.find('input').exists()).toBe(false)
 	expect(cell(1, 1).text()).toBe('Anna')
 	expect(document.activeElement).toBe(cell(1, 1).element)
@@ -248,12 +248,12 @@ test('`v-model:cell-range` follows the range, and a copy and a paste of the cont
 	expect(wrapper.findAll('td[aria-selected="true"]')).toHaveLength(4)
 	expect(wrapper.findAll('th[aria-selected]')).toHaveLength(0)
 
-	expect(api.copyCells()).toBe('Aino\tDesign\nEero\tPlatform')
-	void api.pasteCells('Anna\tSales\nEemeli\tDesign')
+	expect(api.copyCells()).toBe('Alice\tDesign\nEdward\tPlatform')
+	void api.pasteCells('Anna\tSales\nEddie\tDesign')
 	await nextTick()
 	expect(rows.value.slice(0, 2).map((row) => [row.name, row.team])).toEqual([
 		['Anna', 'Sales'],
-		['Eemeli', 'Design'],
+		['Eddie', 'Design'],
 	])
 	// The rows are new objects with the same ids, so the range stays.
 	expect(range.value).toEqual({ anchor: { row: 1, col: 0 }, end: { row: 2, col: 1 } })
@@ -372,7 +372,7 @@ test('rows that the owner replaces while a value is checked get the edit, on the
 	expect(edits).toHaveLength(1)
 	// The edit names the row object of now, so `applyEdits` finds it.
 	expect(edits[0]?.edits[0]?.row).toMatchObject({ id: 'a', score: 71 })
-	expect(edits[0]?.edits[0]?.previous).toBe('Aino')
+	expect(edits[0]?.edits[0]?.previous).toBe('Alice')
 	expect(rows.value[0]).toMatchObject({ name: 'Anna', score: 71 })
 	expect(cell(1, 1).find('input').exists()).toBe(false)
 	expect(cell(1, 1).text()).toBe('Anna')

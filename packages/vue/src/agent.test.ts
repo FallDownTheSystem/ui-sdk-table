@@ -15,8 +15,8 @@ import {
 type Person = { id: string; name: string; score: number }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', score: 70 },
-	{ id: 'b', name: 'Eero', score: 20 },
+	{ id: 'a', name: 'Alice', score: 70 },
+	{ id: 'b', name: 'Edward', score: 20 },
 ]
 const columns: ColumnDef<Person>[] = [{ id: 'name' }, { id: 'score', sortable: true }]
 
@@ -48,8 +48,11 @@ test('an agent finds the table by its name, acts on it, and reads a useful error
 	await nextTick()
 	expect(sorted.ok).toBe(true)
 	expect(sources).toEqual(['agent'])
-	expect(wrapper.findAll('tbody tr').map((row) => row.find('td').text())).toEqual(['Aino', 'Eero'])
-	expect(wrapper.get('tbody tr[aria-selected="true"]').text()).toContain('Aino')
+	expect(wrapper.findAll('tbody tr').map((row) => row.find('td').text())).toEqual([
+		'Alice',
+		'Edward',
+	])
+	expect(wrapper.get('tbody tr[aria-selected="true"]').text()).toContain('Alice')
 
 	const failed = await agent.act({ steps: [{ ref: 'People', action: 'sortBy', args: ['age'] }] })
 	expect(failed.ok).toBe(false)

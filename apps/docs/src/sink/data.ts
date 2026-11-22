@@ -38,7 +38,7 @@ export type Order = {
 }
 
 const CUSTOMERS = [
-	'Aalto Works',
+	'Alder Works',
 	'Birch & Co',
 	'Cobalt Lab',
 	'Dune Supply',
@@ -62,7 +62,7 @@ const STATUSES = ['Paid', 'Open', 'Paid', 'Late', 'Paid', 'Open'] as const
 export function createOrders(count: number): Order[] {
 	return Array.from({ length: count }, (_, index) => ({
 		id: `o${index + 1}`,
-		customer: CUSTOMERS[index % CUSTOMERS.length] ?? 'Aalto Works',
+		customer: CUSTOMERS[index % CUSTOMERS.length] ?? 'Alder Works',
 		city: CITIES[(index * 3 + (index >> 2)) % CITIES.length] ?? 'Helsinki',
 		status: STATUSES[index % STATUSES.length] ?? 'Paid',
 		items: 1 + ((index * 3) % 7),

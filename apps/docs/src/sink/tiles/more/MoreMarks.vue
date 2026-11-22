@@ -9,7 +9,7 @@ import {
 type Invoice = { id: string; customer: string; days: number; balance: number }
 
 const invoices: Invoice[] = [
-	{ id: 'i1', customer: 'Aalto Works', days: 4, balance: 1200 },
+	{ id: 'i1', customer: 'Alder Works', days: 4, balance: 1200 },
 	{ id: 'i2', customer: 'Birch & Co', days: 41, balance: 853.5 },
 	{ id: 'i3', customer: 'Cobalt Lab', days: 12, balance: -150 },
 	{ id: 'i4', customer: 'Dune Supply', days: 67, balance: 420.5 },

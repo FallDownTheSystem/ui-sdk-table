@@ -20,9 +20,9 @@ import {
 type Person = { id: string; name: string; team: string; country: string; score: number }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', team: 'Design', country: 'Finland', score: 70 },
-	{ id: 'b', name: 'Eero', team: 'Platform', country: 'Sweden', score: 20 },
-	{ id: 'c', name: 'Helmi', team: 'Design', country: 'Sweden', score: 45 },
+	{ id: 'a', name: 'Alice', team: 'Design', country: 'Finland', score: 70 },
+	{ id: 'b', name: 'Edward', team: 'Platform', country: 'Sweden', score: 20 },
+	{ id: 'c', name: 'Hannah', team: 'Design', country: 'Sweden', score: 45 },
 ]
 
 const columns: ColumnDef<Person>[] = [
@@ -48,8 +48,8 @@ describe('the totals of a group under their columns', () => {
 		)
 		expect(body(wrapper)).toEqual([
 			['Design (2)', '115.00', '2'],
-			['Aino', 'Design', 'Finland', '70.00', 'a'],
-			['Helmi', 'Design', 'Sweden', '45.00', 'c'],
+			['Alice', 'Design', 'Finland', '70.00', 'a'],
+			['Hannah', 'Design', 'Sweden', '45.00', 'c'],
 			['Platform (1)', '20.00', '1'],
 		])
 		expect(
@@ -334,10 +334,10 @@ describe('useTableView', () => {
 		await nextTick()
 		expect(wrapper.get('output').text()).toBe('3')
 
-		controller.setSearch('aino')
+		controller.setSearch('alice')
 		await nextTick()
 		expect(wrapper.get('output').text()).toBe('1')
-		expect(view?.value?.filter.search).toBe('aino')
+		expect(view?.value?.filter.search).toBe('alice')
 
 		const last = view?.value
 		wrapper.unmount()
@@ -433,89 +433,89 @@ describe('useTableSearch', () => {
 		vi.advanceTimersByTime(100)
 		await type('he')
 		vi.advanceTimersByTime(100)
-		await type('hel')
-		expect(value()).toBe('hel')
+		await type('han')
+		expect(value()).toBe('han')
 		expect(input.attributes('data-pending')).toBe('')
-		expect(names()).toEqual(['Aino', 'Eero', 'Helmi'])
+		expect(names()).toEqual(['Alice', 'Edward', 'Hannah'])
 		expect(emitted).toEqual([])
 		vi.advanceTimersByTime(200)
 		await nextTick()
-		expect(emitted).toEqual([{ search: 'hel' }])
-		expect(names()).toEqual(['Helmi'])
-		expect(value()).toBe('hel')
+		expect(emitted).toEqual([{ search: 'han' }])
+		expect(names()).toEqual(['Hannah'])
+		expect(value()).toBe('han')
 		expect(input.attributes('data-pending')).toBeUndefined()
 		wrapper.unmount()
 	})
 
 	test('Escape clears at once, Enter filters at once, and neither filters again after the pause', async () => {
 		const { wrapper, input, names, type, value, emitted } = field()
-		await type('eero')
+		await type('edward')
 		await input.trigger('keydown', { key: 'Enter' })
 		await nextTick()
-		expect(names()).toEqual(['Eero'])
-		await type('eero x')
+		expect(names()).toEqual(['Edward'])
+		await type('edward x')
 		await input.trigger('keydown', { key: 'Escape' })
 		await nextTick()
 		expect(value()).toBe('')
-		expect(names()).toEqual(['Aino', 'Eero', 'Helmi'])
+		expect(names()).toEqual(['Alice', 'Edward', 'Hannah'])
 		vi.advanceTimersByTime(1000)
 		await nextTick()
-		expect(emitted).toEqual([{ search: 'eero' }, { search: '' }])
+		expect(emitted).toEqual([{ search: 'edward' }, { search: '' }])
 		wrapper.unmount()
 	})
 
 	test('a text from the owner of the filter wins over a text that waits', async () => {
 		const { wrapper, names, type, value, filter, emitted, input } = field()
-		await type('eero')
+		await type('edward')
 		// The owner sets another text, for example from a saved view.
-		filter.value = { search: 'aino' }
+		filter.value = { search: 'alice' }
 		await nextTick()
-		expect(value()).toBe('aino')
+		expect(value()).toBe('alice')
 		expect(input.attributes('data-pending')).toBeUndefined()
-		expect(names()).toEqual(['Aino'])
+		expect(names()).toEqual(['Alice'])
 		vi.advanceTimersByTime(1000)
 		await nextTick()
 		expect(emitted).toEqual([])
-		expect(filter.value).toEqual({ search: 'aino' })
+		expect(filter.value).toEqual({ search: 'alice' })
 
 		// A new object with the same text is not a new text: the text that waits stays.
-		await type('helmi')
-		filter.value = { search: 'aino' }
+		await type('hannah')
+		filter.value = { search: 'alice' }
 		await nextTick()
-		expect(value()).toBe('helmi')
+		expect(value()).toBe('hannah')
 		vi.advanceTimersByTime(200)
 		await nextTick()
-		expect(emitted).toEqual([{ search: 'helmi' }])
-		expect(names()).toEqual(['Helmi'])
+		expect(emitted).toEqual([{ search: 'hannah' }])
+		expect(names()).toEqual(['Hannah'])
 		wrapper.unmount()
 	})
 
 	test('with `v-model:filter`, the field never jumps back to the text before while the owner passes the new one', async () => {
-		const { wrapper, type, value, controller, names } = field(ref<FilterState>({ search: 'aino' }))
+		const { wrapper, type, value, controller, names } = field(ref<FilterState>({ search: 'alice' }))
 		const shown: string[] = []
 		controller.subscribe(() => shown.push(controller.getView().search))
 		// The field was made before the table, and has the text of the table from its first render on.
 		await nextTick()
-		expect(value()).toBe('aino')
+		expect(value()).toBe('alice')
 		shown.length = 0
-		await type('eero')
+		await type('edward')
 		vi.advanceTimersByTime(200)
 		// The change is reported, and the prop holds the old text until the next render.
-		expect(controller.getView()).toMatchObject({ search: 'eero', searchPending: false })
+		expect(controller.getView()).toMatchObject({ search: 'edward', searchPending: false })
 		await nextTick()
-		expect(value()).toBe('eero')
-		expect(names()).toEqual(['Eero'])
+		expect(value()).toBe('edward')
+		expect(names()).toEqual(['Edward'])
 		controller.setSearch('')
 		expect(controller.getView().search).toBe('')
 		await nextTick()
-		expect(names()).toEqual(['Aino', 'Eero', 'Helmi'])
-		expect(shown).not.toContain('aino')
+		expect(names()).toEqual(['Alice', 'Edward', 'Hannah'])
+		expect(shown).not.toContain('alice')
 		wrapper.unmount()
 	})
 
 	test('a table that leaves the page takes its waiting text with it', async () => {
 		const { wrapper, type, emitted } = field()
-		await type('eero')
+		await type('edward')
 		wrapper.unmount()
 		vi.advanceTimersByTime(1000)
 		expect(emitted).toEqual([])
@@ -523,9 +523,9 @@ describe('useTableSearch', () => {
 
 	test('`search-debounce` of 0 filters with each letter', async () => {
 		const { wrapper, type, names } = field(ref<FilterState>({}), 0)
-		await type('ai')
+		await type('al')
 		await nextTick()
-		expect(names()).toEqual(['Aino'])
+		expect(names()).toEqual(['Alice'])
 		wrapper.unmount()
 	})
 })

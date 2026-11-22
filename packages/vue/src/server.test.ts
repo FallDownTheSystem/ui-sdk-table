@@ -6,9 +6,9 @@ import { Table, type ColumnDef, type FilterState, type PageState, type SortRule 
 type Person = { id: string; name: string; team: string; score: number; reports?: Person[] }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', team: 'Design', score: 70 },
-	{ id: 'b', name: 'Eero', team: 'Platform', score: 20 },
-	{ id: 'c', name: 'Helmi', team: 'Design', score: 45 },
+	{ id: 'a', name: 'Alice', team: 'Design', score: 70 },
+	{ id: 'b', name: 'Edward', team: 'Platform', score: 20 },
+	{ id: 'c', name: 'Hannah', team: 'Design', score: 45 },
 ]
 
 const columns: ColumnDef<Person>[] = [
@@ -49,7 +49,7 @@ test('with manual stages, a sort, a search and a page are requests, and the rows
 	expect(sort.value).toEqual([{ id: 'name', desc: true }])
 	// The header says the sort; the rows are still in the order of the server.
 	expect(wrapper.get('thead th').attributes('aria-sort')).toBe('descending')
-	expect(names(wrapper)).toEqual(['Aino', 'Eero', 'Helmi'])
+	expect(names(wrapper)).toEqual(['Alice', 'Edward', 'Hannah'])
 
 	const api = wrapper.getComponent(Table).vm.api
 	api.lastPage()
@@ -62,13 +62,13 @@ test('with manual stages, a sort, a search and a page are requests, and the rows
 	await nextTick()
 	await nextTick()
 	expect(page.value).toEqual({ page: 2, pageSize: 3 })
-	expect(names(wrapper)).toEqual(['Aino'])
+	expect(names(wrapper)).toEqual(['Alice'])
 
 	api.setSearch('He')
 	await nextTick()
 	expect(filter.value).toEqual({ search: 'He' })
 	expect(page.value?.page).toBe(1)
-	expect(names(wrapper)).toEqual(['Aino'])
+	expect(names(wrapper)).toEqual(['Alice'])
 	wrapper.unmount()
 })
 
@@ -97,7 +97,7 @@ test('`loading` marks the table as busy; without rows, the body says that rows a
 	rows.value = people
 	await nextTick()
 	expect(root.attributes('aria-busy')).toBe('true')
-	expect(names(wrapper)).toEqual(['Aino', 'Eero', 'Helmi'])
+	expect(names(wrapper)).toEqual(['Alice', 'Edward', 'Hannah'])
 
 	loading.value = false
 	rows.value = []

@@ -7,9 +7,9 @@ import { table, type TableChangeDetails, type TableOptions } from './table'
 type Person = { id: string; name: string; team: string; score: number }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', team: 'Design', score: 70 },
-	{ id: 'b', name: 'Eero', team: 'Platform', score: 20 },
-	{ id: 'c', name: 'Helmi', team: 'Design', score: 45 },
+	{ id: 'a', name: 'Alice', team: 'Design', score: 70 },
+	{ id: 'b', name: 'Edward', team: 'Platform', score: 20 },
+	{ id: 'c', name: 'Hannah', team: 'Design', score: 45 },
 ]
 
 const columns = [
@@ -112,11 +112,11 @@ describe('a table whose rows come from a server', () => {
 		const { view, changes } = setup()
 		try {
 			view.api.sortBy('score')
-			view.api.setSearch('Aino')
+			view.api.setSearch('Alice')
 			expect(ids(view.api.rows())).toEqual(['a', 'b', 'c'])
 			expect(changes.map((change) => change.key)).toEqual(['sort', 'filter'])
 			expect(view.state.sort).toEqual([{ id: 'score', desc: false }])
-			expect(view.state.filter).toEqual({ search: 'Aino' })
+			expect(view.state.filter).toEqual({ search: 'Alice' })
 		} finally {
 			view.unmount()
 		}

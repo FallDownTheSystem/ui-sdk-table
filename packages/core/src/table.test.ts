@@ -5,9 +5,9 @@ import { table, type TableOptions } from './table'
 type Person = { id: string; name: string; team: string; score: number; reports?: Person[] }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', team: 'Design', score: 70 },
-	{ id: 'b', name: 'Eero', team: 'Platform', score: 20 },
-	{ id: 'c', name: 'Helmi', team: 'Design', score: 45 },
+	{ id: 'a', name: 'Alice', team: 'Design', score: 70 },
+	{ id: 'b', name: 'Edward', team: 'Platform', score: 20 },
+	{ id: 'c', name: 'Hannah', team: 'Design', score: 45 },
 ]
 
 const columns = [
@@ -102,7 +102,7 @@ describe('table primitive', () => {
 			expect(ids(view.api.rows())).toEqual(['c'])
 			view.api.nextPage()
 			expect(view.state.page?.page).toBe(2)
-			view.api.setSearch('eero')
+			view.api.setSearch('edward')
 			expect(view.api.model.rowCount()).toBe(0)
 			view.api.clearFilters()
 			expect(view.api.model.rowCount()).toBe(3)
@@ -116,14 +116,14 @@ describe('table primitive', () => {
 		const fuzzy = setup({ searchMode: 'fuzzy' })
 		const strict = setup({ searchMode: 'fuzzy', fuzzyThreshold: 0.9 })
 		try {
-			// "hlm" is in "Helmi" as letters in order, and in no value as it is.
-			exact.api.setSearch('hlm')
+			// "hnh" is in "Hannah" as letters in order, and in no value as it is.
+			exact.api.setSearch('hnh')
 			expect(ids(exact.api.rows())).toEqual([])
-			fuzzy.api.setSearch('hlm')
+			fuzzy.api.setSearch('hnh')
 			expect(ids(fuzzy.api.rows())).toEqual(['c'])
-			strict.api.setSearch('hlm')
+			strict.api.setSearch('hnh')
 			expect(ids(strict.api.rows())).toEqual([])
-			strict.api.setSearch('helmi')
+			strict.api.setSearch('hannah')
 			expect(ids(strict.api.rows())).toEqual(['c'])
 			// The order of the rows stays the order of the data, not of the score of the match.
 			fuzzy.api.setSearch('e')

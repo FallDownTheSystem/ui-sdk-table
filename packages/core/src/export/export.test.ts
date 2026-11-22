@@ -25,7 +25,7 @@ type Sale = {
 const sales = (): Sale[] => [
 	{
 		id: 'a',
-		name: 'Aino',
+		name: 'Alice',
 		team: 'Design',
 		units: 12,
 		price: 1234.5,
@@ -38,7 +38,7 @@ const sales = (): Sale[] => [
 	},
 	{
 		id: 'b',
-		name: 'Eero',
+		name: 'Edward',
 		team: 'Platform',
 		units: -3,
 		price: -99.999,
@@ -49,7 +49,7 @@ const sales = (): Sale[] => [
 	},
 	{
 		id: 'c',
-		name: 'Helmi',
+		name: 'Hannah',
 		team: 'Design',
 		units: 1500,
 		price: 0,
@@ -60,7 +60,7 @@ const sales = (): Sale[] => [
 	},
 	{
 		id: 'd',
-		name: 'Onni',
+		name: 'Oliver',
 		team: 'Platform',
 		units: null,
 		price: null,
@@ -109,13 +109,18 @@ describe('the cells of an export', () => {
 			// The page holds one row. The export holds both rows of the team, sorted.
 			expect(view.api.rows()).toHaveLength(1)
 			expect(texts(data)).toEqual([
-				['Helmi', 'Design', '1,500', '0.00'],
-				['Aino', 'Design', '12', '1,234.50'],
+				['Hannah', 'Design', '1,500', '0.00'],
+				['Alice', 'Design', '12', '1,234.50'],
 			])
 			expect(data.rows[1]?.cells[3]?.value).toBe(1234.5)
-			expect(names(view.api.exportData({ rows: 'page' }))).toEqual(['Helmi'])
+			expect(names(view.api.exportData({ rows: 'page' }))).toEqual(['Hannah'])
 			// Every row of the data, in the order of the data.
-			expect(names(view.api.exportData({ rows: 'all' }))).toEqual(['Aino', 'Eero', 'Helmi', 'Onni'])
+			expect(names(view.api.exportData({ rows: 'all' }))).toEqual([
+				'Alice',
+				'Edward',
+				'Hannah',
+				'Oliver',
+			])
 		} finally {
 			view.unmount()
 		}
@@ -125,10 +130,10 @@ describe('the cells of an export', () => {
 		const { view } = setup({
 			selection: 'multiple',
 			defaultSelected: ['d', 'a'],
-			defaultFilter: { search: 'Aino' },
+			defaultFilter: { search: 'Alice' },
 		})
 		try {
-			expect(names(view.api.exportData({ rows: 'selected' }))).toEqual(['Aino', 'Onni'])
+			expect(names(view.api.exportData({ rows: 'selected' }))).toEqual(['Alice', 'Oliver'])
 		} finally {
 			view.unmount()
 		}
@@ -171,7 +176,7 @@ describe('the cells of an export', () => {
 		try {
 			const data = view.api.exportData({ columns: 'all' })
 			expect(data.columns.map((column) => column.id)).toEqual(['name', 'units'])
-			expect(data.rows[0]?.cells[0]).toEqual({ value: 'AINO', text: 'AINO' })
+			expect(data.rows[0]?.cells[0]).toEqual({ value: 'ALICE', text: 'ALICE' })
 		} finally {
 			view.unmount()
 		}
@@ -181,17 +186,17 @@ describe('the cells of an export', () => {
 		const { view } = setup({ defaultGroupBy: ['team'] })
 		try {
 			// Without the option: the rows in the order of their groups, also of the closed ones.
-			expect(names(view.api.exportData())).toEqual(['Aino', 'Helmi', 'Eero', 'Onni'])
+			expect(names(view.api.exportData())).toEqual(['Alice', 'Hannah', 'Edward', 'Oliver'])
 			const data = view.api.exportData({ groups: true, totals: true })
 			expect(data.rows.map((row) => [row.kind, row.level, ...row.cells.map((cell) => cell.text)]))
 				// prettier-ignore
 				.toEqual([
 					['group', 0, 'Design (2)', '', '1,512', '1,234.50'],
-					['row', 1, 'Aino', 'Design', '12', '1,234.50'],
-					['row', 1, 'Helmi', 'Design', '1,500', '0.00'],
+					['row', 1, 'Alice', 'Design', '12', '1,234.50'],
+					['row', 1, 'Hannah', 'Design', '1,500', '0.00'],
 					['group', 0, 'Platform (2)', '', '-3', '-100.00'],
-					['row', 1, 'Eero', 'Platform', '-3', '-100.00'],
-					['row', 1, 'Onni', 'Platform', '', ''],
+					['row', 1, 'Edward', 'Platform', '-3', '-100.00'],
+					['row', 1, 'Oliver', 'Platform', '', ''],
 					['total', 0, '', '', '1,509', '1,134.50'],
 				])
 		} finally {
@@ -217,12 +222,12 @@ describe('the cells of an export', () => {
 		try {
 			const data = view.api.exportData()
 			expect(data.rows.map((row) => [row.cells[0]?.text, row.level])).toEqual([
-				['Aino', 0],
-				['Eero', 1],
-				['Onni', 0],
-				['Helmi', 0],
+				['Alice', 0],
+				['Edward', 1],
+				['Oliver', 0],
+				['Hannah', 0],
 			])
-			expect(names(view.api.exportData({ children: false }))).toEqual(['Aino', 'Onni', 'Helmi'])
+			expect(names(view.api.exportData({ children: false }))).toEqual(['Alice', 'Oliver', 'Hannah'])
 		} finally {
 			view.unmount()
 		}
@@ -246,10 +251,10 @@ describe('CSV', () => {
 			expect(toCsv(view.api.exportData(), { bom: false })).toBe(
 				[
 					'Name,Team,Units,Price',
-					'Aino,Design,12,"1,234.50"',
-					'Eero,Platform,-3,-100.00',
-					'Helmi,Design,"1,500",0.00',
-					'Onni,Platform,,',
+					'Alice,Design,12,"1,234.50"',
+					'Edward,Platform,-3,-100.00',
+					'Hannah,Design,"1,500",0.00',
+					'Oliver,Platform,,',
 					'',
 				].join('\r\n'),
 			)
@@ -416,7 +421,7 @@ describe('Excel', () => {
 			expect(cells.get('A1')).toEqual({ type: 'inlineStr', value: 'Name', pattern: '', bold: true })
 			expect(cells.get('A2')).toEqual({
 				type: 'inlineStr',
-				value: 'Aino',
+				value: 'Alice',
 				pattern: '',
 				bold: false,
 			})
@@ -841,7 +846,7 @@ describe('edges of an export', () => {
 			)
 			try {
 				expect(view.api.rows()).toHaveLength(expanded.length ? 3 : 2)
-				expect(names(view.api.exportData())).toEqual(['Aino', 'Eero', 'Helmi'])
+				expect(names(view.api.exportData())).toEqual(['Alice', 'Edward', 'Hannah'])
 			} finally {
 				view.unmount()
 			}
@@ -886,7 +891,7 @@ describe('edges of CSV', () => {
 
 	test('a no-break space that a person typed stays; the one of a format becomes a space', () => {
 		const { view } = setup({
-			rows: [{ ...sales()[0], id: 'x', name: 'Anna\u00a0Aalto' } as Sale],
+			rows: [{ ...sales()[0], id: 'x', name: 'Anna\u00a0Adams' } as Sale],
 			columns: [
 				{ id: 'name' },
 				{ id: 'price', format: 'decimal', formatOptions: { locale: 'fi-FI' } },
@@ -894,7 +899,7 @@ describe('edges of CSV', () => {
 		})
 		try {
 			expect(toCsv(view.api.exportData(), { bom: false, header: false })).toBe(
-				'Anna\u00a0Aalto,"1 234,50"\r\n',
+				'Anna\u00a0Adams,"1 234,50"\r\n',
 			)
 		} finally {
 			view.unmount()

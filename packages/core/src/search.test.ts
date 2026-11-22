@@ -6,9 +6,9 @@ import { table, type TableChangeDetails, type TableOptions } from './table'
 type Person = { id: string; name: string; team: string }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', team: 'Design' },
-	{ id: 'b', name: 'Eero', team: 'Platform' },
-	{ id: 'c', name: 'Helmi', team: 'Design' },
+	{ id: 'a', name: 'Alice', team: 'Design' },
+	{ id: 'b', name: 'Edward', team: 'Platform' },
+	{ id: 'c', name: 'Hannah', team: 'Design' },
 ]
 
 const columns = [{ id: 'name' }, { id: 'team' }]
@@ -44,10 +44,10 @@ describe('a search field with a pause', () => {
 			const event = new Event('input')
 			view.api.inputSearch('a', event)
 			vi.advanceTimersByTime(150)
-			view.api.inputSearch('ai', event)
+			view.api.inputSearch('al', event)
 			vi.advanceTimersByTime(150)
-			view.api.inputSearch('ain', event)
-			expect(search(view)).toEqual({ search: 'ain', searchPending: true })
+			view.api.inputSearch('ali', event)
+			expect(search(view)).toEqual({ search: 'ali', searchPending: true })
 			// 300 ms of typing, and no pause of 200 ms yet: the rows are as they were.
 			expect(view.state.filter).toEqual({})
 			expect(ids(view)).toEqual(['a', 'b', 'c'])
@@ -57,9 +57,9 @@ describe('a search field with a pause', () => {
 			expect(heard.length).toBeGreaterThan(0)
 
 			vi.advanceTimersByTime(200)
-			expect(view.state.filter).toEqual({ search: 'ain' })
+			expect(view.state.filter).toEqual({ search: 'ali' })
 			expect(ids(view)).toEqual(['a'])
-			expect(search(view)).toEqual({ search: 'ain', searchPending: false })
+			expect(search(view)).toEqual({ search: 'ali', searchPending: false })
 			// One change of the filter for the three letters, with the event of the field.
 			expect(view.changes).toHaveLength(1)
 			expect(view.changes[0]).toMatchObject({ key: 'filter', reason: 'input-change' })
@@ -77,15 +77,15 @@ describe('a search field with a pause', () => {
 		const slow = setup({ searchDebounce: 500 })
 		const fast = setup({ searchDebounce: 0 })
 		try {
-			slow.api.inputSearch('eero')
+			slow.api.inputSearch('edward')
 			vi.advanceTimersByTime(499)
 			expect(ids(slow)).toEqual(['a', 'b', 'c'])
 			vi.advanceTimersByTime(1)
 			expect(ids(slow)).toEqual(['b'])
 
-			fast.api.inputSearch('eero')
+			fast.api.inputSearch('edward')
 			expect(ids(fast)).toEqual(['b'])
-			expect(search(fast)).toEqual({ search: 'eero', searchPending: false })
+			expect(search(fast)).toEqual({ search: 'edward', searchPending: false })
 			expect(fast.state.searchDraft).toBeNull()
 		} finally {
 			slow.unmount()
@@ -94,9 +94,9 @@ describe('a search field with a pause', () => {
 	})
 
 	test('a clear button and Escape act at once: `setSearch` drops the text that waits', () => {
-		const view = setup({ defaultFilter: { search: 'helmi' } })
+		const view = setup({ defaultFilter: { search: 'hannah' } })
 		try {
-			view.api.inputSearch('helmi x')
+			view.api.inputSearch('hannah x')
 			view.api.setSearch('')
 			expect(search(view)).toEqual({ search: '', searchPending: false })
 			expect(ids(view)).toEqual(['a', 'b', 'c'])
@@ -111,13 +111,13 @@ describe('a search field with a pause', () => {
 	})
 
 	test('a text that the filter holds already does not wait', () => {
-		const view = setup({ defaultFilter: { search: 'aino' } })
+		const view = setup({ defaultFilter: { search: 'alice' } })
 		try {
-			view.api.inputSearch('aino x')
-			expect(search(view)).toEqual({ search: 'aino x', searchPending: true })
+			view.api.inputSearch('alice x')
+			expect(search(view)).toEqual({ search: 'alice x', searchPending: true })
 			// The person deletes the two letters again.
-			view.api.inputSearch('aino')
-			expect(search(view)).toEqual({ search: 'aino', searchPending: false })
+			view.api.inputSearch('alice')
+			expect(search(view)).toEqual({ search: 'alice', searchPending: false })
 			vi.advanceTimersByTime(1000)
 			expect(view.changes).toEqual([])
 		} finally {
@@ -130,10 +130,10 @@ describe('a search field with a pause', () => {
 		try {
 			view.api.flushSearch()
 			expect(view.changes).toEqual([])
-			view.api.inputSearch('eero')
+			view.api.inputSearch('edward')
 			view.api.flushSearch()
 			expect(ids(view)).toEqual(['b'])
-			expect(search(view)).toEqual({ search: 'eero', searchPending: false })
+			expect(search(view)).toEqual({ search: 'edward', searchPending: false })
 			vi.advanceTimersByTime(1000)
 			expect(view.changes).toHaveLength(1)
 		} finally {
@@ -144,7 +144,7 @@ describe('a search field with a pause', () => {
 	test('"clear all filters" wins over a text that waits, also when the filter was empty', () => {
 		const view = setup()
 		try {
-			view.api.inputSearch('eero')
+			view.api.inputSearch('edward')
 			view.api.clearFilters()
 			expect(search(view)).toEqual({ search: '', searchPending: false })
 			vi.advanceTimersByTime(1000)
@@ -153,13 +153,13 @@ describe('a search field with a pause', () => {
 
 			// The filters of the columns go, and the search is not one of them: its text still waits.
 			view.api.setColumnFilter('team', 'Design')
-			view.api.inputSearch('helmi')
+			view.api.inputSearch('hannah')
 			view.api.clearColumnFilters()
-			expect(search(view)).toEqual({ search: 'helmi', searchPending: true })
+			expect(search(view)).toEqual({ search: 'hannah', searchPending: true })
 			// A filter of a column that comes while a text waits is kept when the text arrives.
 			view.api.setColumnFilter('team', 'Design')
 			vi.advanceTimersByTime(200)
-			expect(view.state.filter).toEqual({ search: 'helmi', columns: { team: 'Design' } })
+			expect(view.state.filter).toEqual({ search: 'hannah', columns: { team: 'Design' } })
 			expect(ids(view)).toEqual(['c'])
 		} finally {
 			view.unmount()
@@ -168,14 +168,14 @@ describe('a search field with a pause', () => {
 
 	test('a listener that refuses the change sends the field back to the text of the filter', () => {
 		const view = setup({
-			defaultFilter: { search: 'aino' },
+			defaultFilter: { search: 'alice' },
 			onFilterChange: (_value: FilterState, details: TableChangeDetails) => details.cancel(),
 		})
 		try {
-			view.api.inputSearch('eero')
+			view.api.inputSearch('edward')
 			vi.advanceTimersByTime(200)
-			expect(view.state.filter).toEqual({ search: 'aino' })
-			expect(search(view)).toEqual({ search: 'aino', searchPending: false })
+			expect(view.state.filter).toEqual({ search: 'alice' })
+			expect(search(view)).toEqual({ search: 'alice', searchPending: false })
 		} finally {
 			view.unmount()
 		}
@@ -184,7 +184,7 @@ describe('a search field with a pause', () => {
 	test('a table that is destroyed leaves nothing waiting', () => {
 		const filters: FilterState[] = []
 		const view = setup({ onFilterChange: (value: FilterState) => filters.push(value) })
-		view.api.inputSearch('eero')
+		view.api.inputSearch('edward')
 		view.unmount()
 		expect(vi.getTimerCount()).toBe(0)
 		vi.advanceTimersByTime(1000)
