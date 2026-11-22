@@ -7,7 +7,12 @@ import {
 } from '@ui-sdk/core'
 
 /** A fill that a drag paints: the cells that it starts from and the cells that it would fill. */
-export type FillDraft = { source: CellBounds; target: CellBounds }
+export type FillDraft = {
+	/** The cells that the fill starts from, by their places in the grid. */
+	source: CellBounds
+	/** The cells that it would fill, by their places in the grid. */
+	target: CellBounds
+}
 
 /** Where a fill can go: along the rows, along the columns, or both. */
 export type FillDirection = 'both' | 'vertical' | 'horizontal'

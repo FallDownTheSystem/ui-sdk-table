@@ -84,7 +84,9 @@ export type TableMessages = {
 	redone: (details: { cells: number; gone: number; hidden: number }) => string
 	/** Why an undo or a redo did nothing: a listener of `onCellEdit` refused it. */
 	undoRefused: () => string
+	/** Why an undo did nothing: the history has no step to take back. */
 	nothingToUndo: () => string
+	/** Why a redo did nothing: the history has no step to bring back. */
 	nothingToRedo: () => string
 	/** Why an undo or a redo must wait: the check of a new value runs. */
 	historyBusy: () => string

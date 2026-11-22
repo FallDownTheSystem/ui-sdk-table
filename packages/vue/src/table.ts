@@ -421,15 +421,19 @@ export type TableEmits = {
 }
 
 export type HeaderSlotProps<Row> = {
+	/** The definition of the column. */
 	column: ColumnDef<Row>
 	/** The header text: `column.header`, or the column id. */
 	label: string
 	/** False for a header group, which holds columns and no cells. */
 	leaf: boolean
+	/** The direction of the column in the sort, `'asc'` or `'desc'`, or `undefined` when it does not sort. */
 	sort: SortDirection | undefined
 	/** The place of the column in the sort, from 1. With several columns in the sort, the first one sorts first. */
 	sortIndex: number | undefined
+	/** Sorts by the column as a press on the header does. Pass the event: with `multiSort`, its keys decide whether the column joins the sort. */
 	toggleSort: (event?: Event) => void
+	/** The edge that the column is pinned to, or `undefined`. */
 	pin: 'start' | 'end' | undefined
 	/**
 	 * Selects the cells of the column, for a control in its header. With
@@ -442,9 +446,13 @@ export type HeaderSlotProps<Row> = {
 }
 
 export type CellSlotProps<Row> = {
+	/** The row object of the data, as the owner passed it. */
 	row: Row
+	/** The node of the row in the row model: its id, its parent and its children. */
 	node: DataRow<Row>
+	/** The definition of the column. */
 	column: ColumnDef<Row>
+	/** The value of the cell: `value` of the column, else the property that `key` names. */
 	value: unknown
 	/** The value as text, with the format of the cell, else of its column. */
 	text: string
@@ -455,14 +463,19 @@ export type CellSlotProps<Row> = {
 	 * `data-bold`, `data-italic`, `data-color` and `data-fill`.
 	 */
 	format: CellFormat | undefined
+	/** Whether the row is selected. */
 	selected: boolean
+	/** Whether the row is open: its child rows or its detail row show. */
 	expanded: boolean
+	/** Whether the row can open: it has child rows or a detail row. */
 	expandable: boolean
 	/** Tree and group levels above this row, from 0. */
 	level: number
 	/** The edge that the row is pinned to. */
 	pinned: RowPin | undefined
+	/** Selects the row or takes it out of the selection, for a checkbox in the cell. */
 	toggleSelected: (event?: Event) => void
+	/** Opens or closes the row, for a button in the cell. */
 	toggleExpanded: (event?: Event) => void
 	/**
 	 * With formulas: the formula of the cell as a person reads it, and the
@@ -473,9 +486,13 @@ export type CellSlotProps<Row> = {
 }
 
 export type EditorSlotProps<Row> = {
+	/** The row object of the data, as the owner passed it. */
 	row: Row
+	/** The node of the row in the row model: its id, its parent and its children. */
 	node: DataRow<Row>
+	/** The definition of the column. */
 	column: ColumnDef<Row>
+	/** The value of the cell now. */
 	value: unknown
 	/** The value as plain text, without a format: 0.25 for a cell that shows 25 %. `save` takes a value. */
 	text: string
@@ -505,8 +522,11 @@ export type EditorSlotProps<Row> = {
 }
 
 export type RowHeaderSlotProps<Row> = {
+	/** The row object of the data, as the owner passed it. */
 	row: Row
+	/** The node of the row in the row model: its id, its parent and its children. */
 	node: DataRow<Row>
+	/** The definition of the column with `rowHeader`. */
 	column: ColumnDef<Row>
 	/** The number of the row, from 1: its place among the rows that the table shows, counted over the pages. */
 	number: number
@@ -519,6 +539,7 @@ export type RowHeaderSlotProps<Row> = {
 }
 
 export type LetterSlotProps<Row> = {
+	/** The definition of the column under the letter. */
 	column: ColumnDef<Row>
 	/** The letter of the column: its place among the columns in view. `undefined` for a column that leads the table. */
 	letter: string | undefined
@@ -535,18 +556,24 @@ export type LetterSlotProps<Row> = {
 }
 
 export type DetailSlotProps<Row> = {
+	/** The row object of the data, as the owner passed it. */
 	row: Row
+	/** The node of the row in the row model: its id, its parent and its children. */
 	node: DataRow<Row>
 	/** Closes the detail row. */
 	toggleExpanded: (event?: Event) => void
 }
 
 export type GroupSlotProps<Row> = {
+	/** The group: its id, the column and the value that make it, and its rows. */
 	group: GroupRow<Row>
+	/** The column that makes the group. */
 	column: ColumnDef<Row> | undefined
 	/** The value of the group as text, with the format of its column. */
 	text: string
+	/** Whether the group is open. */
 	expanded: boolean
+	/** The groups above this one, from 0. */
 	level: number
 	/** Column totals of the rows in the group. */
 	totals: Record<string, unknown>
@@ -562,11 +589,14 @@ export type GroupSlotProps<Row> = {
 	 * total of one of these columns has no cell of its own.
 	 */
 	covered: readonly ColumnDef<Row>[]
+	/** Opens or closes the group, for a button in the cell. */
 	toggleExpanded: (event?: Event) => void
 }
 
 export type GroupTotalSlotProps<Row> = {
+	/** The group of the row. */
 	group: GroupRow<Row>
+	/** The column of the cell. */
 	column: ColumnDef<Row>
 	/** The total of the column over the rows of the group. `undefined` for a column without an `aggregate`. */
 	value: unknown
@@ -576,14 +606,20 @@ export type GroupTotalSlotProps<Row> = {
 	totals: Record<string, unknown>
 	/** The function of the total: one of the built-in names, `custom` for a function of the column, or `undefined` without a total. */
 	aggregate: AggregateName | 'custom' | undefined
+	/** Whether the group is open. */
 	expanded: boolean
+	/** The groups above this one, from 0. */
 	level: number
+	/** The groups from the outermost one down to this group. */
 	path: readonly GroupPathEntry<Row>[]
 }
 
 export type FootSlotProps<Row> = {
+	/** The column of the cell. */
 	column: ColumnDef<Row>
+	/** The total of the column, or `undefined` for a column without an `aggregate`. */
 	value: unknown
+	/** The total as text, with the format of the column, or an empty text. */
 	text: string
 	/** The totals of every column that has one, by column id. */
 	totals: Record<string, unknown>
@@ -615,12 +651,17 @@ export type TableSlots<Row> = {
 	 */
 	[name: `edit-${string}`]: (props: EditorSlotProps<Row>) => VNodeChild
 } & {
+	/** The editor of a cell, in place of the text field of the table. The control must take focus itself. */
 	editor?: (props: EditorSlotProps<Row>) => VNodeChild
+	/** One header cell, for every column without a `header-{column id}` slot. */
 	header?: (props: HeaderSlotProps<Row>) => VNodeChild
+	/** One body cell, for every column without a `col-{column id}` slot. */
 	cell?: (props: CellSlotProps<Row>) => VNodeChild
+	/** One total in the footer, for every column without a `foot-{column id}` slot. */
 	foot?: (props: FootSlotProps<Row>) => VNodeChild
 	/** The label cell of a group row. */
 	group?: (props: GroupSlotProps<Row>) => VNodeChild
+	/** The cell of a group row under one column, for every column without a `group-total-{column id}` slot. */
 	'group-total'?: (props: GroupTotalSlotProps<Row>) => VNodeChild
 	/** The cell with the number of a row, in a column with `rowHeader`. */
 	'row-header'?: (props: RowHeaderSlotProps<Row>) => VNodeChild

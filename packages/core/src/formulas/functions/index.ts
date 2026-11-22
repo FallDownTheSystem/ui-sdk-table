@@ -14,7 +14,14 @@ export const FUNCTIONS: Readonly<Record<string, FormulaFunction>> = {
 	...DATE_FUNCTIONS,
 }
 
-export type FormulaFunctionInfo = { name: string; args: string; help: string }
+export type FormulaFunctionInfo = {
+	/** The name of the function, such as `SUM`. */
+	name: string
+	/** Its arguments as a person writes them, such as `number, ...`. */
+	args: string
+	/** One line that says what it gives. */
+	help: string
+}
 
 /** The functions as a list for a person or an agent: a name, its arguments and one line of help. */
 export const FORMULA_FUNCTIONS: readonly FormulaFunctionInfo[] = Object.keys(FUNCTIONS)

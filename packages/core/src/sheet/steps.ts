@@ -31,8 +31,11 @@ export type TableStep<Reason extends string = string> = {
 
 /** A step as `getHistory` shows it: what made it and how many cells it holds, without the values. */
 export type HistoryEntry<Reason extends string = string> = {
+	/** The number of the step: the steps of a table count up from 1. */
 	id: number
+	/** What made the step: the reason of its edit, `shortcut` or `formula`. */
 	reason: Reason
+	/** Who made it: a person with a key or a pointer, code, or an agent. */
 	source: ChangeSource
 	/** How many cells got a new value. 0 for a step of formats. */
 	cells: number

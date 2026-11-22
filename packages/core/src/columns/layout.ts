@@ -2,7 +2,12 @@ import type { ColumnDef } from '../rows'
 
 export type ColumnPin = 'start' | 'end'
 
-export type ColumnPinning = { start?: readonly string[]; end?: readonly string[] }
+export type ColumnPinning = {
+	/** The ids of the columns that stay at the start edge, in order. */
+	start?: readonly string[]
+	/** The ids of the columns that stay at the end edge, in order. */
+	end?: readonly string[]
+}
 
 export type ColumnLayoutState = {
 	/** Columns with `false` are hidden. The id of a header group hides all its columns. */

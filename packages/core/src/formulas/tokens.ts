@@ -8,6 +8,7 @@ import type { FormulaIssue } from '../formula/types'
  * arguments, as a spreadsheet does there.
  */
 export type FormulaSigns = {
+	/** The decimal sign of a number. */
 	decimal: '.' | ','
 	/** The signs that separate arguments. The first one is the one the printer writes. */
 	separators: readonly (',' | ';')[]

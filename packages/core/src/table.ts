@@ -185,7 +185,12 @@ export type TableEditDetails = ChangeDetails<TableEditReason>
 export type FillWay = 'down' | 'up' | 'forward' | 'back'
 
 /** A cell of the data, by the id of its row and of its column. */
-export type CellRef = { rowId: string; columnId: string }
+export type CellRef = {
+	/** The id of the row. */
+	rowId: string
+	/** The id of the column. */
+	columnId: string
+}
 
 /**
  * The cells that a change of formats is for: the cells from one to another
@@ -207,10 +212,16 @@ export type SortDirection = 'asc' | 'desc'
 
 export type RowPin = 'top' | 'bottom'
 /** The ids of the rows that stay at the top or the bottom edge while the other rows scroll. */
-export type RowPinning = { top?: readonly string[]; bottom?: readonly string[] }
+export type RowPinning = {
+	/** The ids of the rows that stay above the others, in order. */
+	top?: readonly string[]
+	/** The ids of the rows that stay below the others, in order. */
+	bottom?: readonly string[]
+}
 
 /** The methods of a table that code outside it, or an agent, can call. */
 export type TableController = {
+	/** Sorts by a column in a direction, `'asc'` by default. Without `append: true`, the column replaces the sort, whatever the `multiSort` mode. With `append`, `null` takes the column out of the sort; without it, `null` empties the sort. */
 	sortBy(columnId: string, direction?: SortDirection | null, options?: { append?: boolean }): void
 	/**
 	 * Sorts by a column as a press on its header does: ascending, descending,
@@ -231,30 +242,49 @@ export type TableController = {
 	inputSearch(text: string, event?: Event): void
 	/** Filters now by the text that waits from `inputSearch`, for example on Enter. Without one, nothing happens. */
 	flushSearch(): void
+	/** Sets the filter of one column. A value that asks for nothing (see `isEmptyFilter`) takes the filter of the column away. */
 	setColumnFilter(columnId: string, value: unknown): void
+	/** Takes the search and the filter of every column away, in one change. A search text that waits from `inputSearch` goes too. */
 	clearFilters(): void
 	/** Takes the filter of every column away, in one change. The search stays. */
 	clearColumnFilters(): void
+	/** Groups the rows by these columns, in this order. An empty list takes the groups away. */
 	setGroupBy(columnIds: readonly string[]): void
+	/** Goes to a page, from 1. A page past the last goes to the last. It throws when the table has no pages or the page is not a whole number. */
 	setPage(page: number): void
 	/** Gives the table pages of a size, from its first page. `null` takes the pages away: every row shows. */
 	setPageSize(pageSize: number | null): void
+	/** Goes to the next page. On the last page, nothing changes. */
 	nextPage(): void
+	/** Goes to the page before. On the first page, nothing changes. */
 	previousPage(): void
+	/** Goes to the first page. */
 	firstPage(): void
+	/** Goes to the last page. It throws with `manualPage` and no `rowCount`: the table does not know its last page. */
 	lastPage(): void
+	/** Opens a tree row, a group or a row with a detail row. It throws for a row that cannot open. */
 	expand(rowId: string): void
+	/** Closes a tree row, a group or a row with a detail row. It throws for a row that cannot open. */
 	collapse(rowId: string): void
+	/** Opens a row that is closed and closes one that is open. Pass the event of a press for the details of the change. */
 	toggleExpanded(rowId: string, event?: Event): void
+	/** Opens every tree row and group, in one change. A detail row stays as it is. */
 	expandAll(): void
+	/** Closes every row and group, detail rows too, in one change. */
 	collapseAll(): void
+	/** Selects one row in place of the selection. It throws without the `selection` option, and for a row that `canSelect` refuses. */
 	select(rowId: string): void
+	/** Adds a row to the selection, or takes a selected row away. Pass the event of a press for the details of the change. */
 	toggleSelected(rowId: string, event?: Event): void
+	/** Selects every row of the list that can be selected, in one change. It needs `selection: 'multiple'`. A selected row that the filter hides stays selected. */
 	selectAll(): void
+	/** Takes every row out of the selection. */
 	clearSelection(): void
 	/** Shows or hides a column, or every column of a header group. */
 	setColumnVisibility(columnId: string, visible: boolean): void
+	/** Hides a column that shows and shows one that is hidden. */
 	toggleColumnVisibility(columnId: string): void
+	/** Shows every column, in one change. */
 	showAllColumns(): void
 	/**
 	 * Hides every column that can be hidden, in one change. A column with
@@ -270,9 +300,11 @@ export type TableController = {
 	resetColumnPinning(): void
 	/** Moves a column to a place among the columns that can move, from 0. */
 	moveColumn(columnId: string, index: number): void
+	/** Puts the columns in this order. Columns that are not listed come after, in the order of the definitions. It throws for an id that is listed twice. */
 	setColumnOrder(columnIds: readonly string[]): void
 	/** Gives a column a width in pixels. `null` takes the width away again. */
 	setColumnWidth(columnId: string, width: number | null): void
+	/** Takes every width that a resize or `setColumnWidth` gave away, so each column has the width of its definition again. */
 	resetColumnWidths(): void
 	/** Pins a column to the start or the end of the table. `null` frees it. */
 	pinColumn(columnId: string, side: ColumnPin | null): void
@@ -293,6 +325,7 @@ export type TableController = {
 	cancelEdit(): void
 	/** Selects the cells from one cell to another, or one cell. Needs the `cellSelection` option. */
 	selectCells(from: CellRef, to?: CellRef): void
+	/** Takes the range of cells away. */
 	clearCellSelection(): void
 	/** The text of the selected cells, with tabs between cells and line breaks between rows. */
 	copyCells(): string
@@ -473,7 +506,9 @@ export type TableController = {
 
 /** The state of a table and the numbers that follow from it, as `getView` gives them. */
 export type TableView = {
+	/** The sort: the columns in the order in which they sort. */
 	sort: readonly SortRule[]
+	/** The filter: the search and the filter of each column. */
 	filter: FilterState
 	/**
 	 * The text that a search field shows: the text that waits from
@@ -482,13 +517,17 @@ export type TableView = {
 	search: string
 	/** Whether a text from `inputSearch` waits for its pause, so the rows do not follow `search` yet. */
 	searchPending: boolean
+	/** The ids of the columns that group the rows, in order. */
 	groupBy: readonly string[]
+	/** The ids of the open tree rows, groups and rows with a detail row. */
 	expanded: readonly string[]
+	/** The ids of the selected rows. */
 	selected: readonly string[]
 	/** The page in view, from 1. A table without pages has one page. */
 	page: number
 	/** How many rows a page holds, or `undefined` for a table without pages. */
 	pageSize: number | undefined
+	/** How many pages there are. A table without pages has one. */
 	pageCount: number
 	/** How many entries the pages divide: what `pageUnit` names. With pages from a server, its `rowCount`. */
 	rowCount: number
@@ -512,6 +551,7 @@ export type TableView = {
 	hasExpandable: boolean
 	/** Whether one of them is open now. An id in `expanded` that no group or row has any more does not count. */
 	hasExpanded: boolean
+	/** The `loading` option: whether new rows are on their way. */
 	loading: boolean
 	/** The functions of the totals that were chosen at run time, by column id. */
 	columnAggregates: ColumnAggregates
@@ -525,6 +565,7 @@ export type TableView = {
 	formula: FormulaView | null
 	/** Whether `undo` has a step to take back. Always false without the `history` option. */
 	canUndo: boolean
+	/** Whether `redo` has a step to bring back. Always false without the `history` option. */
 	canRedo: boolean
 	/** The cell that has the tab stop, when it is a cell of a data row. */
 	activeCell: CellRef | null
@@ -540,7 +581,16 @@ export type TableView = {
  * how many data rows and columns are between them. Group rows and detail rows
  * inside a range hold no values and are not counted.
  */
-export type CellSelectionView = { from: CellRef; to: CellRef; rows: number; columns: number }
+export type CellSelectionView = {
+	/** The first selected cell that holds a value, at the top and the start. */
+	from: CellRef
+	/** The last selected cell that holds a value, at the bottom and the end. */
+	to: CellRef
+	/** How many data rows the selection covers. */
+	rows: number
+	/** How many columns the selection covers. */
+	columns: number
+}
 
 /** The limits of the history. Without one, the default holds. */
 export type TableHistoryOptions = {
@@ -559,7 +609,14 @@ export type PageUnit = 'rows' | 'groups' | 'parents' | 'mixed'
  * One value of a column, with its text as a cell shows it and the number of
  * rows that hold it. Facets of the owner have a count only when the owner gave one.
  */
-export type ColumnFacetValue = { value: unknown; text: string; count?: number }
+export type ColumnFacetValue = {
+	/** The value as the rows hold it. */
+	value: unknown
+	/** The value as text, as a cell of the column shows it. */
+	text: string
+	/** How many rows hold the value. */
+	count?: number
+}
 
 /**
  * The facets of one column as the owner of the rows knows them, for the
@@ -605,7 +662,12 @@ export type FacetOptions = {
 }
 
 /** The total of one column, and its text in the format of the column. */
-export type ColumnTotal = { value: unknown; text: string }
+export type ColumnTotal = {
+	/** The total as a value. */
+	value: unknown
+	/** The total as text, with the format of the column. */
+	text: string
+}
 
 /**
  * Totals as the owner of the rows knows them, for the `totals` option: by
@@ -613,15 +675,19 @@ export type ColumnTotal = { value: unknown; text: string }
  * A column that is not named keeps the total of the rows that the table has.
  */
 export type TableTotalsSource = {
+	/** The total of each column over every row, by column id. */
 	table?: Readonly<Record<string, unknown>>
+	/** The totals of each group, by group id and column id. */
 	groups?: Readonly<Record<string, Readonly<Record<string, unknown>>>>
 }
 
 /** One step of the way to a group: a group above it, or the group itself. */
 export type GroupPathEntry<Row = unknown> = {
+	/** The group. */
 	group: GroupRow<Row>
 	/** The column that the group is made from. `undefined` when the table has no such column any more. */
 	column: ColumnDef<Row> | undefined
+	/** The value that the rows of the group share. */
 	value: unknown
 	/** The value as text, with the format of its column. */
 	text: string
@@ -660,20 +726,27 @@ type CellActions =
 type OtherActions = 'pinRow' | 'scrollToRow' | CellActions | ReadActions
 
 export type TableOptions<Row = unknown> = {
+	/** The rows of the table. Each row needs a stable id (see `getRowId`). The table never changes or copies a row. */
 	rows?: readonly Row[]
+	/** The columns, in the order of the definitions. A column with `columns` is a header group. */
 	columns?: readonly ColumnDef<Row>[]
 	/** A stable id for a row. Without it, the `id` property of the row is used. */
 	getRowId?: (row: Row, index: number, parent: DataRow<Row> | null) => string | number
 	/** The child rows of a row. With it, the table is a tree. */
 	getChildren?: (row: Row) => readonly Row[] | undefined
+	/** The locale of the texts that the table writes: numbers, dates, the search without case, and the signs of a formula that a person types. Without it, the formats use `en-US`. A format whose `formatOptions` has a `locale` keeps its own. */
 	locale?: string
+	/** How the search matches. `'contains'` (the default): the text of a cell holds the search, without case. `'fuzzy'`: the letters of the search are in the text in order. */
 	searchMode?: 'contains' | 'fuzzy'
+	/** With `searchMode: 'fuzzy'`, the score that a match must pass, from 0 to 1. Defaults to 0: every match in order passes. */
 	fuzzyThreshold?: number
 	/** Also sort the tree children of each row. Defaults to true. */
 	sortChildren?: boolean
+	/** Which rows go into groups. A row that it refuses stays out of every group and comes first, before the groups. */
 	canGroup?: (row: Row) => boolean
 	/** Row selection. Without it, rows cannot be selected. */
 	selection?: 'single' | 'multiple'
+	/** Which rows can be selected. A row that it refuses has no selection, and `select` throws for it. */
 	canSelect?: (row: Row) => boolean
 	/** Whether a person can resize columns. A column can say otherwise. Defaults to false. */
 	resizable?: boolean
@@ -681,9 +754,11 @@ export type TableOptions<Row = unknown> = {
 	reorderable?: boolean
 	/** The smallest width of a column that has no `minWidth`, in pixels. Defaults to 48. */
 	columnMinWidth?: number
+	/** The largest width of a column that has no `maxWidth`, in pixels. Without it, no limit. */
 	columnMaxWidth?: number
 	/** Texts of the table in another language, or with other words. */
 	messages?: Partial<TableMessages>
+	/** Gives the actions of the table to code outside it. Create one with `createTableController()`. */
 	controller?: TableController
 
 	/**
@@ -724,14 +799,17 @@ export type TableOptions<Row = unknown> = {
 	 */
 	totals?: TableTotalsSource
 
+	/** The sort: the columns in the order in which they sort. Pass it to control the sort. */
 	sort?: readonly SortRule[]
 	defaultSort?: readonly SortRule[]
 	onSortChange?: (value: readonly SortRule[], details: TableChangeDetails) => void
 
+	/** The search and the filter of each column. Pass it to control the filter. */
 	filter?: FilterState
 	defaultFilter?: FilterState
 	onFilterChange?: (value: FilterState, details: TableChangeDetails) => void
 
+	/** The ids of the columns that group the rows, outermost first. Pass it to control the groups. */
 	groupBy?: readonly string[]
 	defaultGroupBy?: readonly string[]
 	onGroupByChange?: (value: readonly string[], details: TableChangeDetails) => void

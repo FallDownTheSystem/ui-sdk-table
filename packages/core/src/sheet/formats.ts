@@ -34,8 +34,11 @@ export type CellFormat = {
 	currency?: string
 	/** The length of a date: the `dateStyle` of `Intl.DateTimeFormat`. */
 	dateStyle?: (typeof CELL_DATE_STYLES)[number]
+	/** Where the text stands in the cell, as `data-align`. */
 	align?: (typeof CELL_ALIGNS)[number]
+	/** Bold text, as `data-bold`. */
 	bold?: boolean
+	/** Italic text, as `data-italic`. */
 	italic?: boolean
 	/** The colour of the text: a name of the `formatColors` option. */
 	color?: string
