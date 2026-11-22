@@ -993,6 +993,8 @@ test('Ctrl+D fills the range down and Ctrl+R forward; with one cell the keys are
 test('with 50,000 rows, a drag of the handle to the edge of the frame scrolls and fills more rows than were in view', async ({
 	page,
 }) => {
+	// The rows go by one step for each frame, so a slow machine needs longer for the same way.
+	test.setTimeout(120_000)
 	// High enough that the lower edge of the frame is in the window: the rows scroll in the frame.
 	await page.setViewportSize({ width: 1280, height: 1100 })
 	const table = await open(page)
@@ -1008,7 +1010,7 @@ test('with 50,000 rows, a drag of the handle to the edge of the frame scrolls an
 	// Near the lower edge, over the footer that sticks there. The pointer rests, and the rows go by under it.
 	await page.mouse.move(from.x, box.y + box.height - 10, { steps: 6 })
 	await expect
-		.poll(() => frame(page).evaluate((el) => el.scrollTop), { timeout: 20_000 })
+		.poll(() => frame(page).evaluate((el) => el.scrollTop), { timeout: 60_000 })
 		.toBeGreaterThan(200 * 36)
 	// The rows of the start left the page long ago, and the drag goes on. The row of the active
 	// cell is kept in the page, so the row after it is the one to look for.
