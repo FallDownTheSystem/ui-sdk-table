@@ -948,6 +948,10 @@ test('A formula writer: a drag and the arrow keys write one range into the field
 	await expect(field).toHaveValue('=SUM(D1:D3')
 	await expect(field).toBeFocused()
 	await expect(sheet.locator('td[data-reference="0"]')).toHaveCount(3)
+	// The table tells the edges of the block of a reference, so the example holds no map of places.
+	await expect(totals.nth(0)).toHaveAttribute('data-reference-edge', 'top left right')
+	await expect(totals.nth(1)).toHaveAttribute('data-reference-edge', 'left right')
+	await expect(totals.nth(2)).toHaveAttribute('data-reference-edge', 'bottom left right')
 	await expect(sheet.locator('td[data-picked]')).toHaveCount(3)
 	await expect(example.getByTestId('address')).toHaveText('D4')
 

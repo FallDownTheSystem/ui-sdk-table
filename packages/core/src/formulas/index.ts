@@ -10,6 +10,7 @@ export type {
 	FormulaArgument,
 	FormulaFunctionGroup,
 	FormulaReference,
+	FormulaReferenceMark,
 } from '../formula/types'
 export { formulaColumn, type FormulaColumnDef } from './column'
 export { createFormulaEngine, type FormulaEngineOptions } from './engine'

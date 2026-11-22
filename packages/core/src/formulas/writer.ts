@@ -1,5 +1,6 @@
-import type { FormulaReference } from '../formula/types'
+import type { FormulaReference, FormulaReferenceMark } from '../formula/types'
 import type { ColumnDef } from '../rows/types'
+import type { Addresses } from './graph'
 import { argumentAt, FORMULA_FUNCTIONS, type FormulaFunctionInfo } from './functions'
 import { namedColumns, resolveColumn, type FormulaAddresses } from './parser'
 import { formulaSigns, tokenize, type FormulaSigns, type Token } from './tokens'
@@ -269,4 +270,40 @@ export function referencesOf(
 		})
 	}
 	return found
+}
+
+/**
+ * Which reference holds a cell, and at which edges of its block. The blocks
+ * are places in the document, read once from the maps of the engine, so a
+ * question costs two map reads and a look at each reference: a reference of
+ * whole columns over 50,000 rows makes no list of its cells.
+ */
+export function referenceMarks(
+	references: readonly FormulaReference[],
+	maps: Addresses,
+): (rowId: string, columnId: string) => FormulaReferenceMark | undefined {
+	const cols = new Map(maps.order.map((id, index) => [id, index]))
+	const blocks = references.map((ref) => ({
+		top: maps.numbers.get(ref.from.rowId) ?? 0,
+		bottom: maps.numbers.get(ref.to.rowId) ?? -1,
+		left: cols.get(ref.from.columnId) ?? 0,
+		right: cols.get(ref.to.columnId) ?? -1,
+	}))
+	return (rowId, columnId) => {
+		const row = maps.numbers.get(rowId)
+		const col = cols.get(columnId)
+		if (row === undefined || col === undefined) return undefined
+		const index = blocks.findIndex(
+			(block) => row >= block.top && row <= block.bottom && col >= block.left && col <= block.right,
+		)
+		const block = blocks[index]
+		if (!block) return undefined
+		const edges = [
+			row === block.top ? 'top' : '',
+			row === block.bottom ? 'bottom' : '',
+			col === block.left ? 'left' : '',
+			col === block.right ? 'right' : '',
+		]
+		return { index, edges: edges.filter(Boolean).join(' ') }
+	}
 }

@@ -145,6 +145,7 @@ export type {
 	FormulaIssue,
 	FormulaFunctionInfo,
 	FormulaReference,
+	FormulaReferenceMark,
 	FormulaSheet,
 	FormatPlace,
 	FormatTarget,

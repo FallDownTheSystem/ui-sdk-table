@@ -33,6 +33,7 @@ export type {
 	FormulaJoin,
 	FormulaPlace,
 	FormulaReference,
+	FormulaReferenceMark,
 	FormulaResult,
 	FormulaSheet,
 	FormulaSummaryLine,

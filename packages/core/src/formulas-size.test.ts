@@ -18,12 +18,12 @@ type Node = {
 /**
  * The main entry and its chunks before the glue: the build before the fix of P2, in bytes,
  * 210 bytes of the number keyboard (`numberKeyboard`), 1,155 bytes of the entry mode
- * (`entry`), 2,469 bytes of the pick mode (`pickCells`) and 1,673 bytes of a pick with the
- * arrow keys (`movePick`), which are no glue of the formulas.
+ * (`entry`), 2,501 bytes of the pick mode (`pickCells`, with a press that picks nothing) and
+ * 1,673 bytes of a pick with the arrow keys (`movePick`), which are no glue of the formulas.
  */
-const BEFORE = 153_035
-/** 12,000, and 234 bytes for the shells of a formula writer (`getRangeAddress`, `getFormulaReferences`). */
-const LIMIT = 12_234
+const BEFORE = 153_067
+/** 12,000, and 270 bytes for the shells of a formula writer (`getRangeAddress`, `getFormulaReferences`, `getReferenceMarks`). */
+const LIMIT = 12_270
 
 async function node(): Promise<Node> {
 	// The core has no types of Node, so the modules are named at run time.

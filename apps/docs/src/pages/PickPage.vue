@@ -57,7 +57,8 @@ const columns: ColumnDef<Line>[] = [
 	rowNumberColumn<Line>(),
 	{ id: 'item', header: 'Item', allowFormula: false },
 	{ id: 'price', header: 'Price' },
-	{ id: 'qty', header: 'Qty' },
+	// A sum gives the table a footer, which a press in the pick mode leaves alone.
+	{ id: 'qty', header: 'Qty', aggregate: 'sum' },
 	{ id: 'total', header: 'Total' },
 ]
 
@@ -65,8 +66,6 @@ const engine = createFormulaEngine()
 const controller = createTableController()
 const bar = useFormulaBar(controller)
 
-const rowIndex = new Map(lines.value.map((line, index) => [line.id, index]))
-const columnIndex = new Map(columns.map((column, index) => [column.id, index]))
 // A new function at each new text of the bar, as an app that colours the references does.
 const references = computed(() => {
 	const at = bar.cell.value
@@ -76,18 +75,11 @@ const references = computed(() => {
 })
 const cellAttrs = computed(() => {
 	const found = references.value
+	if (!found.length) return undefined
+	const mark = controller.getReferenceMarks(found)
 	return (context: CellAttrsContext<Line>) => {
-		if (context.kind !== 'cell' || !found.length) return undefined
-		const row = rowIndex.get(context.node.id) ?? -1
-		const col = columnIndex.get(context.column.id) ?? -1
-		const hit = found.some(
-			(ref) =>
-				row >= (rowIndex.get(ref.from.rowId) ?? 0) &&
-				row <= (rowIndex.get(ref.to.rowId) ?? -1) &&
-				col >= (columnIndex.get(ref.from.columnId) ?? 0) &&
-				col <= (columnIndex.get(ref.to.columnId) ?? -1),
-		)
-		return hit ? { 'data-state': 'reference' } : undefined
+		const at = context.kind === 'cell' ? mark(context.node.id, context.column.id) : undefined
+		return at && { 'data-state': 'reference', 'data-reference-edge': at.edges || undefined }
 	}
 })
 const frame = useTemplateRef<HTMLElement>('frame')

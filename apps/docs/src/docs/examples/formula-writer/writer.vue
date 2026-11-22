@@ -129,22 +129,18 @@ const references = computed(() => {
 	const at = bar.cell.value
 	return formula.value && at ? controller.getFormulaReferences(text.value, at) : []
 })
-const rowIndex = computed(() => new Map(lines.value.map((line, index) => [line.id, index])))
-const columnIndex = new Map(columns.slice(1).map((column, index) => [column.id, index]))
+// The table says which reference holds a cell, and at which edges of its block.
 const cellAttrs = computed(() => {
 	const found = references.value
+	// New rows move the places of the document, so the marks are asked again.
+	void lines.value
+	if (!found.length) return undefined
+	const mark = controller.getReferenceMarks(found)
 	return (context: CellAttrsContext<Line>) => {
-		if (context.kind !== 'cell' || !found.length) return undefined
-		const row = rowIndex.value.get(context.node.id) ?? -1
-		const col = columnIndex.get(context.column.id) ?? -1
-		const index = found.findIndex(
-			(ref) =>
-				row >= (rowIndex.value.get(ref.from.rowId) ?? 0) &&
-				row <= (rowIndex.value.get(ref.to.rowId) ?? -1) &&
-				col >= (columnIndex.get(ref.from.columnId) ?? 0) &&
-				col <= (columnIndex.get(ref.to.columnId) ?? -1),
+		const at = context.kind === 'cell' ? mark(context.node.id, context.column.id) : undefined
+		return (
+			at && { 'data-reference': String(at.index % 4), 'data-reference-edge': at.edges || undefined }
 		)
-		return index < 0 ? undefined : { 'data-reference': String(index % 4) }
 	}
 })
 </script>

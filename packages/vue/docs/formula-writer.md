@@ -136,22 +136,18 @@ const references = computed(() => {
 	const at = bar.cell.value
 	return formula.value && at ? controller.getFormulaReferences(text.value, at) : []
 })
-const rowIndex = computed(() => new Map(lines.value.map((line, index) => [line.id, index])))
-const columnIndex = new Map(columns.slice(1).map((column, index) => [column.id, index]))
+// The table says which reference holds a cell, and at which edges of its block.
 const cellAttrs = computed(() => {
 	const found = references.value
+	// New rows move the places of the document, so the marks are asked again.
+	void lines.value
+	if (!found.length) return undefined
+	const mark = controller.getReferenceMarks(found)
 	return (context: CellAttrsContext<Line>) => {
-		if (context.kind !== 'cell' || !found.length) return undefined
-		const row = rowIndex.value.get(context.node.id) ?? -1
-		const col = columnIndex.get(context.column.id) ?? -1
-		const index = found.findIndex(
-			(ref) =>
-				row >= (rowIndex.value.get(ref.from.rowId) ?? 0) &&
-				row <= (rowIndex.value.get(ref.to.rowId) ?? -1) &&
-				col >= (columnIndex.get(ref.from.columnId) ?? 0) &&
-				col <= (columnIndex.get(ref.to.columnId) ?? -1),
+		const at = context.kind === 'cell' ? mark(context.node.id, context.column.id) : undefined
+		return (
+			at && { 'data-reference': String(at.index % 4), 'data-reference-edge': at.edges || undefined }
 		)
-		return index < 0 ? undefined : { 'data-reference': String(index % 4) }
 	}
 })
 </script>
@@ -232,7 +228,7 @@ Turn on `pick-cells` while a reference fits at the caret. While it is on, a pres
 - `@picked-cells-change` hears the press and each step of a drag; `@picked-cells-commit` the end of a drag. `v-model:picked-cells` holds the pick. A pick is places in the grid, as `cellRange` is, with `columns` for whole columns. It goes back to `null` when `pick-cells` goes off.
 - `controller.getRangeAddress(pick)` gives its text: `B2`, `B2:C5`, or `B:B` for a column. Without an argument it reads the selected cells.
 - `insertReference(text, selection, address)` puts the address in place of the selection of the field and gives the new text with the place of the reference. During a drag, pass the place of the last step as the selection of the next one, so each step replaces the reference of the step before. After a pick, a press on another cell replaces it again until the person types.
-- A press on a row number, on the corner and inside a field in a cell picks nothing. A double press opens no editor.
+- A press on any other cell picks nothing and changes nothing: a header cell, a footer cell, a cell of a group row or a detail row, a row number and the corner. Nothing sorts, moves a column, selects or opens, and focus and the caret stay in the field. A press on a control inside a cell (a button, a field, the resize handle) stays the control's. A double press opens no editor.
 
 It works the same for the field of the table's own editor (`[data-slot='table-editor']`), for a control in the `editor` slot, and for a field outside the table such as `useFormulaBar`. The press is prevented, so focus never leaves the field.
 
@@ -253,7 +249,9 @@ A screen reader hears nothing when a script changes the text of a field. Say the
 
 `controller.getFormulaReferences(text, at?)` gives each reference of the text with its `start` and `end` in the text and the cells that it names by ids, from the first (`from`) to the last (`to`), and `columns` for whole columns. `at` is the cell of the formula, the active cell by default; `useFormulaBar().cell` is the cell of the bar. A reference to a column or a row that the document does not hold is left out.
 
-Give the cells of each reference one colour through `cell-attrs`. The cells of a reference are the rows from `from` to `to` in the order of `rows` and the columns between them in the order of `columns`: the app knows both. Pass a new `cell-attrs` function when the references change, and the same one while they stay.
+Give the cells of each reference one colour through `cell-attrs`. `controller.getReferenceMarks(references)` gives a function that takes a row id and a column id and tells whether a reference holds the cell: `index`, the place of the first reference that holds it, and `edges`, the edges of its block that the cell is at (`top`, `bottom`, `left` and `right`, joined by spaces, as `data-pick-edge` holds them). It gives `undefined` for a cell that no reference holds and for a column that leads. The places are those of the document, so a column that the app puts first or hides changes nothing, and the app needs no map of its own. Each question costs two reads of a map, also for a whole column of 50,000 rows.
+
+Ask for the marks again, and pass a new `cell-attrs` function, when the references or the rows change; pass the same one while they stay.
 
 ## What a styled table needs
 
@@ -284,7 +282,7 @@ See the [Formula tiles of the sink](https://falldownthesystem.github.io/ui-sdk-t
 ## Names
 
 - **Options:** `pick-cells`, `picked-cells`, `default-picked-cells`; events `picked-cells-change` and `picked-cells-commit`. `CellPick` is `{ anchor, end, columns }`.
-- **Controller:** `movePick(key, options?)` (the types `PickKey` and `PickMoveOptions`), `getRangeAddress(cells?)` (`null` without cells, for a column without a letter, and with `manual-page`), `getFormulaReferences(text, at?)`, `getFormulaFunctions()`.
+- **Controller:** `movePick(key, options?)` (the types `PickKey` and `PickMoveOptions`), `getRangeAddress(cells?)` (`null` without cells, for a column without a letter, and with `manual-page`), `getFormulaReferences(text, at?)`, `getReferenceMarks(references)` (the type `FormulaReferenceMark`), `getFormulaFunctions()`.
 - **Formulas entry:** `formulaHelp`, `insertReference`, `FORMULA_FUNCTIONS`; the types `FormulaHelp`, `FormulaHelpOptions`, `FormulaToken`, `FormulaTokenKind`, `FormulaReference`, `FormulaArgument`, `FormulaFunctionGroup`.
 - **Vue:** `useFormulaBar(controller).cell`.
 - **Attributes:** `data-pick`, `data-picked`, `data-pick-edge`.

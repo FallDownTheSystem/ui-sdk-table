@@ -215,3 +215,49 @@ test('a first arrow with no cell in its direction picks nothing, also in an edit
 	await page.keyboard.press('ArrowLeft')
 	await expect(text).toHaveValue('=C1')
 })
+
+for (const { name, field, input } of fields) {
+	test(`with ${name}, a press on a header cell or a footer cell changes nothing`, async ({
+		page,
+	}) => {
+		await page.goto(`/?page=pick&field=${field}`)
+		await cell(page, 4, 'total').click()
+		if (field === 'bar') await page.locator(input).click()
+		else await page.keyboard.press('Enter')
+		const text = page.locator(input)
+		await text.fill('=SUM(')
+		const before = await selection(page)
+		const header = table(page).locator('thead th[data-column="total"]:not([data-kind="letter"])')
+		const footer = table(page).locator('tfoot td[data-column="qty"]')
+		await expect(footer).toHaveText('14')
+		const sort = await header.getAttribute('aria-sort')
+
+		for (const target of [
+			header,
+			footer,
+			table(page).locator('thead th[data-column="price"]:not([data-kind="letter"])'),
+		]) {
+			await target.click()
+			await expect(text).toBeFocused()
+		}
+		// A drag from a header moves no column.
+		await drag(
+			page,
+			table(page).locator('thead th[data-column="price"]:not([data-kind="letter"])'),
+			header,
+		)
+		await expect(text).toBeFocused()
+		await expect(text).toHaveValue('=SUM(')
+		await expect(table(page).locator('[data-picked]')).toHaveCount(0)
+		await expect(page.getByTestId('picks')).toHaveText('')
+		expect(await header.getAttribute('aria-sort')).toBe(sort)
+		await expect(
+			table(page).locator('thead th[data-column]:not([data-kind="letter"])').nth(2),
+		).toHaveAttribute('data-column', 'price')
+		expect(await selection(page)).toEqual(before)
+		if (field !== 'bar') await expect(table(page).locator('td[data-editing]')).toHaveCount(1)
+		// A press on a cell of the body still picks.
+		await cell(page, 2, 'price').click()
+		await expect(text).toHaveValue('=SUM(B2')
+	})
+}

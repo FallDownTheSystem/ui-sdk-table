@@ -61,6 +61,7 @@ import type {
 	FormulaIssue,
 	FormulaPlace,
 	FormulaReference,
+	FormulaReferenceMark,
 	FormulaResult,
 	FormulaSummaryLine,
 	FormulaView,
@@ -497,6 +498,18 @@ export type TableController = {
 	 * a reference and its cells with one colour. Needs the `formulas` option.
 	 */
 	getFormulaReferences(text: string, at?: CellRef): FormulaReference[]
+	/**
+	 * Which of these references holds a cell, and at which edges of its
+	 * block, for `cellAttrs`: give it the references of
+	 * `getFormulaReferences`, then ask the function by row id and column id.
+	 * It gives `undefined` for a cell that no reference holds, and for a
+	 * column that leads. It reads the places in the document once, so each
+	 * question is cheap, also for whole columns of 50,000 rows. Ask again
+	 * when the references or the rows change. Needs the `formulas` option.
+	 */
+	getReferenceMarks(
+		references: readonly FormulaReference[],
+	): (rowId: string, columnId: string) => FormulaReferenceMark | undefined
 	/**
 	 * Changes the format of cells: how their values become text (`format`,
 	 * `decimals`, `currency`, `dateStyle`) and how they look (`align`, `bold`,
@@ -4532,6 +4545,7 @@ export const table = definePrimitive({
 				const ref = formulaAt(at, 'read the references of a formula at')
 				return requireFormulas().references(String(text), ref, formulaSheet)
 			},
+			getReferenceMarks: (references) => requireFormulas().marks(references, formulaSheet),
 			getAddress(rowId, columnId) {
 				const found = requireFormulas()
 				const target = formulaTarget(columnId, 'read the address of')
@@ -6609,25 +6623,29 @@ export const table = definePrimitive({
 				},
 				pointerdown: (event, { api, props, el }) => {
 					const target = event.target instanceof Element ? event.target : undefined
-					// The pick mode: a press on a cell of the body or on a letter picks, and
-					// changes nothing else. A press in a field inside the cell stays the field's.
+					// The pick mode: a press on a cell of a data row or on a letter picks, and a
+					// press on any other cell changes nothing, so focus and the caret stay in
+					// the field. A press on a control inside a cell stays the control's.
 					if (
 						api.pickCells() &&
-						(!props.header || api.isLetterRow(props.row)) &&
-						(props.header || api.inBody(props.row)) &&
 						!(
 							target !== el &&
-							target?.closest('a[href], button, input, select, textarea, [contenteditable]')
+							target?.closest(
+								'a[href], button, input, select, textarea, [contenteditable], [data-slot="table-resizer"]',
+							)
 						)
 					) {
 						const column = api.columns()[props.col]
-						const letter = !!props.header
-						// The number of a row, a corner and the letter cell of a column that leads pick nothing.
-						if (
-							letter ? column && api.letterOf(column.id) !== undefined : !api.isRowHeader(props)
-						) {
-							api.picker.pointerdown(event, props, letter)
-						} else event.preventDefault()
+						const letter = !!props.header && api.isLetterRow(props.row)
+						// A header, the footer, a group row, a detail row, the number of a row,
+						// a corner and the letter cell of a column that leads pick nothing.
+						const picks = letter
+							? column && api.letterOf(column.id) !== undefined
+							: !props.header &&
+								api.cellIdAt(props.row, props.col) !== undefined &&
+								!api.isRowHeader(props)
+						if (picks) api.picker.pointerdown(event, props, letter)
+						else event.preventDefault()
 						return
 					}
 					api.entryPress()

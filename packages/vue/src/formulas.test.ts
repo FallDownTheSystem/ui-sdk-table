@@ -736,6 +736,44 @@ test('`getRangeAddress` writes the selected cells or a pick, and `getFormulaRefe
 	)
 })
 
+test('`getReferenceMarks` tells which reference holds a cell and at which edges of its block', async () => {
+	const controller = createTableController()
+	const wrapper = mount(
+		() =>
+			h(Table<Line>, {
+				rows: [
+					{ id: 'a', price: 2, qty: 3 },
+					{ id: 'b', price: 1.5, qty: 4 },
+					{ id: 'c', price: 1, qty: 1 },
+				],
+				columns,
+				controller,
+				formulas: engine,
+				'aria-label': 'Lines',
+			}),
+		{ attachTo: document.body },
+	)
+	wrappers.push(wrapper)
+	await nextTick()
+	// Written from the bottom right to the top left, and a whole column after it.
+	const references = controller.getFormulaReferences('=SUM(B2:A1)+C:C', {
+		rowId: 'c',
+		columnId: 'total',
+	})
+	const mark = controller.getReferenceMarks(references)
+	expect(mark('a', 'price')).toEqual({ index: 0, edges: 'top left' })
+	expect(mark('a', 'qty')).toEqual({ index: 0, edges: 'top right' })
+	expect(mark('b', 'qty')).toEqual({ index: 0, edges: 'bottom right' })
+	expect(mark('c', 'price')).toBeUndefined()
+	expect(mark('a', 'total')).toEqual({ index: 1, edges: 'top left right' })
+	expect(mark('b', 'total')).toEqual({ index: 1, edges: 'left right' })
+	expect(mark('c', 'total')).toEqual({ index: 1, edges: 'bottom left right' })
+	// A row or a column that the document does not hold is in no reference.
+	expect(mark('x', 'price')).toBeUndefined()
+	expect(mark('a', 'nothing')).toBeUndefined()
+	expect(controller.getReferenceMarks([])('a', 'price')).toBeUndefined()
+})
+
 test('a column formula that reads a whole column says that it reads its own row only', async () => {
 	const controller = createTableController()
 	const wrapper = mount(

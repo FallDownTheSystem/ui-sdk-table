@@ -106,22 +106,14 @@ const references = computed(() => {
 		? controller.getFormulaReferences(bar.text.value, at)
 		: []
 })
-const rowOf = (id: string) => lines.value.findIndex((line) => line.id === id)
-const colOf = (id: string) => columns.findIndex((column) => column.id === id)
 const cellAttrs = computed(() => {
 	const found = references.value
+	void lines.value
+	if (!found.length) return undefined
+	const mark = controller.getReferenceMarks(found)
 	return (context: CellAttrsContext<Line>) => {
-		if (context.kind !== 'cell' || !found.length) return undefined
-		const row = rowOf(context.node.id)
-		const col = colOf(context.column.id)
-		const index = found.findIndex(
-			(ref) =>
-				row >= rowOf(ref.from.rowId) &&
-				row <= rowOf(ref.to.rowId) &&
-				col >= colOf(ref.from.columnId) &&
-				col <= colOf(ref.to.columnId),
-		)
-		return index < 0 ? undefined : { 'data-state': index % 2 ? 'alert' : 'accent' }
+		const at = context.kind === 'cell' ? mark(context.node.id, context.column.id) : undefined
+		return at && { 'data-state': at.index % 2 ? 'alert' : 'accent' }
 	}
 })
 </script>

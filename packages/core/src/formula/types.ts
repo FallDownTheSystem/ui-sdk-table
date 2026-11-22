@@ -114,6 +114,14 @@ export type FormulaReference = {
 	columns: boolean
 }
 
+/** Where a cell is in the references of a formula text: which reference holds it, and at which edges of its block. */
+export type FormulaReferenceMark = {
+	/** The place in the list of the first reference that holds the cell, so each reference gets one colour. */
+	index: number
+	/** The edges of the block of that reference that the cell is at: `top`, `bottom`, `left` and `right`, joined by spaces, or `''` inside it. */
+	edges: string
+}
+
 /**
  * What the engine reads from a table. The table gives it; a test can give a
  * plain object. Every read is by id, and the numbers and letters of the
@@ -368,4 +376,9 @@ export type FormulaEngine = {
 	): string | undefined
 	/** The references of a formula text at a cell, as a person types it, with the cells that each one names. */
 	references(text: string, at: FormulaPlace, sheet: FormulaSheet): FormulaReference[]
+	/** Which of the references holds a cell, and at which edges, by the places of the cells in the document. */
+	marks(
+		references: readonly FormulaReference[],
+		sheet: FormulaSheet,
+	): (rowId: string, columnId: string) => FormulaReferenceMark | undefined
 }

@@ -29,7 +29,7 @@ import { changedCells, everyFormula } from './recheck'
 import { revertFormulas, setFormulas } from './state'
 import { formulaSigns, STORED_SIGNS } from './tokens'
 import { describeFormulaError, describeFormulaIssue } from './words'
-import { referencesOf } from './writer'
+import { referenceMarks, referencesOf } from './writer'
 
 export type FormulaEngineOptions = FormulaOptions & {
 	/**
@@ -270,6 +270,7 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 			if (columns) return `${left}:${right}`
 			return left === right && top === bottom ? `${left}${top}` : `${left}${top}:${right}${bottom}`
 		},
+		marks: (references, sheet) => referenceMarks(references, addressesOf(sheet)),
 		references: (text, at, sheet) => {
 			const maps = addressesOf(sheet)
 			return referencesOf(
