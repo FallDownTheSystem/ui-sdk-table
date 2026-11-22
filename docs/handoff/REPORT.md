@@ -437,3 +437,53 @@ Date: 2026-11-22, later still. The library is on `master` at `57cdaa5` (version 
 **Open, added.**
 23. The app still takes the library from a commit on GitHub; the move to npm 0.1.1 is in work.
 24. An entry mode for cell editing (Tab walks the cells that can be edited, one press opens the editor, a draft with Save and Cancel outside the table) is in work in the library, and the app follows.
+
+## After that: the entry mode, 21 functions, the rest of the docs, versions 0.1.2 to 0.2.1
+
+Date: 2026-11-22, later again. The library is on `master` at `0192773` (version 0.2.1), and the app on `master` at `c9c8b0f`.
+
+**The entry mode** (`5b8d521`, released as 0.2.0). The table option `entry` is a mode for entering data that an app turns on and off, for example with an Edit button.
+- In the mode, cells can be edited unless `editable` is false or a column says otherwise. One plain press opens the editor of a cell. Tab and Shift+Tab, on a cell and in the editor, go to the next and the previous cell that can be edited, across the rows, and save on the way. After the last such cell Tab leaves the table. The root has `data-entry`.
+- A press opens the pressed cell also when the save of another editor moved the columns between the press and the release: the table keeps the pressed cell and opens it at the next click of the page, unless the pointer moved more than 4 px.
+- `useEditDraft(rows, { getRowId? })` of the Vue package holds the edits until Save. It gives `rows`, `count`, `changed(rowId, columnId)`, `onCellEdit`, `save()` and `cancel()`. It reads the top level of the rows and refuses an edit of a row that it cannot find. It holds values, not formulas: a typed formula goes into `cellFormulas` at once.
+- With the mode off, the table behaves as before; `sheet-off.test.ts` and the browser test of the sheet keys hold that.
+- The main entry with its chunks is 160,823 bytes minified, 1,155 more than before the mode. The glue of the formulas is still 11,930 bytes.
+
+**21 functions for formulas** (`2ad6c86`, released as 0.2.1). The engine has 72 functions.
+- New: COUNTIF, COUNTIFS, SUMIF, SUMIFS, AVERAGEIF, AVERAGEIFS, COUNTBLANK, XLOOKUP, VLOOKUP, INDEX, MATCH, IFNA, TEXTJOIN, SUBSTITUTE, FIND, SEARCH, VALUE, TEXT, EOMONTH, TODAY and NOW.
+- Left out from the list of the owner: FILTER, UNIQUE, SORT, SORTBY, SEQUENCE and TRANSPOSE, because their result is a list that a spreadsheet spills into other cells, and a cell of the table holds one value. SUBTOTAL, because it exists to skip the rows that a filter hides, and a formula reads the document and never the view.
+- Where a function differs from Excel is on the Formulas page of the docs. In short: the ranges of one call have the same size; a date is no number; a lookup matches values of the same kind only; a result of more than one cell is `#VALUE!`; `TEXT` knows a stated set of codes and gives `#VALUE!` for any other; `TODAY` and `NOW` hold the moment the cell was computed, and `recalculate()` refreshes them.
+- In an Excel file, a new function is written as a formula only where it means the same there, with the `_xlfn.` prefix where Excel needs it. SUMIF, AVERAGEIF, the lookups, VALUE, TEXT, TODAY, NOW and EOMONTH are written as their results.
+- The formulas entry is 67,608 bytes minified, from 52,196. The main entry did not change.
+- 50,000 rows, in ms: SUMIF 17.8, SUMIFS 24.4, COUNTIF 10.8, an XLOOKUP that finds nothing 17.9, an approximate MATCH 11.1, TEXT over a column 124. `docs/benchmarks.md` holds the lines.
+- Checked apart from the tests of the change: 80 formulas with answers worked out by hand gave the expected values.
+
+**The docs site.** Every group of the plan is live but the skill.
+- "Data sheet", 8 pages (`11dcf87`). The README of the Vue package is short now and points at the pages.
+- "Build on it", 2 pages (`c9f6f80`): a styled table for an app, and how the table is built.
+- "Reference", 7 pages (`5747280`): the lists are made from the types and their comments, 507 members. A member of a public type without a comment fails a test.
+- The look of the examples (`5494b4b`, `b99259c`): one look for the controls beside a table, a frame for each example about scrolling, the ring of a cell and of an editor inside the cell, an editor that keeps the width of its column, and no part of an example over the bar of the site.
+- On the sink page, an open editor no longer changes the width of its column (`26462f2`), and the two formula tiles whose widest text is in the edited cell have column widths (`5410527`).
+
+**Names in example and test data** (`9c7ceb2`, `21cea17`). No Finnish names of persons, teams or companies; the rule is in CLAUDE.md. The test data and the sink data have English names. City names stay.
+
+**Versions.**
+- 0.1.2 and 0.1.3 hold changes of the docs and of the release files only. A commit that writes `packages/vue/docs` again releases a patch.
+- 0.2.0 is the entry mode. It was to be 0.1.4: the release config named the rule "every release is a patch" under a key that release-please does not read (`versioning-strategy`). The key is `versioning` (`96eaabe`), and the next release with a `feat:` commit was 0.2.1, a patch.
+- An app with `^0.1.x` does not take 0.2.0 by itself; set `^0.2.0` by hand.
+- For some minutes after a release, `npm view` can show the new version while the file of one package is not there yet. An install right after a release can fail and passes later.
+
+**The app** (`12077d6`, `c9c8b0f`).
+- Both packages come from npm; the override and the dependency on a commit are gone. Open item 23 is closed.
+- `DataTable` has the props `entry` and `changed(rowId, columnId)`, and `useEditDraft` is exported from `@/components/DataTable`. The draft stays with the page, which owns the rows and the buttons. `/data-table` has the section "Entry mode with Save and Cancel". Open item 24 is closed.
+- The two tests of `e2e/data-table-contrast.spec.ts` take 21 to 30 seconds each on a quiet machine, against a limit of 30. They failed in one full run on a busy machine and passed alone. The entry mode is not the cause: on `master` before it they took 29.5 s and 23.2 s.
+
+**Checks.** Library at `2ad6c86`: `pnpm check`, `pnpm type-check`, 1,350 unit tests, 215 browser tests and `pnpm build` pass. App at `f6ef825`, the commit of the entry mode before the merge: check, type-check, ESLint (0 errors), the unit tests, `ds:audit` and the build pass; the browser tests pass but the two above, which pass alone.
+
+**Not verified, added.** That Excel opens a file with the new functions and computes the same values. An approximate lookup over data that is not sorted, against Excel. The entry mode on a phone, in Firefox and in WebKit, with a screen reader, and together with formulas, child rows, the row window or `manualPage`. The app on 0.2.1.
+
+**Open, added.**
+25. The app: more room for the two contrast tests, English names in its example and test data, and the names rule in its CLAUDE.md are in work.
+26. The docs: the "Names" lists of the guides are cut to what the reference does not hold, `FormatOptions` gets its export, and the skill `skills/ui-sdk-table` follows.
+27. The table cannot put an address into a formula by a press or a drag on cells while a person types. The owner asked whether it can; nobody asked for it to be built.
+28. The draft of `useEditDraft` holds no formulas, so Cancel does not take back a formula that was typed in the mode. An app keeps `v-model:cell-formulas` and puts it back on Cancel.
