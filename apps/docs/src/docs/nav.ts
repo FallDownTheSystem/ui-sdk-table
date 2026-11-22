@@ -6,4 +6,22 @@
  */
 export const groups: readonly { title: string; inline?: boolean; pages: readonly string[] }[] = [
 	{ title: 'Get started', inline: true, pages: ['introduction', 'installation', 'first-table'] },
+	{
+		title: 'Using the table',
+		pages: [
+			'column-definitions',
+			'cells-and-slots',
+			'state-and-events',
+			'styling',
+			'controller-and-view',
+			'sort-filter-and-search',
+			'groups-and-totals',
+			'pages-and-server-mode',
+			'rows',
+			'selection-and-keyboard',
+			'cell-editing',
+			'export',
+			'agents',
+		],
+	},
 ]

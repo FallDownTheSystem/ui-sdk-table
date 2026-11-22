@@ -1,4 +1,4 @@
-@layer ui-sdk;
+@layer ui-sdk, preview;
 
 /*
  * The pages of the docs: a bar, a sidebar, the page and "On this page", in
@@ -339,10 +339,15 @@ a {
 }
 
 .example-preview {
-	display: flex;
-	justify-content: center;
-	padding: 40px 24px;
+	display: grid;
+	justify-items: center;
+	gap: 16px;
+	padding: 32px 24px;
 	overflow-x: auto;
+}
+
+.example-preview > * {
+	max-inline-size: 100%;
 }
 
 .example-preview[hidden],
@@ -453,5 +458,243 @@ a {
 
 	.prose h1 {
 		font-size: 28px;
+	}
+}
+
+/*
+ * The looks of a table in a preview. The rules are in a layer, so every
+ * rule of an example wins over them. They read `data-slot`, `aria-*` and
+ * `data-*` only, as the Styling page says a style does.
+ */
+@layer preview {
+	.example-preview {
+		--cell-line: #e4e4e7;
+		--tint: #f4f4f5;
+		--picked: #e0e7ff;
+		--accent-line: #1d4ed8;
+		--alert: #b91c1c;
+	}
+
+	.example-preview [data-slot='table'] {
+		border-collapse: separate;
+		border-spacing: 0;
+		font-size: 14px;
+		font-variant-numeric: tabular-nums;
+		text-align: start;
+	}
+
+	.example-preview [data-slot='table-cell'] {
+		position: relative;
+		padding: 7px 12px;
+		border-block-end: 1px solid var(--cell-line);
+		background: var(--row-fill, #fff);
+		text-align: start;
+		white-space: nowrap;
+	}
+
+	.example-preview th[data-slot='table-cell'] {
+		color: var(--ink-2);
+		font-weight: 600;
+	}
+
+	.example-preview
+		[data-slot='table-cell'][data-format]:not(
+			[data-format='text'],
+			[data-format='date'],
+			[data-format='datetime'],
+			[data-format='period']
+		) {
+		text-align: end;
+	}
+
+	.example-preview th[data-slot='table-cell'] > button:not([data-slot]),
+	.example-preview td[data-slot='table-cell'] > button:not([data-slot]) {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.example-preview th[data-sorted='asc'] > button::after {
+		content: ' ↑';
+	}
+
+	.example-preview th[data-sorted='desc'] > button::after {
+		content: ' ↓';
+	}
+
+	.example-preview tbody tr[data-kind='row']:hover {
+		--row-fill: var(--tint);
+	}
+
+	.example-preview tbody tr[aria-selected='true'] {
+		--row-fill: var(--picked);
+	}
+
+	.example-preview tbody tr[data-kind='group'] {
+		--row-fill: var(--tint);
+		font-weight: 600;
+	}
+
+	.example-preview tr[aria-level='2'] > td:first-child {
+		padding-inline-start: 28px;
+	}
+
+	.example-preview tr[aria-level='3'] > td:first-child {
+		padding-inline-start: 44px;
+	}
+
+	.example-preview tbody tr[data-kind='detail'] > td {
+		--row-fill: var(--tint);
+		white-space: normal;
+	}
+
+	.example-preview tfoot td {
+		border-block-start: 1px solid var(--ink-2);
+		font-weight: 600;
+	}
+
+	.example-preview tr[data-sticky] > * {
+		position: sticky;
+		z-index: 2;
+	}
+
+	.example-preview tr[data-sticky='top'] > * {
+		inset-block-start: var(--table-sticky-offset, 0);
+	}
+
+	.example-preview tr[data-sticky='bottom'] > * {
+		inset-block-end: var(--table-sticky-offset, 0);
+	}
+
+	.example-preview [data-slot='table-cell'][data-pinned] {
+		position: sticky;
+		z-index: 1;
+	}
+
+	.example-preview tr[data-sticky] > [data-pinned] {
+		z-index: 3;
+	}
+
+	.example-preview [data-slot='table-cell'][data-pinned='start'] {
+		inset-inline-start: var(--table-pin-offset);
+	}
+
+	.example-preview [data-slot='table-cell'][data-pinned='end'] {
+		inset-inline-end: var(--table-pin-offset);
+	}
+
+	.example-preview [data-slot='table-cell'][data-pinned-edge][data-pinned='start'] {
+		border-inline-end: 1px solid var(--ink-2);
+	}
+
+	.example-preview [data-slot='table-cell'][data-pinned-edge][data-pinned='end'] {
+		border-inline-start: 1px solid var(--ink-2);
+	}
+
+	.example-preview [data-slot='table-cell']:focus-visible,
+	.example-preview [data-slot='table'][data-cell-selection] [data-slot='table-cell'][data-active] {
+		outline: 2px solid var(--accent-line);
+		outline-offset: -2px;
+	}
+
+	.example-preview [data-slot='table'][data-cell-selection] tbody td {
+		user-select: none;
+	}
+
+	.example-preview [data-slot='table-cell'][data-selected] {
+		--row-fill: var(--picked);
+		box-shadow:
+			var(--edge-top, 0 0 transparent), var(--edge-right, 0 0 transparent),
+			var(--edge-bottom, 0 0 transparent), var(--edge-left, 0 0 transparent);
+	}
+
+	/* A line around a range: each cell at an edge draws its side. */
+	.example-preview [data-range-edge~='top'] {
+		--edge-top: inset 0 2px 0 var(--accent-line);
+	}
+
+	.example-preview [data-range-edge~='right'] {
+		--edge-right: inset -2px 0 0 var(--accent-line);
+	}
+
+	.example-preview [data-range-edge~='bottom'] {
+		--edge-bottom: inset 0 -2px 0 var(--accent-line);
+	}
+
+	.example-preview [data-range-edge~='left'] {
+		--edge-left: inset 2px 0 0 var(--accent-line);
+	}
+
+	.example-preview [data-slot='table-cell'][data-editable]:hover {
+		cursor: text;
+	}
+
+	.example-preview td[data-editing] {
+		padding: 0;
+	}
+
+	.example-preview [data-slot='table-editor'] {
+		box-sizing: border-box;
+		inline-size: 100%;
+		min-inline-size: 6em;
+		padding: 7px 12px;
+		border: 0;
+		background: #fff;
+		color: var(--ink);
+		font: inherit;
+		outline: 2px solid var(--accent-line);
+		outline-offset: -2px;
+	}
+
+	.example-preview [data-slot='table-editor'][aria-invalid='true'] {
+		outline-color: var(--alert);
+	}
+
+	.example-preview [data-slot='table-edit-error'] {
+		position: absolute;
+		z-index: 4;
+		inset-block-start: 100%;
+		inset-inline-start: 0;
+		padding: 4px 8px;
+		background: var(--alert);
+		color: #fff;
+		font-size: 13px;
+		white-space: normal;
+	}
+
+	.example-preview [data-slot='table-resizer'] {
+		position: absolute;
+		inset-block: 0;
+		inset-inline-end: 0;
+		inline-size: 6px;
+		background: var(--cell-line);
+		cursor: col-resize;
+		touch-action: none;
+	}
+
+	.example-preview [data-slot='table-spacer'],
+	.example-preview [data-slot='table-spacer'] > td {
+		block-size: var(--table-spacer-size);
+		padding: 0;
+		border: 0;
+	}
+
+	.example-preview [data-slot='table-fill-handle'] {
+		position: absolute;
+		inset-block-end: -4px;
+		inset-inline-end: -4px;
+		z-index: 2;
+		inline-size: 8px;
+		block-size: 8px;
+		background: var(--accent-line);
+		cursor: crosshair;
+		touch-action: none;
+	}
+
+	.example-preview :is(button, input, select):not([data-slot^='table']) {
+		font: inherit;
 	}
 }

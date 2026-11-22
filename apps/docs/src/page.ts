@@ -108,6 +108,16 @@ export const pages: Record<string, Page> = {
 	},
 }
 
+// A page of the docs and a test page share one parameter, so an id of the
+// docs that a test page has already would hide the page of the docs.
+for (const id of groups.flatMap((group) => group.pages.map((page) => page.id))) {
+	if (pages[id]?.kind !== 'doc') {
+		throw new Error(
+			`The docs page "${id}" has the id of a test page. Give it another id in nav.ts.`,
+		)
+	}
+}
+
 /** The first page of the docs, which `/` opens. */
 export const HOME = groups[0]?.pages[0]?.id ?? 'sink'
 
