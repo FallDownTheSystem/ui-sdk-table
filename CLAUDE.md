@@ -214,6 +214,7 @@ Run `vp check`, `vp run type-check` and `vp test` before you call work done; add
 - Every release is a patch version (`always-bump-patch`). For a minor or major version, put a `Release-As: X.Y.Z` footer in the body of a commit.
 - The publish uses npm Trusted Publishing (OIDC), with no token: each package has the trusted publisher `FallDownTheSystem/ui-sdk-table`, workflow `release.yml`, on npmjs.com. It needs npm 11.5.1 or newer.
 - A package holds `src` without `*.test.ts`, `*.perf.ts` and `src/sheet/harness.ts` (`files` of its `package.json`). A new file that only tests use, with another name, gets a line there.
+- The CI run of the release pull request ends with `failure` and no job: the pull request is merged within seconds, before a job starts. That is no fault. The merge is made by the workflow, so no CI run follows it on `master`.
 - A release that has a tag and is not on npm: run the workflow by hand with `publish_current`. It skips a package whose version npm has already.
 
 ## CI and dependency updates (`.github`)
