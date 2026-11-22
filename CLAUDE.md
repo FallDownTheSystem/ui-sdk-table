@@ -239,6 +239,7 @@ Run `vp check`, `vp run type-check` and `vp test` before you call work done; add
 - Tabs, single quotes, no semicolons (`vp fmt`).
 - `noUncheckedIndexedAccess` is on. Guard or default; no `!`, `as any`, `@ts-ignore`.
 - Comments explain why. No comment describes a change.
+- Example and test data never has Finnish names of persons, teams or companies; the owner asked for this more than once. Take names from many countries, as the docs examples have (Ada, Tomas, Maya, Leo, Ines, Kofi). The city names that the data has stay.
 - A keyboard or focus rule is not done until a Playwright test covers it. jsdom passed the tab order, the page reset through `v-model` and Enter on a group row while all three were wrong in a browser.
 - Tests: `mount` from `@ui-sdk/core/testing` for a primitive; `@vue/test-utils` for Vue parts; Playwright for real keyboard, pointer and layout. A new behavior gets its own tests.
 - The `testing` entry of `@ui-sdk/core` has no way to give a mounted primitive new options. A test that needs them after the mount (a controlled state) is a Vue test.
