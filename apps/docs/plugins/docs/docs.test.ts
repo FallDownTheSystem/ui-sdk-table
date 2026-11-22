@@ -139,3 +139,51 @@ describe('the reference', () => {
 		)
 	})
 })
+
+describe('the skill', () => {
+	const folder = fileURLToPath(new URL('../../../../skills/ui-sdk-table/', import.meta.url))
+	const texts = new Map(
+		['SKILL.md', ...readdirSync(`${folder}references`).map((file) => `references/${file}`)].map(
+			(file) => [file, readFileSync(`${folder}${file}`, 'utf8')],
+		),
+	)
+	const headings = new Map(
+		docs.pages.map((page) => [
+			page.id,
+			new Set(
+				[...page.source.matchAll(/^#{2,6} (.+)$/gm)].map(([, text = '']) =>
+					slug(text.replaceAll('`', '')),
+				),
+			),
+		]),
+	)
+
+	test('has the name of its folder', () => {
+		expect(texts.get('SKILL.md')).toMatch(/^---\nname: ui-sdk-table\ndescription: .+\n---\n/)
+	})
+
+	test('every page of the docs that it names exists, with its heading', () => {
+		const missing: string[] = []
+		for (const [file, text] of texts) {
+			for (const [name, id = '', anchor] of text.matchAll(/\bdocs\/([\w-]+)\.md(?:#([\w-]+))?/g)) {
+				if (!headings.has(id) || (anchor && !headings.get(id)?.has(anchor))) {
+					missing.push(`${file}: ${name}`)
+				}
+			}
+		}
+		expect(missing).toEqual([])
+	})
+
+	test('every reference file that it links exists', () => {
+		const missing: string[] = []
+		for (const [file, text] of texts) {
+			for (const [, target = ''] of text.matchAll(
+				/\]\(((?:references\/)?[\w-]+\.md)(?:#[\w-]+)?\)/g,
+			)) {
+				const path = file === 'SKILL.md' ? target : `references/${target}`
+				if (!texts.has(path)) missing.push(`${file}: ${target}`)
+			}
+		}
+		expect(missing).toEqual([])
+	})
+})
