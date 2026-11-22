@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.1...v0.2.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* export the format options, and point the Names lists at the reference ([ff8a6d2](https://github.com/FallDownTheSystem/ui-sdk-table/commit/ff8a6d21c95371c8207e2d8f70caa3dc0b10d54c))
+
 ## [0.2.1](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.0...v0.2.1) (2026-11-22)
 
 
