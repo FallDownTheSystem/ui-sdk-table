@@ -1,6 +1,6 @@
 {
 	"name": "ui-sdk-table-vue",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"description": "Vue parts for the ui-sdk-table primitive: slots, v-model and controllers.",
 	"keywords": [
 		"data-grid",
