@@ -15,6 +15,8 @@ This file is the context an agent needs to build a table with ui-sdk-table-vue: 
 - An action that gets a wrong argument throws a message that lists the valid values.
 - The controls around a table, such as a search field, a select or a pagination, come from the design system of the app. UI SDK ships them as headless components too.
 
+The pages of the group "Reference" list every prop, event, slot, controller method, view field and column key with its type, from the types of the package.
+
 The UI SDK docs for Vue are at `node_modules/@ui-sdk/vue/docs/llms.txt`.
 
 ## Introduction
@@ -301,3 +303,13 @@ The rules of a scoped style reach the elements of the table through `:deep()`, b
 
 - [A styled table for an app](./styled-table.md): Build the table component of your design system on the headless table: the order of the work, and for each control what the library gives and what your app writes.
 - [How the table is built](./how-the-table-is-built.md): The four layers of the table, from the behaviors to the `Table` component, and which word means what.
+
+### Reference
+
+- [Table](./reference-table.md): Every prop, event and slot of `Table`, with the props that each slot gets.
+- [ColumnDef](./reference-columns.md): Every key of a column definition, and the shapes of the state that names columns.
+- [Controller](./reference-controller.md): Every method of the controller that `createTableController()` makes.
+- [View](./reference-view.md): Every field of `getView()`, the plain data that the controls beside a table read.
+- [Messages](./reference-messages.md): Every text that the table writes itself, for the `messages` prop.
+- [Formulas](./reference-formulas.md): The types of the entry `ui-sdk-table-vue/formulas`.
+- [Export](./reference-export.md): The types of `exportData` and of the entry `ui-sdk-table-vue/export`.

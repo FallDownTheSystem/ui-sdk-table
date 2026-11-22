@@ -15,4 +15,6 @@ This file is the context an agent needs to build a table with ui-sdk-table-vue: 
 - An action that gets a wrong argument throws a message that lists the valid values.
 - The controls around a table, such as a search field, a select or a pagination, come from the design system of the app. UI SDK ships them as headless components too.
 
+The pages of the group "Reference" list every prop, event, slot, controller method, view field and column key with its type, from the types of the package.
+
 The UI SDK docs for Vue are at `node_modules/@ui-sdk/vue/docs/llms.txt`.

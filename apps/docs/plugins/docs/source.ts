@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { groups } from '../../src/docs/nav.ts'
+import { expandMembers } from './reference.ts'
 
 /** The folder of the docs in the docs app: `pages/`, `examples/`, `nav.ts` and the heads of the generated files. */
 export const DOCS_ROOT = fileURLToPath(new URL('../../src/docs', import.meta.url))
@@ -24,7 +25,7 @@ export type DocPage = {
 	/** The first paragraph of the page: one sentence that says what the page is for. */
 	description: string
 	group: string
-	/** The Markdown of the page as it is written, with its example markers. */
+	/** The Markdown of the page, with its example markers and its reference lists written out. */
 	source: string
 	examples: Example[]
 }
@@ -53,7 +54,8 @@ function readPage(root: string, id: string, group: string): DocPage {
 	const path = join(root, 'pages', `${id}.md`)
 	if (!existsSync(path))
 		throw new Error(`The docs list the page "${id}", and pages/${id}.md is missing.`)
-	const source = readFileSync(path, 'utf8')
+	// A reference list in a page comes from the types of the package.
+	const source = expandMembers(readFileSync(path, 'utf8'))
 	const head = /^# (.+)\n\n(.+)\n/.exec(source)
 	if (!head?.[1] || !head[2]) {
 		throw new Error(

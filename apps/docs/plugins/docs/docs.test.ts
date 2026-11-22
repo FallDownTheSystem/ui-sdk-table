@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vite-plus/test'
 import { PACKAGE_DOCS, packageFiles } from './files.ts'
 import { renderPage } from './html.ts'
+import { members, MEMBERS } from './reference.ts'
 import { readDocs, slug } from './source.ts'
 
 const docs = readDocs()
@@ -96,5 +97,45 @@ describe('the examples', () => {
 		const html = segments.map((segment) => ('html' in segment ? segment.html : '')).join('')
 		expect(html).toContain('href="?page=installation"')
 		expect(segments.filter((segment) => 'example' in segment)).toHaveLength(page.examples.length)
+	})
+})
+
+describe('the reference', () => {
+	const named = docs.pages.flatMap((page) =>
+		[
+			...readFileSync(
+				fileURLToPath(new URL(`../../src/docs/pages/${page.id}.md`, import.meta.url)),
+				'utf8',
+			).matchAll(MEMBERS),
+		].map(([, name = '']) => name),
+	)
+
+	test('names every prop, event, slot, method, view field and column key', () => {
+		for (const type of [
+			'TableProps',
+			'TableEmits',
+			'TableSlots',
+			'TableController',
+			'TableView',
+			'ColumnDef',
+		]) {
+			expect(named, `no page of the reference lists ${type}`).toContain(type)
+		}
+	})
+
+	test('every member that a page lists has words from the source', () => {
+		const silent = named.flatMap((type) =>
+			members(type)
+				.filter((member) => !member.doc)
+				.map((member) => `${type}.${member.name}`),
+		)
+		// Write a comment on each member in the source of the package.
+		expect(silent).toEqual([])
+	})
+
+	test('a page that names a type the package does not export fails with the valid names', () => {
+		expect(() => members('TableOptionz')).toThrow(
+			/exports no type "TableOptionz"\. Its types are: .*TableProps/,
+		)
 	})
 })

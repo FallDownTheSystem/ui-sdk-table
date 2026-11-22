@@ -42,9 +42,11 @@ export type ExportOptions = {
 }
 
 export type ExportColumn<Row = unknown> = {
+	/** The id of the column. */
 	id: string
 	/** The header text of the column. */
 	header: string
+	/** The definition of the column. */
 	column: ColumnDef<Row>
 }
 
@@ -60,6 +62,7 @@ export type ExportCell = {
 }
 
 export type ExportRow<Row = unknown> = {
+	/** `'row'`: a row of the data. `'group'`: a group row. `'total'`: the row of totals, with the `totals` option of the export. */
 	kind: 'row' | 'group' | 'total'
 	/** The row of the data, for a row of kind `'row'`. */
 	row?: Row
@@ -79,8 +82,11 @@ export type ExportRow<Row = unknown> = {
 
 /** The cells of a table as plain data, for a file writer. */
 export type ExportData<Row = unknown> = {
+	/** The columns of the export, in the order of the screen. */
 	columns: ExportColumn<Row>[]
+	/** The rows of the export: rows of the data, group rows and the row of totals. */
 	rows: ExportRow<Row>[]
+	/** The `locale` of the table, which a writer uses for its numbers and dates. */
 	locale: string | undefined
 	/** With formulas: the id of every row in the order of the document, for the ranges of the formulas. */
 	document?: readonly string[]

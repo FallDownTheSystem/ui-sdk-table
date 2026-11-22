@@ -38,4 +38,16 @@ export const groups: readonly { title: string; inline?: boolean; pages: readonly
 		],
 	},
 	{ title: 'Build on it', pages: ['styled-table', 'how-the-table-is-built'] },
+	{
+		title: 'Reference',
+		pages: [
+			'reference-table',
+			'reference-columns',
+			'reference-controller',
+			'reference-view',
+			'reference-messages',
+			'reference-formulas',
+			'reference-export',
+		],
+	},
 ]

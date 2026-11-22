@@ -42,6 +42,16 @@ Start with [llms.txt](./llms.txt): what the library is and the conventions every
 - [A styled table for an app](./styled-table.md): Build the table component of your design system on the headless table: the order of the work, and for each control what the library gives and what your app writes.
 - [How the table is built](./how-the-table-is-built.md): The four layers of the table, from the behaviors to the `Table` component, and which word means what.
 
+## Reference
+
+- [Table](./reference-table.md): Every prop, event and slot of `Table`, with the props that each slot gets.
+- [ColumnDef](./reference-columns.md): Every key of a column definition, and the shapes of the state that names columns.
+- [Controller](./reference-controller.md): Every method of the controller that `createTableController()` makes.
+- [View](./reference-view.md): Every field of `getView()`, the plain data that the controls beside a table read.
+- [Messages](./reference-messages.md): Every text that the table writes itself, for the `messages` prop.
+- [Formulas](./reference-formulas.md): The types of the entry `ui-sdk-table-vue/formulas`.
+- [Export](./reference-export.md): The types of `exportData` and of the entry `ui-sdk-table-vue/export`.
+
 ## Source and licence
 
 The format of these pages, the layout of `llms.txt` and parts of the text of Introduction, Installation and First table follow the docs of UI SDK (`@ui-sdk/vue/docs`, https://ui-sdk.dev), which are licensed under the Apache License 2.0.

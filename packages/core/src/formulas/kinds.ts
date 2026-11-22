@@ -4,7 +4,12 @@ import type { ColumnDef } from '../rows/types'
 import { namedColumns, parseTree, type FormulaNode } from './parser'
 import { STORED_SIGNS } from './tokens'
 
-export type FormulaShows = { format: FormatName; formatOptions: FormatOptions }
+export type FormulaShows = {
+	/** The format that the value needs. */
+	format: FormatName
+	/** The options of that format, such as the unit of a period. */
+	formatOptions: FormatOptions
+}
 
 const PERIODS: Readonly<Record<string, PeriodUnit>> = {
 	DAYOF: 'day',

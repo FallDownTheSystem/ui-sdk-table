@@ -1,4 +1,9 @@
-export type ZipFile = { name: string; data: Uint8Array }
+export type ZipFile = {
+	/** The path of the file in the archive. */
+	name: string
+	/** The bytes of the file. */
+	data: Uint8Array
+}
 
 let table: Uint32Array | undefined
 

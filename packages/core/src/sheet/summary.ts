@@ -9,9 +9,13 @@ export type RangeSummary = {
 	count: number
 	/** How many hold a number. The four values after it are of these cells. */
 	numbers: number
+	/** The sum of the numbers. 0 without a number. */
 	sum: number
+	/** The mean of the numbers, or `undefined` without a number. */
 	mean: number | undefined
+	/** The smallest number, or `undefined` without a number. */
 	min: number | undefined
+	/** The largest number, or `undefined` without a number. */
 	max: number | undefined
 	/**
 	 * Each value as text: in the format of the column when the selection is

@@ -59,7 +59,9 @@ export type FormulaIssueCode = FormulaIssue['code']
  * between arguments, the same in every locale.
  */
 export type CellFormulas = {
+	/** The formula of each computed column, by column id, in the stored form. */
 	readonly columns?: Readonly<Record<string, string>>
+	/** The formula of each cell, by row id and column id, in the stored form. */
 	readonly cells?: Readonly<Record<string, Readonly<Record<string, string>>>>
 }
 

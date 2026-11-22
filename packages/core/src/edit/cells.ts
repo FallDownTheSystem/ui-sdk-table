@@ -3,12 +3,17 @@ import { ownId } from '../rows/nodes'
 
 /** One cell that got a new value. The table does not write it: the caller puts it in the rows. */
 export type CellEdit<Row = unknown> = {
+	/** The id of the row of the cell. */
 	rowId: string
+	/** The id of the column of the cell. */
 	columnId: string
 	/** The caller's own row object, as it is before the edit. */
 	row: Row
+	/** The definition of the column. */
 	column: ColumnDef<Row>
+	/** The new value, after `parse` and the schema of the column. */
 	value: unknown
+	/** The value of the cell before the edit. */
 	previous: unknown
 	/**
 	 * With formulas: the formula that the cell holds now (a text in the
