@@ -27,7 +27,7 @@ const columns: ColumnDef<Ship>[] = [
 
 // The agent of UI SDK sees every component of the page that has a name, and its actions.
 const agent = createAgent()
-const answer = shallowRef('')
+const answer = shallowRef('No action yet.')
 
 async function act(action: string, args: unknown[]) {
 	const result = await agent.act({ steps: [{ ref: 'Ships in port', action, args }] })

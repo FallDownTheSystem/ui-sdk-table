@@ -41,17 +41,18 @@ const lists = computed(() =>
 </script>
 
 <template>
-	<ToggleGroup
-		v-for="list in lists"
-		:key="list.id"
-		multiple
-		:aria-label="list.label"
-		:value="list.chosen"
-		@value-change="(values) => controller.setColumnFilter(list.id, values)"
-	>
-		<Toggle v-for="facet in list.values" :key="facet.text" :value="String(facet.value)">
-			{{ facet.text }} ({{ facet.count }})
-		</Toggle>
-	</ToggleGroup>
+	<div v-for="list in lists" :key="list.id">
+		<span :id="`facet-${list.id}`" class="control-label">{{ list.label }}</span>
+		<ToggleGroup
+			multiple
+			:aria-labelledby="`facet-${list.id}`"
+			:value="list.chosen"
+			@value-change="(values) => controller.setColumnFilter(list.id, values)"
+		>
+			<Toggle v-for="facet in list.values" :key="facet.text" :value="String(facet.value)">
+				{{ facet.text }} ({{ facet.count }})
+			</Toggle>
+		</ToggleGroup>
+	</div>
 	<Table :rows="shoes" :columns="columns" :controller="controller" aria-label="Running shoes" />
 </template>

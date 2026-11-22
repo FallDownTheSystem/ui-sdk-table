@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { contrastOf, installContrast } from './contrast'
 
 test.beforeEach(async ({ page }) => {
@@ -575,7 +575,7 @@ test('Formats: Percent and Bold change the selected cells, and the button shows 
 		'true',
 	)
 	await example.getByRole('button', { name: 'Clear' }).click()
-	await expect(table.locator('td[data-column="fee"]').first()).toHaveText('0.00')
+	await expect(table.locator('td[data-column="fee"]').first()).toHaveText('0.0020')
 })
 
 test('Row numbers and letters: a letter selects its column, Shift on a number selects rows, and the corner every cell', async ({
@@ -682,4 +682,119 @@ test('An Excel file with formulas: the file holds the formula of each profit cel
 	})
 	expect(sheet).toMatch(/<c r="D2"(?: s="\d+")?><f>B2-C2<\/f><v>3100<\/v><\/c>/)
 	expect(sheet).toMatch(/<c r="D4"(?: s="\d+")?><f>B4-C4<\/f><v>4050<\/v><\/c>/)
+})
+
+test('no part of an example lies over the bar of the site while the page scrolls', async ({
+	page,
+}) => {
+	for (const [id, name] of [
+		['rows', 'rows/pinned'],
+		['styling', 'styling/sticky'],
+		['rows', 'rows/window'],
+	] as const) {
+		await page.goto(`/?page=${id}`)
+		const table = page.locator(`[data-example="${name}"] [data-slot="table"]`)
+		await expect(table).toBeVisible()
+		// The top of the table goes up under the bar, and the page goes on scrolling past it.
+		for (const under of [10, 60, 120]) {
+			await table.evaluate((element, by) => {
+				const top = element.getBoundingClientRect().top + scrollY
+				scrollTo({ top: top + by - 20, behavior: 'instant' })
+			}, under)
+			const box = await table.boundingBox()
+			const onTop = await page.evaluate(
+				({ x }) => {
+					const bar = document.querySelector('.pages')?.getBoundingClientRect()
+					if (!bar) return 'no bar'
+					const found = document.elementFromPoint(x, bar.top + bar.height / 2)
+					return found?.closest('.pages') ? 'bar' : (found?.outerHTML.slice(0, 80) ?? 'nothing')
+				},
+				{ x: (box?.x ?? 0) + (box?.width ?? 0) / 2 },
+			)
+			expect(onTop, `${name}, ${under}px under the bar`).toBe('bar')
+		}
+	}
+})
+
+test('an open editor keeps the width of its column and the height of its row, also with a long text', async ({
+	page,
+}) => {
+	const cases = [
+		{ page: 'cell-editing', example: 'cell-editing/prices', column: 'price' },
+		{ page: 'range-copy-and-paste', example: 'range-copy-and-paste/range', column: 'mon' },
+	]
+	for (const item of cases) {
+		await page.goto(`/?page=${item.page}`)
+		const example = page.locator(`[data-example="${item.example}"]`)
+		const cell = example.locator(`td[data-column="${item.column}"]`).first()
+		const size = async () => {
+			const box = await cell.boundingBox()
+			return { width: box?.width, height: box?.height }
+		}
+		const before = await size()
+		await cell.dblclick()
+		const editor = example.locator('[data-slot="table-editor"]')
+		await expect(editor).toBeFocused()
+		expect(await size(), `${item.example}, open`).toEqual(before)
+		await editor.fill('A text much longer than any value of this column')
+		expect(await size(), `${item.example}, a long text`).toEqual(before)
+		const field = await editor.boundingBox()
+		expect(field?.width, `${item.example}, the field fills its cell`).toBe(before.width)
+	}
+})
+
+test('the controls of an example hold their contrast: text 4.5 to 1, edges and marks 3 to 1', async ({
+	page,
+}) => {
+	const low: string[] = []
+	const check = async (
+		what: string,
+		kind: 'text' | 'border' | 'fill',
+		locator: Locator,
+		least: number,
+	) => {
+		const ratio = await contrastOf(locator, kind)
+		if (ratio < least) low.push(`${what} (${kind}): ${ratio.toFixed(2)}`)
+	}
+
+	await page.goto('/?page=pages-and-server-mode')
+	const pages = page.locator('[data-example="pages-and-server-mode/pages"]')
+	await pages.getByRole('button', { name: '3', exact: true }).click()
+	const current = pages.locator('[aria-current="page"]')
+	await expect(current).toHaveText('3')
+	await check('a button', 'text', pages.getByRole('button', { name: 'Next' }), 4.5)
+	await check('a button', 'border', pages.getByRole('button', { name: 'Next' }), 3)
+	await check('the current page', 'text', current, 4.5)
+	await check('the current page', 'fill', current, 3)
+	const server = page.locator('[data-example="pages-and-server-mode/server"]')
+	await check('a disabled button', 'text', server.getByRole('button', { name: 'Previous' }), 4.5)
+
+	await page.goto('/?page=selection-and-keyboard')
+	const inbox = page.locator('[data-example="selection-and-keyboard/select"]')
+	await inbox.getByRole('checkbox', { name: 'Pick the mail from Ada' }).click()
+	await check(
+		'a box',
+		'border',
+		inbox.getByRole('checkbox', { name: 'Pick the mail from Maya' }),
+		3,
+	)
+	await check(
+		'a checked box',
+		'fill',
+		inbox.getByRole('checkbox', { name: 'Pick the mail from Ada' }),
+		3,
+	)
+
+	await page.goto('/?page=sort-filter-and-search')
+	const facets = page.locator('[data-example="sort-filter-and-search/facets"]')
+	const northway = facets.getByRole('button', { name: /^Northway/ })
+	await northway.click()
+	await expect(northway).toHaveAttribute('aria-pressed', 'true')
+	await check('a pressed button', 'text', northway, 4.5)
+	await check('a pressed button', 'fill', northway, 3)
+	await check('the label of a group', 'text', facets.locator('#facet-brand'), 4.5)
+	const field = page.getByRole('searchbox', { name: 'Search the members' })
+	await check('a text field', 'border', field, 3)
+
+	expect(low).toEqual([])
 })

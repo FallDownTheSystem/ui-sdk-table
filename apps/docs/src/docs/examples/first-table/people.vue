@@ -13,7 +13,7 @@ const people: Person[] = [
 const columns: ColumnDef<Person>[] = [
 	{ id: 'name', header: 'Name', sortable: true },
 	{ id: 'team', header: 'Team', sortable: true },
-	{ id: 'score', header: 'Score', sortable: true },
+	{ id: 'score', header: 'Score', sortable: true, format: 'integer' },
 ]
 </script>
 

@@ -51,7 +51,9 @@ const all = computed(() => {
 					(on) => (on === true ? controller.selectAll() : controller.clearSelection())
 				"
 			>
-				<CheckboxIndicator>✓</CheckboxIndicator>
+				<CheckboxIndicator v-slot="{ state }">{{
+					state.indeterminate ? '–' : '✓'
+				}}</CheckboxIndicator>
 			</Checkbox>
 		</template>
 		<template #col-pick="{ row, selected: on, toggleSelected }">

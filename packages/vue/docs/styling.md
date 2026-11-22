@@ -55,8 +55,8 @@ const columns: ColumnDef<Reading>[] = [
 
 <style scoped>
 .frame {
-	max-inline-size: 460px;
-	max-block-size: 260px;
+	max-inline-size: 420px;
+	max-block-size: 220px;
 	overflow: auto;
 	border: 1px solid #e4e4e7;
 }

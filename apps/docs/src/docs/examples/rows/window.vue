@@ -44,6 +44,7 @@ const controller = createTableController()
 .frame {
 	block-size: 280px;
 	overflow: auto;
+	border: 1px solid #e4e4e7;
 }
 
 .frame :deep(tr[data-sticky] > *) {

@@ -20,8 +20,18 @@ const funds: Fund[] = [
 
 const columns: ColumnDef<Fund>[] = [
 	{ id: 'fund', header: 'Fund' },
-	{ id: 'fee', header: 'Fee', format: 'decimal' },
-	{ id: 'year', header: 'One year', format: 'decimal' },
+	{
+		id: 'fee',
+		header: 'Fee',
+		format: 'decimal',
+		formatOptions: { minimumFractionDigits: 4, maximumFractionDigits: 4 },
+	},
+	{
+		id: 'year',
+		header: 'One year',
+		format: 'percentage',
+		formatOptions: { minimumFractionDigits: 1, maximumFractionDigits: 1, showUnit: true },
+	},
 ]
 
 const controller = createTableController()

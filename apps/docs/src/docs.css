@@ -38,7 +38,8 @@ a {
 	color: inherit;
 }
 
-:focus-visible {
+/* An example sits in the layer `preview`, which an unlayered rule would beat: it draws its own rings. */
+:focus-visible:not(.example-preview *) {
 	outline: 2px solid var(--focus);
 	outline-offset: 2px;
 	border-radius: 4px;
@@ -344,6 +345,8 @@ a {
 	gap: 16px;
 	padding: 32px 24px;
 	overflow-x: auto;
+	/* A stacking context of its own: a part of an example that sticks never lies over the bar of the site. */
+	isolation: isolate;
 }
 
 .example-preview > * {
@@ -473,6 +476,8 @@ a {
 		--picked: #e0e7ff;
 		--accent-line: #1d4ed8;
 		--alert: #b91c1c;
+		/* The edge of a control: 3 to 1 against white. */
+		--control-line: #8a8a93;
 	}
 
 	.example-preview [data-slot='table'] {
@@ -483,13 +488,23 @@ a {
 		text-align: start;
 	}
 
+	/* The ring of the active cell and the line around a range are shadows inside the cell, so no neighbour covers a side of them. */
 	.example-preview [data-slot='table-cell'] {
 		position: relative;
 		padding: 7px 12px;
 		border-block-end: 1px solid var(--cell-line);
 		background: var(--row-fill, #fff);
+		box-shadow:
+			var(--ring, 0 0 transparent), var(--edge-top, 0 0 transparent),
+			var(--edge-right, 0 0 transparent), var(--edge-bottom, 0 0 transparent),
+			var(--edge-left, 0 0 transparent);
 		text-align: start;
 		white-space: nowrap;
+	}
+
+	/* An empty cell keeps the height of a line of text. */
+	.example-preview td[data-slot='table-cell']:empty::before {
+		content: '\200b';
 	}
 
 	.example-preview th[data-slot='table-cell'] {
@@ -594,10 +609,15 @@ a {
 		border-inline-start: 1px solid var(--ink-2);
 	}
 
-	.example-preview [data-slot='table-cell']:focus-visible,
-	.example-preview [data-slot='table'][data-cell-selection] [data-slot='table-cell'][data-active] {
-		outline: 2px solid var(--accent-line);
-		outline-offset: -2px;
+	.example-preview [data-slot='table-cell']:focus,
+	.example-preview [data-slot='table'][data-cell-selection] [data-slot='table-cell'][data-active],
+	.example-preview td[data-editing] {
+		--ring: inset 0 0 0 2px var(--accent-line);
+		outline: none;
+	}
+
+	.example-preview td[data-editing]:has([aria-invalid='true']) {
+		--ring: inset 0 0 0 2px var(--alert);
 	}
 
 	.example-preview [data-slot='table'][data-cell-selection] tbody td {
@@ -606,9 +626,6 @@ a {
 
 	.example-preview [data-slot='table-cell'][data-selected] {
 		--row-fill: var(--picked);
-		box-shadow:
-			var(--edge-top, 0 0 transparent), var(--edge-right, 0 0 transparent),
-			var(--edge-bottom, 0 0 transparent), var(--edge-left, 0 0 transparent);
 	}
 
 	/* A line around a range: each cell at an edge draws its side. */
@@ -632,25 +649,25 @@ a {
 		cursor: text;
 	}
 
-	.example-preview td[data-editing] {
-		padding: 0;
+	/* An open editor lies over its cell, so the column keeps its width and the row its height. A field in the flow would add its own width. */
+	.example-preview td[data-editing]::before {
+		content: '\200b';
 	}
 
+	/* The ring of the editor is the ring of its cell. */
 	.example-preview [data-slot='table-editor'] {
+		position: absolute;
+		inset: 0;
 		box-sizing: border-box;
 		inline-size: 100%;
-		min-inline-size: 6em;
+		block-size: 100%;
 		padding: 7px 12px;
 		border: 0;
-		background: #fff;
+		background: transparent;
 		color: var(--ink);
 		font: inherit;
-		outline: 2px solid var(--accent-line);
-		outline-offset: -2px;
-	}
-
-	.example-preview [data-slot='table-editor'][aria-invalid='true'] {
-		outline-color: var(--alert);
+		text-align: inherit;
+		outline: none;
 	}
 
 	.example-preview [data-slot='table-edit-error'] {
@@ -658,21 +675,33 @@ a {
 		z-index: 4;
 		inset-block-start: 100%;
 		inset-inline-start: 0;
+		/* Its own width: a narrow cell would stack the words one under another. */
+		inline-size: max-content;
+		max-inline-size: 18em;
 		padding: 4px 8px;
 		background: var(--alert);
 		color: #fff;
 		font-size: 13px;
+		text-align: start;
 		white-space: normal;
 	}
 
+	/* A wide handle to grab, with a thin line that shows where it is. */
 	.example-preview [data-slot='table-resizer'] {
 		position: absolute;
-		inset-block: 0;
+		inset-block: 6px;
 		inset-inline-end: 0;
-		inline-size: 6px;
-		background: var(--cell-line);
+		inline-size: 7px;
+		background: linear-gradient(var(--cell-line), var(--cell-line)) center / 1px 100% no-repeat;
 		cursor: col-resize;
 		touch-action: none;
+	}
+
+	.example-preview [data-slot='table-resizer']:hover,
+	.example-preview [data-slot='table-resizer']:focus-visible {
+		background-image: linear-gradient(var(--accent-line), var(--accent-line));
+		background-size: 3px 100%;
+		outline: none;
 	}
 
 	.example-preview [data-slot='table-spacer'],
@@ -694,7 +723,12 @@ a {
 		touch-action: none;
 	}
 
-	.example-preview :is(tr[data-kind='letters'] > th, th[data-row-header]) {
+	.example-preview
+		:is(
+			tr[data-kind='letters'] > th,
+			th[data-row-header],
+			table:has(th[data-row-header]) thead th[data-lead]
+		) {
 		background: var(--row-fill, var(--tint));
 		color: var(--ink-2);
 		font-size: 12px;
@@ -752,5 +786,171 @@ a {
 
 	.example-preview :is(button, input, select):not([data-slot^='table']) {
 		font: inherit;
+	}
+
+	/* The controls beside a table. The examples keep plain markup; this gives them one look. */
+	.example-preview > p,
+	.example-preview > div > p {
+		margin: 0;
+		color: var(--ink-2);
+		font-size: 14px;
+	}
+
+	/* The message of a refused formula: on its own line under the field, as long as it is. */
+	.example-preview > form > p[role='status'] {
+		flex-basis: 100%;
+		margin: 0;
+		color: var(--alert);
+		font-size: 14px;
+	}
+
+	.example-preview
+		> :is(div, form):has(
+			> [data-slot='button'],
+			> [data-slot='input'],
+			> [data-slot='toggle-group'],
+			> input,
+			> label
+		) {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.example-preview .control-label {
+		color: var(--ink-2);
+		font-size: 13px;
+		font-weight: 600;
+	}
+
+	.example-preview
+		:is([data-slot='button'], [data-slot='toggle'], [data-slot^='pagination-']):is(button) {
+		min-block-size: 32px;
+		padding: 4px 12px;
+		border: 1px solid var(--control-line);
+		border-radius: 6px;
+		background: #fff;
+		color: var(--ink);
+		font-size: 14px;
+		line-height: 1.4;
+		cursor: pointer;
+	}
+
+	/* A pressed button and the current page keep their fill under the pointer. */
+	.example-preview
+		:is([data-slot='button'], [data-slot='toggle'], [data-slot^='pagination-']):is(button):not(
+			[aria-pressed='true'],
+			[data-pressed],
+			[aria-current='page'],
+			:disabled
+		):hover {
+		background: var(--tint);
+	}
+
+	.example-preview
+		:is(button, input:not([data-slot='table-editor']), [role='checkbox']):focus-visible {
+		outline: 2px solid var(--focus);
+		outline-offset: 2px;
+	}
+
+	.example-preview
+		:is([data-slot='button'], [data-slot='toggle'], [data-slot='pagination-link']):is(
+			[aria-pressed='true'],
+			[data-pressed],
+			[aria-current='page']
+		) {
+		border-color: var(--accent-line);
+		background: var(--accent-line);
+		color: #fff;
+	}
+
+	.example-preview :is([data-slot='button'], [data-slot^='pagination-']):is(button):disabled {
+		border-color: var(--cell-line);
+		background: var(--tint);
+		color: var(--ink-2);
+		cursor: default;
+	}
+
+	/* A small button in a cell, such as the function of a total. */
+	.example-preview td [data-slot='button'] {
+		min-block-size: 0;
+		margin-inline-start: 4px;
+		padding: 0 6px;
+		font-size: 12px;
+	}
+
+	.example-preview [data-slot='toggle-group'] {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.example-preview
+		input:not(
+			[data-slot^='table'],
+			[data-slot='checkbox-input'],
+			[type='checkbox'],
+			[type='radio']
+		) {
+		min-block-size: 32px;
+		min-inline-size: 16em;
+		padding: 4px 10px;
+		border: 1px solid var(--control-line);
+		border-radius: 6px;
+		background: #fff;
+		color: var(--ink);
+		font-size: 14px;
+	}
+
+	.example-preview input[aria-invalid='true']:not([data-slot^='table']) {
+		border-color: var(--alert);
+	}
+
+	.example-preview output {
+		min-inline-size: 3.5em;
+		padding: 4px 8px;
+		border: 1px solid var(--cell-line);
+		border-radius: 6px;
+		background: var(--tint);
+		font-family: var(--mono);
+		font-size: 13px;
+		text-align: center;
+	}
+
+	.example-preview [data-slot='checkbox'] {
+		display: inline-grid;
+		place-items: center;
+		inline-size: 18px;
+		block-size: 18px;
+		padding: 0;
+		border: 1px solid var(--control-line);
+		border-radius: 4px;
+		background: #fff;
+		color: #fff;
+		font-size: 12px;
+		line-height: 1;
+		vertical-align: middle;
+		cursor: pointer;
+	}
+
+	.example-preview [data-slot='checkbox']:is([aria-checked='true'], [aria-checked='mixed']) {
+		border-color: var(--accent-line);
+		background: var(--accent-line);
+	}
+
+	.example-preview [data-slot='pagination-list'] {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.example-preview [data-slot='pagination-link'] {
+		min-inline-size: 32px;
+		padding-inline: 8px;
 	}
 }
