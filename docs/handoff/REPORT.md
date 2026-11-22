@@ -387,3 +387,21 @@ The closest new contrast pairs are all on `clay`: 4.89 and 4.96 with a limit of 
 22. **On the sink page**, two bold cards touch at 1024 px (the rule is for 1440 px), and three formula tiles scroll sideways at 360 px, as about 16 tiles of before do.
 
 **Not verified, added.** The formula tiles and `/data-formulas` in Firefox and Safari; a screen reader; an Excel file of the sink page or of the app opened in Excel or LibreOffice (both were read as XML); a change of the locale on a mounted table in the app (its `fi-FI` example has a table of its own); the two live sites, apart from the result of their deploy workflows.
+
+## After that: the words of a refusal
+
+Date: 2026-11-22, later. The library is on `master` at `87adc18`, and the app on `master` at `794fb64`. Each branch passed its checks in a second checkout before its merge: the library with 1085 unit tests and 172 Playwright tests, the app with 103 unit tests and 94 Playwright tests. This closes open item 19 above.
+
+**The library** (`edaaad7`, merged as `87adc18`). An error that `editCell`, `setCellFormula` or `setColumnFormula` throws for a refusal keeps its message for a developer or an agent, with the column, the row and the text. It now carries the words for a person as its `cause`, a text: the words that the editor of the cell shows. `useFormulaBar().error` gives the `cause`. Two tiles of the sink and the formulas page show the `cause` in place of the whole message. The section "Formulas" of `packages/vue/README.md` has the rule, and an example of own words for one kind of issue through `messages.formulaIssue` and `describeFormulaIssue`. New core and Vue tests fail without the change.
+
+**Size.** The change added 49 bytes to the main entry. `formulas-size.test.ts` passes with 70 bytes left of the 12 kB; `BEFORE` and `LIMIT` did not change.
+
+**The app** (pull request 54, merged as `794fb64`). The library pin is `87adc18`.
+- `refusalText(error)` of `@/components/DataTable` gives the `cause` when it is a text, else the message. The control for a column formula, the date list, the sheet toolbar and the paste example of `/data-sheet` use it.
+- The formula bar says "No function SUMM." for `=SUMM(B2)`, and the control for a column formula says "The formula ends too soon." for a formula that stops early. The unit and Playwright tests expect these texts exactly.
+- The words of the issues (2.8 kB minified) are now in the shared chunk of `DataTable`; the engine stays in a chunk of its own.
+
+**Set without an answer of the owner, added.**
+19. In the app, an unknown function names only itself, without the name of every function: the control for a column formula has the list. A page gives other words through `formulaIssue` of `messages`.
+
+**Not verified, added.** The words of the date list and of the sheet toolbar after a real refusal of the table: no test makes one. The dark theme of the two new texts. Firefox and Safari.
