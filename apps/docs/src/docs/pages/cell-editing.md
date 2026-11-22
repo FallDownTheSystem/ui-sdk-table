@@ -55,14 +55,23 @@ A check can answer with a promise. The editor then waits (`data-checking`), and 
 - **A character** on a cell replaces its value, and Tab, Enter or a press elsewhere saves it, as without the mode.
 - The root has `data-entry`, so a style can show which cells take input: `[data-entry] [data-editable]`.
 
-`useEditDraft(rows, { getRowId? })` holds the edits until a person saves them. It never changes one of your row objects. It reads the top level of your rows only, as `applyEdits` does, and finds a row by `getRowId`, else by its `id`, else by its place: pass the `getRowId` of the table when it has one.
+`useEditDraft(rows, { getRowId?, formulas? })` holds the edits until a person saves them. It never changes one of your row objects. It reads the top level of your rows only, as `applyEdits` does, and finds a row by `getRowId`, else by its `id`, else by its place: pass the `getRowId` of the table when it has one.
 
 - `rows` is the list to pass to the table: your rows, with the values of the draft in new objects.
 - `onCellEdit` is the `@cell-edit` listener. It takes every report: an edit, a paste, a fill, a clear and an undo. For an edit of a row that it cannot find, such as a child row of a tree, it throws with the row id, and takes nothing of that report.
 - `count` is how many cells differ from your rows, and `changed(rowId, columnId)` says whether one does, for a mark through `cellAttrs`. A cell set back to its first value no longer differs.
 - `save()` gives the edits against your rows, one for each cell that differs, and empties the draft: pass them to `applyEdits`, or to your server. `cancel()` empties the draft.
 - **New rows while a draft is open:** the draft is kept by row id and column id and stays over the new rows. A cell whose new value is the value of the draft no longer differs, and a cell of a row that is gone counts no more and is not saved.
-- **Formulas:** the draft holds values only. A formula that a person types goes into the `cellFormulas` state of the table at once, as without a draft, and `cancel()` does not take it back. For a table with `formulas`, keep the formulas in a `v-model:cell-formulas` of your own and put the old state back on Cancel.
+- **Formulas:** pass your formulas as `useEditDraft(rows, { formulas })` (a ref of your `CellFormulas`), give the table `:cell-formulas="draft.formulas.value"` and `@cell-formulas-change="draft.onCellFormulasChange"`. The draft then holds the formulas with the values, both layers of `cellFormulas`: a formula of a cell and a formula of a column wait for Save, and your formulas do not change before it. `changed` is true also for a cell whose formula differs and whose value does not, `count` counts such a cell once and adds each column whose formula differs, and `changedColumn(columnId)` marks such a column. `save()` gives an edit with `formula` (a text, or `null` for one that went) for each cell whose formula differs, and `saved.formulas`, the formulas to keep: store them as your `cellFormulas`. `cancel()` drops the values and the formulas together. The cells that a changed cell recalculates come through `@cell-edit` and wait in the draft as well. A formula that you pass meanwhile shows where the draft has none, and one that you now hold as the draft does no longer differs.
+
+```ts
+const draft = useEditDraft(rows, { formulas })
+function save() {
+	const saved = draft.save()
+	rows.value = applyEdits(rows.value, saved)
+	formulas.value = saved.formulas ?? {}
+}
+```
 
 ## Attributes
 
@@ -73,7 +82,7 @@ A check can answer with a promise. The editor then waits (`data-checking`), and 
 
 ## Names
 
-- **Exports:** `applyEdits`, `cellValue`, `emptyValue`, `useEditDraft`, and the types `TableEditDetails`, `TableEditReason`, `StandardSchemaV1`.
+- **Exports:** `applyEdits`, `cellValue`, `emptyValue`, `useEditDraft`, and the types `EditDraft`, `EditDraftOptions`, `EditDraftSave`, `TableEditDetails`, `TableEditReason`, `StandardSchemaV1`.
 
 Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).
 

@@ -1,7 +1,19 @@
 import { mount } from '@vue/test-utils'
 import { expect, test } from 'vite-plus/test'
 import { defineComponent, h, nextTick, shallowRef } from 'vue'
-import { applyEdits, Table, useEditDraft, type CellEdit, type ColumnDef } from './index'
+import { createFormulaEngine } from './formulas'
+import {
+	applyEdits,
+	createTableController,
+	Table,
+	useEditDraft,
+	type CellEdit,
+	type CellFormulas,
+	type ColumnDef,
+	type TableEditDetails,
+} from './index'
+
+const engine = createFormulaEngine()
 
 type Item = { id: string; name: string; price: number }
 
@@ -136,6 +148,162 @@ test('a table in the entry mode takes its edits into the draft and shows them', 
 		expect(draft.count.value).toBe(1)
 		expect(wrapper.find('td[data-column="price"]').text()).toBe('7')
 		expect(wrapper.find('td[data-column="price"]').classes()).toContain('changed')
+	} finally {
+		wrapper.unmount()
+	}
+})
+
+type Line = { id: string; price: number; qty: number; total: unknown; double?: unknown }
+
+const lineColumns: ColumnDef<Line>[] = [
+	{ id: 'price', header: 'Price' },
+	{ id: 'qty', header: 'Qty' },
+	{ id: 'total', header: 'Total' },
+	{ id: 'double', header: 'Double' },
+]
+
+function mountWithFormulas() {
+	const owner = shallowRef<Line[]>([
+		{ id: 'a', price: 2, qty: 3, total: 0 },
+		{ id: 'b', price: 1.5, qty: 4, total: 6 },
+	])
+	const ownerFormulas = shallowRef<CellFormulas>({})
+	const controller = createTableController()
+	const reports: string[] = []
+	let draft!: ReturnType<typeof useEditDraft<Line>>
+	const wrapper = mount(
+		defineComponent(() => {
+			draft = useEditDraft(owner, { formulas: ownerFormulas })
+			return () =>
+				h(Table<Line>, {
+					rows: draft.rows.value,
+					columns: lineColumns,
+					controller,
+					formulas: engine,
+					editable: true,
+					history: true,
+					'aria-label': 'Lines',
+					cellFormulas: draft.formulas.value,
+					onCellFormulasChange: draft.onCellFormulasChange,
+					onCellEdit: (edits: readonly CellEdit<Line>[], details: TableEditDetails) => {
+						reports.push(details.reason)
+						draft.onCellEdit(edits)
+					},
+				})
+		}),
+		{ attachTo: document.body },
+	)
+	const text = (row: number, column: string) =>
+		wrapper.findAll('tbody tr')[row]?.find(`td[data-column="${column}"]`).text()
+	return { owner, ownerFormulas, controller, reports, draft: () => draft, wrapper, text }
+}
+
+const settle = async () => {
+	for (let turn = 0; turn < 4; turn++) {
+		await nextTick()
+		await Promise.resolve()
+	}
+}
+
+test('a formula waits in the draft with its value, and Cancel puts the formulas and the values of the owner back without a report', async () => {
+	const { owner, ownerFormulas, controller, reports, draft, wrapper, text } = mountWithFormulas()
+	try {
+		await settle()
+		void controller.editCell('a', 'total', '=A1*B1')
+		await settle()
+		expect(text(0, 'total')).toBe('6')
+		expect(wrapper.find('tbody td[data-column="total"]').attributes('data-formula')).toBe('')
+		expect(draft().changed('a', 'total')).toBe(true)
+		expect(draft().count.value).toBe(1)
+		expect(ownerFormulas.value).toEqual({})
+		expect(owner.value[0]?.total).toBe(0)
+
+		const before = reports.length
+		draft().cancel()
+		await settle()
+		expect(draft().count.value).toBe(0)
+		expect(text(0, 'total')).toBe('0')
+		expect(controller.getCellFormula('a', 'total')).toBeNull()
+		expect(wrapper.find('tbody td[data-column="total"]').attributes('data-formula')).toBeUndefined()
+		// No report runs between the table and the draft after a cancel.
+		expect(reports.length).toBe(before)
+	} finally {
+		wrapper.unmount()
+	}
+})
+
+test('a formula that keeps the value of its cell still differs, counts once, and Save gives it with the formulas to keep', async () => {
+	const { ownerFormulas, controller, draft, wrapper } = mountWithFormulas()
+	try {
+		await settle()
+		// 1.5 * 4 is 6, the value that the owner has.
+		void controller.editCell('b', 'total', '=A2*B2')
+		void controller.editCell('a', 'total', '=A1*B1')
+		await settle()
+		expect(draft().changed('b', 'total')).toBe(true)
+		expect(draft().count.value).toBe(2)
+		const saved = draft().save()
+		expect(
+			saved.map(({ rowId, value, previous, formula }) => ({ rowId, value, previous, formula })),
+		).toEqual([
+			{ rowId: 'a', value: 6, previous: 0, formula: '=[price]*[qty]' },
+			{ rowId: 'b', value: 6, previous: 6, formula: '=[price]*[qty]' },
+		])
+		expect(saved.formulas?.cells).toEqual({
+			a: { total: '=[price]*[qty]' },
+			b: { total: '=[price]*[qty]' },
+		})
+		expect(draft().count.value).toBe(0)
+		expect(ownerFormulas.value).toEqual({})
+	} finally {
+		wrapper.unmount()
+	}
+})
+
+test('an undo and a redo move the formula of the draft, and new rows of the owner recalculate into the draft', async () => {
+	const { owner, controller, draft, wrapper, text } = mountWithFormulas()
+	try {
+		await settle()
+		void controller.editCell('a', 'total', '=A1*B1')
+		await settle()
+		controller.undo()
+		await settle()
+		expect(draft().count.value).toBe(0)
+		expect(text(0, 'total')).toBe('0')
+		controller.redo()
+		await settle()
+		expect(draft().changed('a', 'total')).toBe(true)
+		expect(text(0, 'total')).toBe('6')
+
+		owner.value = owner.value.map((row) => (row.id === 'a' ? { ...row, price: 5 } : row))
+		await settle()
+		// The formula of the draft follows the new price of the owner: 5 * 3.
+		expect(text(0, 'total')).toBe('15')
+		expect(
+			draft()
+				.save()
+				.find((edit) => edit.rowId === 'a')?.value,
+		).toBe(15)
+	} finally {
+		wrapper.unmount()
+	}
+})
+
+test('a formula of a column waits in the draft too, and one that the owner takes differs no more', async () => {
+	const { ownerFormulas, controller, draft, wrapper, text } = mountWithFormulas()
+	try {
+		await settle()
+		controller.setColumnFormula('double', '=[price]*2')
+		await settle()
+		expect(text(0, 'double')).toBe('4')
+		expect(draft().changedColumn('double')).toBe(true)
+		expect(draft().count.value).toBe(1)
+		expect(ownerFormulas.value).toEqual({})
+		ownerFormulas.value = { columns: { double: '=[price]*2' } }
+		await settle()
+		expect(draft().changedColumn('double')).toBe(false)
+		expect(draft().count.value).toBe(0)
+		expect(text(0, 'double')).toBe('4')
 	} finally {
 		wrapper.unmount()
 	}

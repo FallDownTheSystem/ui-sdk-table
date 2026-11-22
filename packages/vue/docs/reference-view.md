@@ -68,15 +68,19 @@ What `useTableSearch(controller)` gives.
 What `useEditDraft` gives.
 
 - `rows` (`ComputedRef<Row[]>`): The rows to pass to the table: the rows of the owner with the values of the draft in them.
-- `count` (`ComputedRef<number>`): How many cells hold another value than the rows of the owner.
-- `changed` (`(rowId: string, columnId: string) => boolean`): Whether a cell holds another value than the rows of the owner, by the row id and the column id.
+- `formulas` (`ComputedRef<CellFormulas>`): The formulas to pass to the table as `cell-formulas`: the formulas of the owner with those of the draft over them. Without the `formulas` option, those of the draft alone.
+- `count` (`ComputedRef<number>`): How many cells hold another value or another formula than the owner, each cell once, and how many columns another formula.
+- `changed` (`(rowId: string, columnId: string) => boolean`): Whether a cell holds another value or another formula of its own than the owner, by the row id and the column id.
+- `changedColumn` (`(columnId: string) => boolean`): Whether the formula of a column (the `columns` layer) differs from the formula of the owner.
+- `onCellFormulasChange` (`(value: CellFormulas) => void`): Pass it as the `cell-formulas-change` listener of the table.
 - `onCellEdit` (`(edits: readonly CellEdit<Row>[]) => void`): Pass it as the `cell-edit` listener of the table. It takes every report: an edit, a paste, a fill, a clear and an undo. It throws for an edit of a row that is not in the rows of the owner, such as a child row.
-- `save` (`() => CellEdit<Row>[]`): The edits against the rows of the owner, one for each cell that differs, and an empty draft.
-- `cancel` (`() => void`): Empties the draft.
+- `save` (`() => EditDraftSave<Row>`): The edits against the rows of the owner, one for each cell that differs, and the formulas to keep; the draft is empty after it.
+- `cancel` (`() => void`): Empties the draft: the values and the formulas together.
 
 ## EditDraftOptions
 
 - `getRowId?` (`(row: Row, index: number, parent: null) => string | number`): The `getRowId` of the table, when it has one. Without it, a row is found by its `id`, else by its place.
+- `formulas?` (`MaybeRefOrGetter<CellFormulas | undefined>`): The formulas of the owner, for a table with `formulas`. The draft then holds the formulas that a person types as it holds the values: pass `formulas` of the draft as the `cell-formulas` of the table and its `onCellFormulasChange` as the listener, and the formulas of the owner stay as they are until Save.
 
 ## Rows
 
