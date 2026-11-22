@@ -128,6 +128,7 @@ const cellAttrs = computed(() => {
 				aria-label="Formula of the active cell"
 				placeholder="Press a total, type =SUM("
 				autocomplete="off"
+				spellcheck="false"
 				:value="bar.text.value"
 				:disabled="!bar.ready.value"
 				@input="typed"

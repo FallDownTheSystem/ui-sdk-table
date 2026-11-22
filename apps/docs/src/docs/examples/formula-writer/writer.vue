@@ -139,6 +139,7 @@ const cellAttrs = computed(() => {
 			aria-label="Formula of the active cell"
 			placeholder="Press a cell, then type ="
 			autocomplete="off"
+			spellcheck="false"
 			:value="text"
 			:disabled="!bar.ready.value"
 			:aria-invalid="!!bar.error.value"

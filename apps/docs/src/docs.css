@@ -822,6 +822,7 @@ a {
 
 	.example-preview .writer ul button {
 		padding: 2px 8px;
+		text-align: start;
 		border: 1px solid var(--control-line);
 		border-radius: 6px;
 		background: #fff;
