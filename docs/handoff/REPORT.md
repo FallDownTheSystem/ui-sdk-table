@@ -343,3 +343,47 @@ The whole plan of the formulas, slices 0 to 12, is on `master` of the library at
 18. **The sink page and the app** do not show the formulas yet. Both are being built.
 
 **Not verified, added.** An Excel file with formulas opened in Excel or LibreOffice (the file was read as XML and its patterns with `ssf`); Firefox and Safari, apart from the proofs; a screen reader; `=` on a real Finnish keyboard; the check after new rows in a browser with 50,000 rows; the examples of the README as an app of their own.
+
+## After the formulas: the sink tiles, two fixes, the app
+
+Date: 2026-11-22. The library is on `master` at `4105922`, and the app on `master` at `cae48c6`. Each branch passed its checks in a second checkout before its merge; the last library branch with 1082 unit tests and 172 Playwright tests. Both docs sites deployed. This closes open item 18 above.
+
+**The sink page** (`1eab85e`, merged as `d8a9345`). A group `formula` with seven tiles, after `sheet`; the page has 68 tiles. No line of `NOT_SHOWN` is about formulas now.
+- "Group by the week.": a formula column with `WEEKOF`, `MONTHOF` or `QUARTEROF`, and the rows grouped by its `period` labels.
+- "Type a formula.": an order with a formula on each line, `=SUM(D1:D14)` under them, and a formula bar from `useFormulaBar`.
+- "Compute a column.": `formulaColumn` for a total and for a band from `IFS`.
+- "Catch a broken formula.": `#DIV/0!` in a cell, and a circle that is refused with its path.
+- "Type a decimal comma.": the same formula in `de-DE` and in `en-US`.
+- "Write a column formula.": `setColumnFormula` from a field, with an undo and a formula that is refused.
+- "Open a saved sheet.": `recalculate()` on stale results, `getFormulaSummary`, and an Excel file with `excelFormulas()`.
+
+The closest new contrast pairs are all on `clay`: 4.89 and 4.96 with a limit of 4.5, and 4.94 with a limit of 3.
+
+**Two faults of the library that the tiles found, both fixed.**
+- `739d4f9`, `packages/vue/src/controller.ts`: a table that came in place of another through a new `key`, with the same controller, did not get the listeners of the controller, so `useTableView` stayed on the old table. The controller now keeps every listener and moves it to each table that arrives.
+- `4105922`, `packages/core/src/table.ts`: a new `locale` or a new formula engine on a mounted table told no listener of `subscribe`, so `useTableView`, `useFormulaBar`, `getFacets` and `getTotals` kept the texts of the old locale. Both now bump the revision of the table, as new rows and columns do. An owner that passes a new `rows` array at each render never saw this fault.
+- Each fix has a Vue test that fails without it.
+
+**Size.** The second fix added 33 bytes to the main entry. `formulas-size.test.ts` passes with 119 bytes left of the 12 kB; `BEFORE` and `LIMIT` did not change.
+
+**The app** (pull request 53, merged as `cae48c6`). The library pin is `4105922`.
+- `DataTable` passes `formulas`, `cellFormulas` (with `v-model:cell-formulas`) and `defaultCellFormulas` through, and a column can have `allowFormula`.
+- Three parts, each behind a prop: a formula bar (`formula-bar`), a control for the formula of a column with the list of functions (`formula-columns`), and a list that groups by day, week, month, quarter or year of a date column (`date-groups`).
+- A formula cell has a mark in its corner, an error cell the red of the formats, and a computed column the fill of a group row.
+- A new page, `/data-formulas`, with six examples: orders by week, a price list with cell formulas and a VAT rate read with `$`, bands from `IFS`, planned and actual with a `#DIV/0!` on purpose, busy hours by weekday and hour, and a sheet in `fi-FI` with a decimal comma.
+- Checks at `e0ca619`, the head of the branch: `vp check`, type-check, ESLint with 0 errors, 103 unit tests, the audit with 0 errors, the build, and 94 Playwright tests. The last commit of the branch holds only the two generated type files that the build changed.
+- The lowest contrast of the new pairs: 4.74 for a text and 3.53 for a part in the light theme, 6.21 and 4.85 in the dark theme.
+
+**Set without an answer of the owner, added.**
+15. A change of `messages`, `canSelect` or `selection` alone tells no listener of the table. An owner often passes these as new objects at each render, so they would tell every listener each time.
+16. The formula examples of the app are on a page of their own, not on `/data-sheet`.
+17. With `formulas`, the Excel export of the app always writes the formulas.
+18. "No groups" in the date list of the app takes the grouping away and keeps the formula of the period column.
+
+**Open items, added.**
+19. **The words of a refusal** in the formula bar and in a control that catches `setColumnFormula` are a sentence for a developer, with the ids of the column and the row, and for an unknown function the name of every function. The cell editor shows only the reason. A fix is being built on the branch `refusal-words`; the app needs a small change after it.
+20. **A table computes nothing at mount.** An example whose rows come without results calls `recalculate()` when it is mounted. The README says so.
+21. **The city names** (Helsinki, Tallinn, Oslo) are still in the order data of the sink page; the names of persons and clubs were replaced.
+22. **On the sink page**, two bold cards touch at 1024 px (the rule is for 1440 px), and three formula tiles scroll sideways at 360 px, as about 16 tiles of before do.
+
+**Not verified, added.** The formula tiles and `/data-formulas` in Firefox and Safari; a screen reader; an Excel file of the sink page or of the app opened in Excel or LibreOffice (both were read as XML); a change of the locale on a mounted table in the app (its `fi-FI` example has a table of its own); the two live sites, apart from the result of their deploy workflows.
