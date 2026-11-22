@@ -549,3 +549,23 @@ Date: 2026-11-22, in the evening. The library is on `master` at `56e6d8d` (versi
 32. Two bold cards of the sink touch at 1280 px and at 768 px. The rule of CLAUDE.md is for 1440 px only, where none touch.
 33. The branches of finished work are still on the remote of the library (`pick-keys`, `pick-keys-2`, `pick-fixes`, `sink-columns`, `sink-columns-2`, `draft-formulas`, `formula-writer` and older ones), and `formula-keys` on that of the app. A deletion needs a word of the owner.
 34. In the pick mode the library leaves a press on a control inside a header cell to the control, so each app stops its own sort button, as the app does. An option of the table for that is not built; nobody asked for one.
+
+## After that: three answers of the owner, and the closing tile on a phone
+
+Date: 2026-11-22, late in the evening. The library is on `master` at `f355363` (version 0.2.6), and the app on `master` at `dcf346a`.
+
+**The answers.** Open items 29, 30 and 31 are closed.
+- 29: "4 by 1 grid" is the closing tile of the sink page, `more-app`, which takes every column. Its table can scroll sideways.
+- 30: the app gets no example of a draft that holds formulas.
+- 31: Helsinki stays. The rule is as it was: no Finnish names of persons, teams or companies, and the city names stay.
+
+**The closing tile on a phone** (`f355363`).
+- The table of `more-app` keeps its width of 1242 px and scrolls sideways inside its tile at every width under 1378 px of window. That was so before this change.
+- On a phone, its two pinned columns (Pick and Deal, 282 px) covered the frame: 40 px of the other columns showed at 390 px of window, and 10 px at 360 px. So the sideways scroll showed almost nothing.
+- In a tile narrower than 500px, the pinned columns of this table now scroll with the rest, and a cell that gets focus keeps no room beside them. From 500px on they stay pinned. The rule is a container query in `sink.css` for this table only; the tiles `columns-pin` and `more-rtl`, whose pinned column leaves 122 px or more, are as before.
+- Two browser tests hold it: at 390 px the header "Deal" moves with a scroll of the frame, and at 768 px it stays. The test of 390 px fails without the rule.
+- With the keys at 390 px, each cell that got focus was whole inside the frame, from Owner to Closes.
+
+**Checks.** Library at `f355363`: `pnpm check`, `pnpm type-check`, 1,379 unit tests (14 skipped), 238 browser tests with no retry, and `pnpm build` pass.
+
+**Not verified, added.** The closing tile on a real phone and with touch.
