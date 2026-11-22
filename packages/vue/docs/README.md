@@ -37,6 +37,11 @@ Start with [llms.txt](./llms.txt): what the library is and the conventions every
 - [Formulas](./sheet-formulas.md): Compute values with formulas as in a spreadsheet: a computed column, or a formula in one cell.
 - [An Excel file with formulas](./excel-formulas.md): Download a sheet as an Excel file whose cells keep their formulas, where Excel computes them the same way.
 
+## Build on it
+
+- [A styled table for an app](./styled-table.md): Build the table component of your design system on the headless table: the order of the work, and for each control what the library gives and what your app writes.
+- [How the table is built](./how-the-table-is-built.md): The four layers of the table, from the behaviors to the `Table` component, and which word means what.
+
 ## Source and licence
 
 The format of these pages, the layout of `llms.txt` and parts of the text of Introduction, Installation and First table follow the docs of UI SDK (`@ui-sdk/vue/docs`, https://ui-sdk.dev), which are licensed under the Apache License 2.0.

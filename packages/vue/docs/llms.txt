@@ -296,3 +296,8 @@ The rules of a scoped style reach the elements of the table through `:deep()`, b
 - [Row numbers and letters](./row-numbers-and-letters.md): Give a sheet a column of row numbers and a row of column letters, where a person selects whole rows and columns.
 - [Formulas](./sheet-formulas.md): Compute values with formulas as in a spreadsheet: a computed column, or a formula in one cell.
 - [An Excel file with formulas](./excel-formulas.md): Download a sheet as an Excel file whose cells keep their formulas, where Excel computes them the same way.
+
+### Build on it
+
+- [A styled table for an app](./styled-table.md): Build the table component of your design system on the headless table: the order of the work, and for each control what the library gives and what your app writes.
+- [How the table is built](./how-the-table-is-built.md): The four layers of the table, from the behaviors to the `Table` component, and which word means what.

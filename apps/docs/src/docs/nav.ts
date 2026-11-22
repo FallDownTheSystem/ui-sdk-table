@@ -37,4 +37,5 @@ export const groups: readonly { title: string; inline?: boolean; pages: readonly
 			'excel-formulas',
 		],
 	},
+	{ title: 'Build on it', pages: ['styled-table', 'how-the-table-is-built'] },
 ]
