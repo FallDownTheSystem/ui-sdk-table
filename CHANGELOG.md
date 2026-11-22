@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.4...v0.2.5) (2026-11-22)
+
+
+### Features
+
+* pick cells with the arrow keys ([cdcf48b](https://github.com/FallDownTheSystem/ui-sdk-table/commit/cdcf48b25d9491226aa1b5df72ca53aa6f9cf087))
+
 ## [0.2.4](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.3...v0.2.4) (2026-11-22)
 
 
