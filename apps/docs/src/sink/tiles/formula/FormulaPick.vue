@@ -85,6 +85,21 @@ function pick(cells: CellPick | null) {
 	moveCaret(next.end)
 }
 
+// Where a reference fits, an arrow picks from the cell of the bar, and starts
+// a new pick after a typed character.
+function arrow(event: KeyboardEvent) {
+	const key = (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'] as const).find(
+		(name) => name === event.key,
+	)
+	if (!key || !picking.value || event.altKey) return
+	event.preventDefault()
+	controller.movePick(key, {
+		extend: event.shiftKey,
+		edge: event.ctrlKey || event.metaKey,
+		start: picked.value === null,
+	})
+}
+
 const references = computed(() => {
 	const at = bar.cell.value
 	return at && bar.text.value.startsWith('=')
@@ -133,6 +148,7 @@ const cellAttrs = computed(() => {
 				:disabled="!bar.ready.value"
 				@input="typed"
 				@keyup="caret = ($event.target as HTMLInputElement).selectionEnd ?? 0"
+				@keydown="arrow"
 				@keydown.escape.prevent="bar.cancel()"
 			/>
 		</form>
@@ -158,7 +174,9 @@ const cellAttrs = computed(() => {
 						.join(', ')
 				}})
 			</template>
-			<template v-else>{{ bar.error.value || 'Then drag over the prices.' }}</template>
+			<template v-else>{{
+				bar.error.value || 'Then drag over the prices, or use the arrow keys.'
+			}}</template>
 		</p>
 		<div class="sink-frame">
 			<Table

@@ -1,4 +1,4 @@
-import type { CellBounds, GridCell, PrimitiveContext } from '@ui-sdk/core'
+import { isRTL, type CellBounds, type GridCell, type PrimitiveContext } from '@ui-sdk/core'
 import { cellUnder, dragCells, edgesOf } from './drag'
 
 /**
@@ -20,6 +20,19 @@ export type CellPick = {
 export type CellPicker<State> = {
 	/** A press on a cell picks it, or its column with `columns`, and a drag picks more. */
 	pointerdown(event: PointerEvent, cell: GridCell, columns: boolean): void
+	/**
+	 * Moves the pick one cell, or to the edge of the body with `edge`: the
+	 * pick of one cell goes, and with `extend` its end goes and its first
+	 * cell stays. Without a pick, or with `start`, a new pick starts at the
+	 * cell next to `from`, the cell of the field. Returns the pick, or `null`
+	 * when there is no cell to pick.
+	 */
+	move(
+		way: GridCell,
+		from: GridCell | undefined,
+		options: { extend?: boolean; edge?: boolean; start?: boolean },
+		event?: Event,
+	): CellPick | null
 	/** `data-picked` and `data-pick-edge` of a cell. */
 	cellAttrs(state: State, cell: GridCell): { 'data-picked'?: string; 'data-pick-edge'?: string }
 	/** Keeps the element that hears a drag. */
@@ -61,7 +74,12 @@ export function createCellPick<State extends object>(
 		limits: () => CellBounds | undefined
 		/** The first column that a pick of whole columns can hold: the first column with a letter. */
 		columnsFrom: () => number
-		set: (pick: CellPick, details: { reason: 'item-press' | 'drag'; event?: Event }) => boolean
+		set: (
+			pick: CellPick,
+			details: { reason: 'item-press' | 'drag' | 'list-navigation'; event?: Event },
+		) => boolean
+		/** Brings the row of a cell into the row window. */
+		reveal: (cell: GridCell) => void
 		/** Runs once when a drag that changed the pick ends. */
 		commit: (pick: CellPick, details: { reason: 'drag'; event?: Event }) => void
 	},
@@ -70,7 +88,42 @@ export function createCellPick<State extends object>(
 	let stop: (() => void) | undefined
 	context.onDestroy(() => stop?.())
 
+	const current = () => context.store.get()[options.key] as CellPick | null
+
 	return {
+		move(way, from, { extend, edge, start }, event) {
+			const limits = options.limits()
+			const now = start ? null : current()
+			const base = now && !now.columns ? now : undefined
+			const origin = base ? base.end : from
+			if (!limits || !origin) return null
+			// The arrows follow the direction of the table, as they move the active cell.
+			const col = root && isRTL(root) ? -way.col : way.col
+			const go = (cell: GridCell): GridCell => {
+				const row =
+					edge && way.row ? (way.row > 0 ? limits.bottom : limits.top) : cell.row + way.row
+				const to = edge && col ? (col > 0 ? limits.right : limits.left) : cell.col + col
+				return {
+					row: Math.max(limits.top, Math.min(limits.bottom, row)),
+					col: Math.max(limits.left, Math.min(limits.right, to)),
+				}
+			}
+			const end = go(origin)
+			// A first move with no cell in its direction picks nothing: never the cell of the field itself.
+			if (!base && end.row === origin.row && end.col === origin.col) return null
+			const next = { anchor: base && extend ? base.anchor : end, end, columns: false }
+			if (now && same(now, next)) return now
+			if (!options.set(next, { reason: 'list-navigation', event })) return now
+			// Focus stays in the field, so nothing scrolls the cell into view by itself.
+			options.reveal(end)
+			const page = root?.ownerDocument.defaultView
+			page?.requestAnimationFrame(() =>
+				root
+					?.querySelector(`[aria-rowindex="${end.row + 1}"] [aria-colindex="${end.col + 1}"]`)
+					?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' }),
+			)
+			return next
+		},
 		pointerdown(event, cell, columns) {
 			const limits = options.limits()
 			if (!root || !limits || event.button !== 0) {

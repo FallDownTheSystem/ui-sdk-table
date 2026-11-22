@@ -9,14 +9,19 @@ import {
 	type CellPick,
 	type ColumnDef,
 } from 'ui-sdk-table-vue'
-import { createFormulaEngine, insertReference, useFormulaBar } from 'ui-sdk-table-vue/formulas'
+import {
+	createFormulaEngine,
+	formulaHelp,
+	insertReference,
+	useFormulaBar,
+} from 'ui-sdk-table-vue/formulas'
 import { computed, shallowRef, useTemplateRef } from 'vue'
 
 // The pick mode with each kind of field that writes a formula, for the
 // browser tests of `e2e/pick.spec.ts`. `?field=own` writes into the text field
 // of the table's editor, `?field=slot` into a field of the `editor` slot, and
 // `?field=bar` (the default) into a formula bar outside the table.
-// `?pick=off` leaves the pick mode off. `?rows=50000` gives that many rows in
+// `?pick=off` leaves the pick mode off, and `?dir=rtl` reads the table from right to left. `?rows=50000` gives that many rows in
 // a row window, and gives the cells of each reference of the bar an
 // attribute through `cellAttrs`, to measure a key in the bar.
 
@@ -25,8 +30,10 @@ type Line = { id: string; item: string; price: number; qty: number; total?: unkn
 const query = new URLSearchParams(location.search)
 const field = query.get('field') ?? 'bar'
 const allowed = query.get('pick') !== 'off'
-// The text of the field inside the table while a person types it.
+const rtl = query.get('dir') === 'rtl'
+// The text of the field inside the table while a person types it, and the caret of the field.
 const draft = shallowRef('')
+const caret = shallowRef(0)
 
 const count = Number(query.get('rows') ?? 0)
 const lines = shallowRef<Line[]>(
@@ -86,12 +93,12 @@ const cellAttrs = computed(() => {
 const frame = useTemplateRef<HTMLElement>('frame')
 const picks = shallowRef<string[]>([])
 // The reference of the last pick, which the next step of a drag replaces.
-let last: { start: number; end: number } | null = null
+const last = shallowRef<{ start: number; end: number } | null>(null)
 
 function write(input: HTMLInputElement, address: string) {
-	const selection = last ?? { start: input.selectionStart ?? 0, end: input.selectionEnd ?? 0 }
+	const selection = last.value ?? { start: input.selectionStart ?? 0, end: input.selectionEnd ?? 0 }
 	const next = insertReference(input.value, selection, address)
-	last = { start: next.start, end: next.end }
+	last.value = { start: next.start, end: next.end }
 	input.value = next.text
 	input.setSelectionRange(next.end, next.end)
 	input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -109,21 +116,53 @@ function pick(cells: CellPick | null) {
 				)
 	if (target) write(target, address)
 }
-const typed = () => (last = null)
-// The mode is on while the text of the field is a formula, as an app does it.
-const picking = computed(
-	() => allowed && (field === 'bar' ? bar.text.value : draft.value).startsWith('='),
-)
+const ARROWS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
+// The mode is on where a reference fits at the caret, and while the reference
+// of the last pick is still the end of the text that the person sees.
+const picking = computed(() => {
+	if (!allowed) return false
+	const text = field === 'bar' ? bar.text.value : draft.value
+	return last.value !== null || formulaHelp(text, caret.value, { locale: 'en-US' }).reference
+})
+function keydown(event: KeyboardEvent) {
+	if (['Shift', 'Control', 'Meta', 'Alt'].includes(event.key)) return
+	if (!ARROWS.has(event.key) || !picking.value) {
+		last.value = null
+		return
+	}
+	// The table hears the keys of its own text field; a field of the app calls `movePick`.
+	if (field === 'own') return
+	event.preventDefault()
+	controller.movePick(event.key as 'ArrowUp', {
+		extend: event.shiftKey,
+		edge: event.ctrlKey || event.metaKey,
+		// After a typed character, the pick starts from the cell of the field again.
+		start: last.value === null,
+	})
+}
 function edited(event: Event) {
 	if (event.target instanceof HTMLInputElement) draft.value = event.target.value
+	read(event)
 }
+function read(event: Event) {
+	if (event.target instanceof HTMLInputElement) caret.value = event.target.selectionStart ?? 0
+}
+// A character that opens the editor is its first text, with no `input` event.
 function focused(event: FocusEvent) {
-	if (!(event.target instanceof HTMLInputElement)) draft.value = ''
+	draft.value = event.target instanceof HTMLInputElement ? event.target.value : ''
+	read(event)
 }
 </script>
 
 <template>
-	<main ref="frame" @keydown.capture="typed" @input.capture="edited" @focusin.capture="focused">
+	<main
+		ref="frame"
+		@keydown.capture="keydown"
+		@keyup.capture="read"
+		@click.capture="read"
+		@input.capture="edited"
+		@focusin.capture="focused"
+	>
 		<h1>Pick cells</h1>
 		<input
 			v-if="field === 'bar'"
@@ -133,7 +172,10 @@ function focused(event: FocusEvent) {
 			@keydown.enter="bar.commit()"
 		/>
 		<output data-testid="picks">{{ picks.join(' ') }}</output>
-		<div :style="count ? { blockSize: '500px', overflow: 'auto' } : undefined">
+		<div
+			:style="count ? { blockSize: '500px', overflow: 'auto' } : undefined"
+			:dir="rtl ? 'rtl' : undefined"
+		>
 			<Table
 				:formulas="engine"
 				:rows="lines"

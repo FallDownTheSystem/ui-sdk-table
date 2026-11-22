@@ -664,9 +664,12 @@ test('the keys of a sheet do nothing in a table', async ({ page }) => {
 	const score = cell(table, 2, 4)
 	await score.click()
 	await page.keyboard.type('5')
-	await page.keyboard.press('ArrowDown')
-	await page.keyboard.press('ArrowLeft')
+	// Without the pick mode, Shift and Control with an arrow are the caret's too, and pick nothing.
+	for (const key of ['ArrowDown', 'Control+ArrowUp', 'Shift+ArrowDown', 'ArrowLeft']) {
+		await page.keyboard.press(key)
+	}
 	await expect(editor(table)).toBeFocused()
+	await expect(table.locator('[data-picked]')).toHaveCount(0)
 	await page.keyboard.type('4')
 	await page.keyboard.press('Enter')
 	await expect(score).toHaveText('45')

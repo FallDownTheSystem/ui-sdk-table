@@ -73,6 +73,8 @@ export {
 export type {
 	CellEdit,
 	CellPick,
+	PickKey,
+	PickMoveOptions,
 	CellRange,
 	CellRef,
 	StandardSchemaV1,
