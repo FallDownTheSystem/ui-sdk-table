@@ -6,29 +6,13 @@ Start with an app that uses Vue 3.5 or newer and a bundler that compiles TypeScr
 
 ## Add the packages
 
-The packages are not on npm. An app takes them from one commit of the repository on GitHub. The repository is public, so an install needs no login.
-
-Put the same commit in three places. The steps here are for pnpm.
-
-```jsonc title="package.json"
-{
-	"dependencies": {
-		"ui-sdk-table-core": "github:FallDownTheSystem/ui-sdk-table#<commit>&path:/packages/core",
-		"ui-sdk-table-vue": "github:FallDownTheSystem/ui-sdk-table#<commit>&path:/packages/vue",
-		"@ui-sdk/core": "0.1.0-beta.13",
-		"@ui-sdk/vue": "0.1.0-beta.13"
-	}
-}
+```bash
+pnpm add ui-sdk-table-vue @ui-sdk/core@0.1.0-beta.13 @ui-sdk/vue@0.1.0-beta.13
 ```
 
-```yaml title="pnpm-workspace.yaml"
-overrides:
-  'ui-sdk-table-core': 'github:FallDownTheSystem/ui-sdk-table#<commit>&path:/packages/core'
-```
+With another package manager, add the same three names.
 
-`ui-sdk-table-vue` names the core package through the workspace of the library. An install from git cannot resolve that, so the override gives it the same commit.
-
-Then run `pnpm install`. To move to a newer commit, change it in all three places and install again.
+`ui-sdk-table-vue` brings `ui-sdk-table-core` with it. The two packages always have the same version, so an update of one is an update of both.
 
 ## Peer dependencies
 
@@ -40,6 +24,16 @@ The table uses the same copy of UI SDK as the controls of your app. Install UI S
 ## TypeScript source
 
 The packages ship TypeScript source: `exports` points at `src`, and there is no build. Your bundler compiles the files with the rest of your app. Your type check reads them with your own compiler options.
+
+The source uses built-ins of ES2023, such as `toSorted`. A new Vue project has `lib` at ES2022, and its type check then fails inside the packages. Set `lib` to ES2023 or newer:
+
+```jsonc title="tsconfig.app.json"
+{
+	"compilerOptions": {
+		"lib": ["ES2023", "DOM", "DOM.Iterable"]
+	}
+}
+```
 
 ## Entries
 

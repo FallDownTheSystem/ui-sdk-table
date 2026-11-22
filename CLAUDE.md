@@ -2,7 +2,7 @@
 
 ## What this is
 
-A headless table for Vue, built on UI SDK (`@ui-sdk/core`, `@ui-sdk/vue`, public beta). UI SDK gives the logic primitives, this library builds the headless table on them, and a consumer builds its styled table on this library. Work in progress; nothing is published and every package is `private`.
+A headless table for Vue, built on UI SDK (`@ui-sdk/core`, `@ui-sdk/vue`, public beta). UI SDK gives the logic primitives, this library builds the headless table on them, and a consumer builds its styled table on this library. Work in progress. The two packages are on npm as `ui-sdk-table-core` and `ui-sdk-table-vue`, as TypeScript source, always at the same version.
 
 ## Layers
 

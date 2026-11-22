@@ -1,12 +1,30 @@
 {
 	"name": "ui-sdk-table-vue",
-	"version": "0.0.0",
-	"private": true,
+	"version": "0.1.0",
 	"description": "Vue parts for the ui-sdk-table primitive: slots, v-model and controllers.",
+	"keywords": [
+		"data-grid",
+		"headless",
+		"table",
+		"ui-sdk",
+		"vue"
+	],
+	"homepage": "https://falldownthesystem.github.io/ui-sdk-table/",
+	"bugs": {
+		"url": "https://github.com/FallDownTheSystem/ui-sdk-table/issues"
+	},
+	"license": "MIT",
+	"author": "FallDownTheSystem",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/FallDownTheSystem/ui-sdk-table.git",
+		"directory": "packages/vue"
+	},
 	"files": [
-		"dist",
 		"docs",
-		"src"
+		"src",
+		"!src/**/*.test.ts",
+		"!src/**/*.perf.ts"
 	],
 	"type": "module",
 	"sideEffects": false,
@@ -14,6 +32,9 @@
 		".": "./src/index.ts",
 		"./export": "./src/export.ts",
 		"./formulas": "./src/formulas.ts"
+	},
+	"publishConfig": {
+		"access": "public"
 	},
 	"scripts": {
 		"build": "vp pack src/index.ts src/export.ts src/formulas.ts --platform neutral"
