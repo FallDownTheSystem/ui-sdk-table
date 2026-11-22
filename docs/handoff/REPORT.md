@@ -405,3 +405,8 @@ Date: 2026-11-22, later. The library is on `master` at `87adc18`, and the app on
 19. In the app, an unknown function names only itself, without the name of every function: the control for a column formula has the list. A page gives other words through `formulaIssue` of `messages`.
 
 **Not verified, added.** The words of the date list and of the sheet toolbar after a real refusal of the table: no test makes one. The dark theme of the two new texts. Firefox and Safari.
+
+**Answers of the owner, 2026-11-22.** Three items above are closed, each as it is:
+- Item 11 of "Set without an answer of the owner": a value typed into a cell of a computed column stays refused.
+- Open item 16: the speed of a fill and a paste of formulas over 50,000 rows is accepted; no speed round.
+- Open item 21: the city names stay in the order data of the sink page.
