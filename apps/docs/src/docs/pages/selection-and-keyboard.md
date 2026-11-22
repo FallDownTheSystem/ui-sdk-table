@@ -36,7 +36,7 @@ The grid gives focus back to a cell only when a change of the table took it away
 
 With `cellSelection`, a person selects a range of cells: Shift with an arrow, or a drag. Control or Command with C copies the range as text, with tabs between cells and line breaks between rows. With `editable` too, Control or Command with V pastes into it. See [Editing](./cell-editing.md).
 
-The cells of a range have `data-selected` and `data-range-edge`. The state is `cellRange`. The page "Range, copy and paste" of the group "Data sheet" covers the rest.
+The cells of a range have `data-selected` and `data-range-edge`. The state is `cellRange`. [Range, copy and paste](./range-copy-and-paste.md) covers the rest.
 
 ## Names
 

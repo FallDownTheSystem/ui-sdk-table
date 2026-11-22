@@ -62,7 +62,8 @@ test('Tab goes through the bar, the sidebar and the page in the order of the scr
 	await page.goto('/?page=installation')
 	await expect(page.getByRole('heading', { level: 1, name: 'Installation' })).toBeVisible()
 	const stops: { area: string; x: number; y: number }[] = []
-	for (let step = 0; step < 40; step++) {
+	// Enough presses for every link of the sidebar and of the page.
+	for (let step = 0; step < 100; step++) {
 		await page.keyboard.press('Tab')
 		const stop = await page.evaluate(() => {
 			const active = document.activeElement
@@ -508,4 +509,219 @@ test('the text of a page with tables in its examples holds 4.5 to 1', async ({ p
 		if (ratio < 4.5) low.push(`${await text.textContent()}: ${ratio.toFixed(2)}`)
 	}
 	expect(low).toEqual([])
+})
+
+test('The sheet options: a character opens the editor, Delete clears, Undo brings it back, and a footer changes its function', async ({
+	page,
+}) => {
+	await page.goto('/?page=sheet-options')
+	const example = page.locator('[data-example="sheet-options/sheet"]')
+	const table = grid(page, 'sheet-options/sheet', 'Stock of the shop')
+	const price = table.locator('td[data-column="price"]').first()
+	await price.click()
+	await page.keyboard.type('5')
+	await expect(table.locator('[data-slot="table-editor"]')).toHaveValue('5')
+	await page.keyboard.press('Enter')
+	await expect(price).toHaveText('5.00')
+	await expect(table.locator('td[data-column="price"]').nth(1)).toBeFocused()
+	await page.keyboard.press('Shift+ArrowDown')
+	await page.keyboard.press('Delete')
+	await expect(table.locator('td[data-column="price"]').nth(2)).toHaveText('')
+	await example.getByRole('button', { name: 'Undo' }).click()
+	await expect(table.locator('td[data-column="price"]').nth(2)).toHaveText('1.20')
+
+	const trips = grid(page, 'sheet-options/totals', 'Trips of the year')
+	await trips.getByRole('button', { name: 'mean of Nights' }).click()
+	await expect(trips.locator('tfoot td[data-column="nights"]')).toContainText('3')
+	await expect(trips.locator('tfoot td[data-column="nights"]')).toHaveAttribute(
+		'data-aggregate',
+		'mean',
+	)
+})
+
+test('Range, copy and paste: Shift with an arrow selects a range, the summary adds it, and a paste copies it', async ({
+	page,
+}) => {
+	await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+	await page.goto('/?page=range-copy-and-paste')
+	const example = page.locator('[data-example="range-copy-and-paste/range"]')
+	const table = grid(page, 'range-copy-and-paste/range', 'Hours of the week')
+	await table.locator('td[data-column="mon"]').first().click()
+	await page.keyboard.press('Shift+ArrowRight')
+	await page.keyboard.press('Shift+ArrowRight')
+	await expect(table.locator('td[data-selected]')).toHaveCount(3)
+	await expect(example.getByTestId('summary')).toHaveText('3 cells, sum 21.5, average 7.17')
+	await page.keyboard.press('ControlOrMeta+c')
+	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('7.5\t8\t6')
+	await table.locator('td[data-column="mon"]').nth(2).click()
+	await page.keyboard.press('ControlOrMeta+v')
+	await expect(table.locator('tbody tr').nth(2)).toHaveText('Cleo7.508.006.00')
+})
+
+test('Fill: two rows go on as a series of weeks and days, and the rooms repeat', async ({
+	page,
+}) => {
+	await page.goto('/?page=fill')
+	const example = page.locator('[data-example="fill/fill"]')
+	const table = grid(page, 'fill/fill', 'Lessons of a course')
+	await example.getByRole('button', { name: 'Fill down from two rows' }).click()
+	await expect(table.locator('td[data-column="week"]')).toHaveText(['1', '2', '3', '4', '5'])
+	await expect(table.locator('td[data-column="day"]')).toHaveText([
+		'2027-01-04',
+		'2027-01-11',
+		'2027-01-18',
+		'2027-01-25',
+		'2027-02-01',
+	])
+	await expect(table.locator('td[data-column="room"]')).toHaveText(['A1', 'B2', 'A1', 'B2', 'A1'])
+	await expect(table.locator('[data-slot="table-fill-handle"]')).toHaveCount(1)
+})
+
+test('History: three edits come back one by one with Undo, each as a report with the reason undo', async ({
+	page,
+}) => {
+	await page.goto('/?page=history')
+	const example = page.locator('[data-example="history/undo"]')
+	const table = grid(page, 'history/undo', 'Meeting rooms')
+	await example.getByRole('button', { name: 'One seat more in each room' }).click()
+	await expect(table.locator('td[data-column="seats"]')).toHaveText(['9', '13', '5'])
+	await expect(example.getByRole('status')).toContainText('Step 3 of 3')
+	await example.getByRole('button', { name: 'Undo' }).click()
+	await expect(example.getByRole('status')).toHaveText('Step 2 of 3. Last report: undo: Birch 4')
+	await example.getByRole('button', { name: 'Undo' }).click()
+	await example.getByRole('button', { name: 'Undo' }).click()
+	await expect(table.locator('td[data-column="seats"]')).toHaveText(['8', '12', '4'])
+	await example.getByRole('button', { name: 'Redo' }).click()
+	await expect(table.locator('td[data-column="seats"]').first()).toHaveText('9')
+})
+
+test('Formats: Percent and Bold change the selected cells, and the button shows Bold pressed', async ({
+	page,
+}) => {
+	await page.goto('/?page=formats')
+	const example = page.locator('[data-example="formats/formats"]')
+	const table = grid(page, 'formats/formats', 'Funds')
+	await expect(table.locator('td[data-column="year"]').nth(1)).toHaveAttribute(
+		'data-color',
+		'alert',
+	)
+	await table.locator('td[data-column="fee"]').first().click()
+	await page.keyboard.press('Shift+ArrowDown')
+	await page.keyboard.press('Shift+ArrowDown')
+	await example.getByRole('button', { name: 'Percent' }).click()
+	await expect(table.locator('td[data-column="fee"]')).toHaveText(['0.2%', '0.4%', '1.1%'])
+	await example.getByRole('button', { name: 'Bold' }).click()
+	await expect(table.locator('td[data-column="fee"][data-bold]')).toHaveCount(3)
+	await expect(example.getByRole('button', { name: 'Bold' })).toHaveAttribute(
+		'aria-pressed',
+		'true',
+	)
+	await example.getByRole('button', { name: 'Clear' }).click()
+	await expect(table.locator('td[data-column="fee"]').first()).toHaveText('0.00')
+})
+
+test('Row numbers and letters: a letter selects its column, Shift on a number selects rows, and the corner every cell', async ({
+	page,
+}) => {
+	await page.goto('/?page=row-numbers-and-letters')
+	const example = page.locator('[data-example="row-numbers-and-letters/letters"]')
+	const table = grid(page, 'row-numbers-and-letters/letters', 'Cities')
+	await table.getByRole('columnheader', { name: 'A', exact: true }).click()
+	await expect(example.getByRole('status')).toHaveText('3 by 1 cells')
+	await expect(table.locator('th[data-kind="letter"][data-selected]')).toHaveText('A')
+	await table.getByRole('rowheader', { name: 'Row 2' }).click()
+	await table.getByRole('rowheader', { name: 'Row 3' }).click({ modifiers: ['Shift'] })
+	await expect(example.getByRole('status')).toHaveText('2 by 3 cells')
+	await table.getByRole('columnheader', { name: 'All cells' }).click()
+	await expect(example.getByRole('status')).toHaveText('3 by 3 cells')
+	await expect(table.locator('th[data-row-header][data-selected]')).toHaveCount(0)
+})
+
+test('Formulas: a computed column sorts and adds up, a new price changes the totals, and the bar refuses a wrong function', async ({
+	page,
+}) => {
+	await page.goto('/?page=sheet-formulas')
+	const orders = grid(page, 'sheet-formulas/column', 'Orders')
+	await expect(orders.locator('tbody td[data-column="total"]')).toHaveText([
+		'156.00',
+		'249.00',
+		'60.00',
+	])
+	await expect(orders.locator('tbody td[data-column="band"]')).toHaveText([
+		'medium',
+		'large',
+		'small',
+	])
+	await orders.getByRole('button', { name: 'Total' }).click()
+	await expect(orders.locator('tbody td[data-column="total"]')).toHaveText([
+		'60.00',
+		'156.00',
+		'249.00',
+	])
+	await expect(orders.locator('tfoot td[data-column="total"]')).toHaveText('465.00')
+
+	const example = page.locator('[data-example="sheet-formulas/cells"]')
+	const sheet = grid(page, 'sheet-formulas/cells', 'An order with formulas')
+	await sheet.locator('td[data-column="price"]').first().click()
+	await page.keyboard.type('49')
+	await page.keyboard.press('Enter')
+	await expect(sheet.locator('td[data-column="total"]').first()).toHaveText('196.00')
+	await expect(sheet.locator('td[data-column="total"]').last()).toHaveText('551.00')
+
+	await sheet.locator('td[data-column="total"]').last().click()
+	await expect(example.getByTestId('address')).toHaveText('D4')
+	const field = example.getByRole('textbox', { name: 'Formula of the active cell' })
+	await expect(field).toHaveValue('=SUM(D1:D3)')
+	await field.fill('=SUMM(D1:D3)')
+	await field.press('Enter')
+	await expect(example.locator('form p[role="status"]')).toContainText('SUMM')
+	await expect(field).toHaveAttribute('aria-invalid', 'true')
+	await expect(sheet.locator('td[data-column="total"]').last()).toHaveText('551.00')
+})
+
+test('An Excel file with formulas: the file holds the formula of each profit cell, with its result', async ({
+	page,
+}) => {
+	await page.addInitScript(() => {
+		const files: Blob[] = []
+		Object.assign(window, { exported: files })
+		const create = URL.createObjectURL.bind(URL)
+		URL.createObjectURL = (blob: Blob | MediaSource) => {
+			if (blob instanceof Blob) files.push(blob)
+			return create(blob)
+		}
+	})
+	await page.goto('/?page=excel-formulas')
+	const example = page.locator('[data-example="excel-formulas/file"]')
+	await expect(grid(page, 'excel-formulas/file', 'Profit by month')).toBeVisible()
+	const download = page.waitForEvent('download')
+	await example.getByRole('button', { name: 'Download Excel' }).click()
+	expect((await download).suggestedFilename()).toBe('profit.xlsx')
+	// The sheet of the file, unzipped in the page.
+	const sheet = await page.evaluate(async () => {
+		const blob = (window as unknown as { exported: Blob[] }).exported[0]
+		if (!blob) return null
+		const bytes = new Uint8Array(await blob.arrayBuffer())
+		const view = new DataView(bytes.buffer)
+		const end = bytes.length - 22
+		let at = view.getUint32(end + 16, true)
+		for (let index = 0; index < view.getUint16(end + 10, true); index++) {
+			const method = view.getUint16(at + 10, true)
+			const packed = view.getUint32(at + 20, true)
+			const nameLength = view.getUint16(at + 28, true)
+			const local = view.getUint32(at + 42, true)
+			const name = new TextDecoder().decode(bytes.subarray(at + 46, at + 46 + nameLength))
+			if (name === 'xl/worksheets/sheet1.xml') {
+				const start = local + 30 + nameLength + view.getUint16(local + 28, true)
+				const body = bytes.subarray(start, start + packed)
+				if (method === 0) return new TextDecoder().decode(body)
+				const stream = new Blob([body]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+				return await new Response(stream).text()
+			}
+			at += 46 + nameLength
+		}
+		return null
+	})
+	expect(sheet).toMatch(/<c r="D2"(?: s="\d+")?><f>B2-C2<\/f><v>3100<\/v><\/c>/)
+	expect(sheet).toMatch(/<c r="D4"(?: s="\d+")?><f>B4-C4<\/f><v>4050<\/v><\/c>/)
 })

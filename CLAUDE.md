@@ -112,7 +112,7 @@ A data sheet is the table with more options, not a second primitive and not a `S
 - An error of a formula is a text in the row (`#DIV/0!`). `columnText` and `text` show it before any format, and the cell gets `data-formula-error` and the words of the error as `aria-description`.
 - The result of a formula never depends on the `locale` of the table or of the machine. The locale changes only what a person types and reads: the signs of a number and between arguments, and the texts of the `period` format. A function whose name Excel has behaves as in Excel; one that behaves in another way gets a name that Excel does not have (`WEEKOF`, `DATEADD`).
 - The reads for an agent (`getFormulaSummary`, `evaluateFormula`, `getFormulaFunctions`) run in the engine (`engine.summary`, `engine.evaluateText`). The snapshot of an agent holds no formula: `cellFormulas` is not in `controlled`.
-- `packages/vue/README.md`, section "Formulas", names every option, method, slot prop, attribute and message of the formulas, and the differences of the functions from Excel. Apps and the sink build on it without reading the code: change it with the code.
+- The docs pages Formulas (`apps/docs/src/docs/pages/sheet-formulas.md`) and An Excel file with formulas (`excel-formulas.md`) name every option, method, slot prop, attribute and message of the formulas, and the differences of the functions from Excel. Apps and the sink build on them without reading the code: change them with the code, then run `pnpm docs:write`.
 - An Excel file holds a formula only when it means the same there (`formulas/excel.ts`): every cell it reads is in the file with the value of the table (`exact` of `toXlsx`), a range is one column of rows next to each other in the order of the document, and every function is in `EXCEL_FUNCTIONS`. When in doubt, the result. The export entry holds only the writer of `<f>`; the rule is in the formulas entry. A file without the `formula` option is the same bytes as a table without formulas (`formulas/excel.test.ts`).
 - Run `BENCH=1 vp test run packages/core/src/formulas/formulas.perf --silent=false` when you change the engine or the glue, and add the lines to "Formulas, 50,000 rows" of `docs/benchmarks.md`.
 
@@ -215,6 +215,7 @@ Run `vp check`, `vp run type-check` and `vp test` before you call work done; add
 - Every release is a patch version (`always-bump-patch`). For a minor or major version, put a `Release-As: X.Y.Z` footer in the body of a commit.
 - The publish uses npm Trusted Publishing (OIDC), with no token: each package has the trusted publisher `FallDownTheSystem/ui-sdk-table`, workflow `release.yml`, on npmjs.com. It needs npm 11.5.1 or newer.
 - A package holds `src` without `*.test.ts`, `*.perf.ts` and `src/sheet/harness.ts` (`files` of its `package.json`). A new file that only tests use, with another name, gets a line there.
+- The CI run of the release pull request ends with `failure` and no job: the pull request is merged within seconds, before a job starts. That is no fault. The merge is made by the workflow, so no CI run follows it on `master`.
 - A release that has a tag and is not on npm: run the workflow by hand with `publish_current`. It skips a package whose version npm has already.
 
 ## CI and dependency updates (`.github`)

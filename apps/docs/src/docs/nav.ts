@@ -24,4 +24,17 @@ export const groups: readonly { title: string; inline?: boolean; pages: readonly
 			'agents',
 		],
 	},
+	{
+		title: 'Data sheet',
+		pages: [
+			'sheet-options',
+			'range-copy-and-paste',
+			'fill',
+			'history',
+			'formats',
+			'row-numbers-and-letters',
+			'sheet-formulas',
+			'excel-formulas',
+		],
+	},
 ]

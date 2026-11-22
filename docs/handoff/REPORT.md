@@ -410,3 +410,30 @@ Date: 2026-11-22, later. The library is on `master` at `87adc18`, and the app on
 - Item 11 of "Set without an answer of the owner": a value typed into a cell of a computed column stays refused.
 - Open item 16: the speed of a fill and a paste of formulas over 50,000 rows is accepted; no speed round.
 - Open item 21: the city names stay in the order data of the sink page.
+
+## After that: the number keyboard, the docs site, npm
+
+Date: 2026-11-22, later still. The library is on `master` at `57cdaa5` (version 0.1.1), and the app on `master` at `794fb64`.
+
+**The number keyboard** (`7100f2f`). The column option `numberKeyboard` gives the field of the editor `inputmode="decimal"`. It is off by default, by a decision of the owner. A cell that can hold a formula and a cell whose format is no number format do not get it. The main entry grew by 210 bytes, and `BEFORE` of `formulas-size.test.ts` moved with it.
+
+**The docs site** (`f5279f1`, `f374d28`, `078305d`). The GitHub Pages site is the docs, and the sink page is one of its pages (`?page=sink`).
+- A page is Markdown in `apps/docs/src/docs/pages`, an example is a `.vue` file in `apps/docs/src/docs/examples`, and `pnpm docs:write` writes the same pages into `packages/vue/docs` with `llms.txt`. A test fails while those files are stale.
+- Live: the three pages of "Get started" and the 13 pages of "Using the table". Still to come: "Data sheet", "Build on it", the reference from the types, and the skill.
+- The sidebar scrolled 10 px sideways; it no longer does, and a browser test holds that. With 26 pages it scrolls down in a window of 900 px.
+
+**CI and dependency updates** (`2ce3009`). `ci.yml` runs the five checks on every pull request and every push to `master`. Dependabot runs on Monday at 06:00 UTC; a job merges a minor or patch update after the checks pass, and a major update waits with the label `needs-review`. Dependabot ignores `@ui-sdk/*`, `vue-tsc`, the minor and major updates of `typescript` and the `vite` alias.
+
+**npm** (`6f3e648`, `dc039cf`, `57cdaa5`). The two packages are on npm as `ui-sdk-table-core` and `ui-sdk-table-vue`, MIT, always at one version.
+- 0.1.0 was published by the owner from the two tarballs of `6f3e648`. 0.1.1 was published by the workflow `release.yml` through npm Trusted Publishing, with provenance.
+- A push to `master` that changes `packages/` releases a patch version: release-please opens and merges its pull request and makes the tag, and the workflow checks, packs and publishes both packages. Commit subjects have a Conventional Commits type from `078305d` on.
+- A package holds its TypeScript source without the tests. An install of 0.1.0 from the registry into an empty Vue project passed the type check and the build.
+- An app needs `lib` ES2023 or newer for its type check: the source uses `toSorted`. The Installation page says so.
+
+**The weekly run.** A thread of its own runs on Monday at 08:00 UTC, two hours after Dependabot, for the library and the app. It takes a new version of UI SDK after it read what changed, handles the updates that Dependabot left open, checks `master` of the app (the app merges its updates without a check), and checks that a release reached npm.
+
+**Not verified, added.** The merge job for a Dependabot update: every dependency was current, so no update came. The first run of the weekly thread. An install of the packages with npm or yarn.
+
+**Open, added.**
+23. The app still takes the library from a commit on GitHub; the move to npm 0.1.1 is in work.
+24. An entry mode for cell editing (Tab walks the cells that can be edited, one press opens the editor, a draft with Save and Cancel outside the table) is in work in the library, and the app follows.
