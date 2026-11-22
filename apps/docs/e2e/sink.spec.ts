@@ -490,6 +490,14 @@ test('the tiles of formulas: a typed formula, a refused circle, a period, a deci
 	await expect(cell(tableOf(page, 'formula-errors'), 'Sales', 'each')).toHaveAttribute(
 		'data-formula-error',
 	)
+	// The code of the error is the widest text of its column, and the editor in its place leaves the columns alone.
+	const errorTable = tableOf(page, 'formula-errors')
+	await cell(errorTable, 'Sales', 'each').scrollIntoViewIfNeeded()
+	const errorColumns = await headerBoxes(errorTable)
+	await cell(errorTable, 'Sales', 'each').dblclick()
+	await expect(errorTable.locator('[data-slot="table-editor"]')).toHaveValue('=B2/C2')
+	expect(await headerBoxes(errorTable)).toEqual(errorColumns)
+	await page.keyboard.press('Escape')
 	await errors.getByRole('button', { name: 'Make B1 read D1' }).click()
 	await expect(errors.getByRole('status')).toContainText('B1 reads D1 reads B1')
 	await expect(errors.getByRole('status')).not.toContainText('cannot be set')
@@ -506,6 +514,13 @@ test('the tiles of formulas: a typed formula, a refused circle, a period, a deci
 	// The same formula in two languages: only its signs change.
 	const typed = page.getByTestId('locale-formula')
 	await expect(typed).toHaveText('=ROUND(B1*1,5; 1)')
+	const localeTable = tableOf(page, 'formula-locale')
+	await cell(localeTable, 'Soup', 'marked').scrollIntoViewIfNeeded()
+	const localeColumns = await headerBoxes(localeTable)
+	await cell(localeTable, 'Soup', 'marked').dblclick()
+	await expect(localeTable.locator('[data-slot="table-editor"]')).toBeFocused()
+	expect(await headerBoxes(localeTable)).toEqual(localeColumns)
+	await page.keyboard.press('Escape')
 	await tile(page, 'formula-locale').getByRole('radio', { name: 'English' }).click()
 	await expect(typed).toHaveText('=ROUND(B1*1.5, 1)')
 

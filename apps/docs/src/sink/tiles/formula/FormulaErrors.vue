@@ -21,11 +21,11 @@ const rows = shallowRef<Row[]>([
 	{ id: 'c', team: 'Support', spent: 640, heads: 2, each: 320 },
 ])
 const columns: ColumnDef<Row>[] = [
-	rowNumberColumn<Row>(),
-	{ id: 'team', header: 'Team', editable: false },
-	{ id: 'spent', header: 'Spent', format: 'integer' },
-	{ id: 'heads', header: 'Heads', format: 'integer' },
-	{ id: 'each', header: 'Each', format: 'integer' },
+	rowNumberColumn<Row>({ width: 26 }),
+	{ id: 'team', header: 'Team', width: 74, editable: false },
+	{ id: 'spent', header: 'Spent', width: 61, format: 'integer' },
+	{ id: 'heads', header: 'Heads', width: 63, format: 'integer' },
+	{ id: 'each', header: 'Each', width: 68, format: 'integer' },
 ]
 const START: CellFormulas = {
 	cells: Object.fromEntries(['a', 'b', 'c'].map((id) => [id, { each: '=[spent]/[heads]' }])),

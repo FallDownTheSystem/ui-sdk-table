@@ -26,10 +26,10 @@ const rows = shallowRef<Row[]>([
 	{ id: 'c', item: 'Soup', price: 7.9, marked: 11.9 },
 ])
 const columns: ColumnDef<Row>[] = [
-	rowNumberColumn<Row>(),
-	{ id: 'item', header: 'Item', editable: false },
-	{ id: 'price', header: 'Cost', format: 'decimal' },
-	{ id: 'marked', header: 'Price', format: 'decimal' },
+	rowNumberColumn<Row>({ width: 32 }),
+	{ id: 'item', header: 'Item', width: 86, editable: false },
+	{ id: 'price', header: 'Cost', width: 84, format: 'decimal' },
+	{ id: 'marked', header: 'Price', width: 90, format: 'decimal' },
 ]
 // Stored with a point and commas, as in every language.
 const START: CellFormulas = {
