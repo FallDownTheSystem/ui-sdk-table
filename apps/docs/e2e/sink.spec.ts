@@ -743,10 +743,16 @@ test('the wheel over a table moves the page when the table has no more to scroll
 	expect(await scrollY()).toBeGreaterThan(scrollsFrom)
 })
 
-for (const { width, columns } of [
+// Four columns where four fit, else two, else one; never three. Each change has a width just under
+// and just over it: two columns of 320px need 710px of page, four need 1378px.
+for (const { width, columns, pinScrolls = true } of [
 	{ width: 360, columns: 1 },
-	{ width: 768, columns: 2 },
-	{ width: 1280, columns: 3 },
+	{ width: 709, columns: 1 },
+	{ width: 710, columns: 2 },
+	// In two columns the table of `columns-pin` fits its wide tile.
+	{ width: 1280, columns: 2, pinScrolls: false },
+	{ width: 1377, columns: 2, pinScrolls: false },
+	{ width: 1378, columns: 4 },
 	{ width: 1480, columns: 4 },
 ]) {
 	test(`at ${width} px the grid has ${columns} columns, no hole inside, and the page does not scroll sideways`, async ({
@@ -755,7 +761,8 @@ for (const { width, columns } of [
 		await page.setViewportSize({ width, height: 800 })
 		await open(page, '&eager')
 		const count = await tiles(page).count()
-		await expect(page.locator('.tile [data-slot="table"]')).toHaveCount(count)
+		// Every demo is a chunk of its own, and `eager` loads 69 of them at once.
+		await expect(page.locator('.tile [data-slot="table"]')).toHaveCount(count, { timeout: 20_000 })
 		expect(await gridColumns(page)).toBe(columns)
 		expect(await pageOverflow(page)).toBe(0)
 
@@ -792,6 +799,19 @@ for (const { width, columns } of [
 			expect(item.right).toBeLessThanOrEqual(width)
 		}
 
+		// No frame cuts its rows unless its tile is about scrolling: in one column a tile grows instead.
+		const cut = await page
+			.locator('.sink-frame:not(.scrolls)')
+			.evaluateAll((frames) =>
+				frames
+					.filter((frame) => frame.scrollHeight > frame.clientHeight + 1)
+					.map(
+						(frame) => `${frame.closest('.tile')?.id}:${frame.scrollHeight - frame.clientHeight}`,
+					),
+			)
+		expect(cut).toEqual([])
+
+		if (!pinScrolls) return
 		// A table that is wider than its tile scrolls inside the tile.
 		const wide = frameOf(page, 'columns-pin')
 		const [inner, outer] = await wide.evaluate((element) => [

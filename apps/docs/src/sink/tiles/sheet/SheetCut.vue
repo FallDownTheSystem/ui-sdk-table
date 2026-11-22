@@ -51,7 +51,7 @@ async function empty() {
 	<div class="demo">
 		<div class="demo-bar">
 			<Button @click="move">Move two days</Button>
-			<Button @click="empty">Empty all</Button>
+			<Button @click="empty">Empty</Button>
 			<Button :disabled="!view?.canUndo" @click="controller.undo()">Undo</Button>
 		</div>
 		<div class="sink-frame">
