@@ -894,8 +894,19 @@ export type TableOptions<Row = unknown> = {
 	 * Defaults to the `sheet` option.
 	 */
 	fillHandle?: boolean | 'vertical' | 'horizontal'
-	/** Whether a person can edit cells. A column can say otherwise. Defaults to the `sheet` option. */
+	/** Whether a person can edit cells. A column can say otherwise. Defaults to the `sheet` option, else to `entry`. */
 	editable?: boolean
+	/**
+	 * A mode for entering data, which an app can turn on and off, for example
+	 * with an Edit button. While it is on, cells can be edited unless
+	 * `editable` is false or a column says otherwise, one plain press on a
+	 * cell opens its editor, and Tab and Shift+Tab on a cell and in the
+	 * editor go to the next and the previous cell that can be edited, across
+	 * the rows. From the last such cell Tab leaves the table, and from the
+	 * first Shift+Tab. Inside a selected range of more than one cell, Tab
+	 * keeps the rule of the range. Defaults to false.
+	 */
+	entry?: boolean
 	/**
 	 * Runs when cells got new values: one cell from the editor or from
 	 * `editCell`, many cells from a paste. The table does not change the rows.
@@ -1222,6 +1233,7 @@ export const table = definePrimitive({
 		history: 'value',
 		fillHandle: 'value',
 		editable: 'boolean',
+		entry: 'boolean',
 		onCellEdit: 'callback',
 		cellSelection: 'boolean',
 		columnLetters: 'boolean',
@@ -1328,7 +1340,8 @@ export const table = definePrimitive({
 			options().messages?.[key] ?? defaultMessages[key]
 		/** The rules of a data sheet, which are also a preset for the options under them. */
 		const sheet = () => options().sheet ?? false
-		const editableByDefault = () => options().editable ?? sheet()
+		const entry = () => options().entry ?? false
+		const editableByDefault = () => options().editable ?? (sheet() || entry())
 
 		let seenRows = options().rows
 		let seenColumns = options().columns
@@ -2638,12 +2651,95 @@ export const table = definePrimitive({
 		 * range both keys walk the range and start again at its first cell.
 		 */
 		function moveAfter(from: GridCell, move: Move): GridCell {
-			if (!sheet()) {
+			const bounds = rangeAround(from)
+			if (entry() && !bounds && (move === 'forward' || move === 'back')) {
+				return entryMove(from, move === 'back') ?? from
+			}
+			if (!sheet() && !(entry() && bounds)) {
 				const next = moveFrom(from, move, moveLimits())
 				const spot = area(next)
 				return { row: spot.row, col: spot.col }
 			}
-			return moveFrom(from, move, moveLimits(), rangeAround(from), holdsCell)
+			return moveFrom(from, move, moveLimits(), bounds, holdsCell)
+		}
+
+		/** Whether a place of the grid holds a cell that takes input: one that opens an editor, and no cell of a column that leads. */
+		const takesInput = (cell: GridCell) => {
+			const id = cellIdAt(cell.row, cell.col)
+			return id !== undefined && !layout().leaves[cell.col]?.lead && editableCell(id)
+		}
+
+		/**
+		 * The cell that Tab goes to in the entry mode: the next or the previous
+		 * cell that takes input, in reading order and across the rows.
+		 * `undefined` after the last one and before the first one, so that Tab
+		 * leaves the table there.
+		 */
+		function entryMove(from: GridCell, back: boolean): GridCell | undefined {
+			if (!inBody(from.row)) return undefined
+			const to = moveFrom(from, back ? 'back' : 'forward', moveLimits(), undefined, takesInput)
+			return to.row === from.row && to.col === from.col ? undefined : to
+		}
+
+		/**
+		 * Tab in the editor of the entry mode at the last cell that takes input
+		 * (with Shift: the first). The text is saved and the key goes on, so the
+		 * browser takes focus out of the table. `true` when it saved, `false`
+		 * when the text was refused or is checked, and `undefined` for any other key or place.
+		 */
+		function entryLeave(event: KeyboardEvent): boolean | undefined {
+			if (!entry() || event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey) {
+				return undefined
+			}
+			const id = state().editing
+			const at = id === null ? undefined : placeOf(id)
+			if (!at || rangeAround(at) || entryMove(at, event.shiftKey)) return undefined
+			return edit.end('tab-key', event)
+		}
+
+		/**
+		 * The cell of the last press in the entry mode. The click after it
+		 * opens that cell, and not the cell under the pointer then: the save of
+		 * an editor in another cell can change the widths of the columns
+		 * between the press and the release, and then the browser sends the
+		 * click to the row, or past the table when it got narrower. So the
+		 * page hears the next click. A pointer that moved is a drag, and opens nothing.
+		 */
+		let pressed: { id: string; x: number; y: number } | undefined
+		context.onDestroy(() => (pressed = undefined))
+		function entryPress(event?: PointerEvent, id?: string): void {
+			const plain =
+				event &&
+				event.button === 0 &&
+				!event.shiftKey &&
+				!event.ctrlKey &&
+				!event.metaKey &&
+				!event.altKey
+			pressed =
+				plain && id !== undefined && entry() && editableCell(id)
+					? { id, x: event.clientX, y: event.clientY }
+					: undefined
+			const page = event?.target instanceof Node ? event.target.ownerDocument : null
+			if (pressed && page) page.addEventListener('click', entryClick, { capture: true, once: true })
+		}
+		function entryClick(event: MouseEvent): void {
+			const press = pressed
+			pressed = undefined
+			if (!press || !entry()) return
+			if (Math.abs(event.clientX - press.x) > 4 || Math.abs(event.clientY - press.y) > 4) return
+			edit.start(press.id, { reason: 'imperative', event })
+		}
+
+		/** A key in the text field of the editor. */
+		function editorKeydown(event: KeyboardEvent): void {
+			// After the last cell of the entry mode, Tab saves and goes on to the
+			// root, which lets the browser take focus out of the table.
+			const left = entryLeave(event)
+			if (left) return
+			if (left === false) event.preventDefault()
+			else edit.inputKeydown(event)
+			// A key in the field is text or a command of the editor, and never a move in the grid.
+			event.stopPropagation()
 		}
 
 		const edit = createCellEdit(context, {
@@ -3193,23 +3289,23 @@ export const table = definePrimitive({
 		/** The keys of a sheet on a body cell: Delete and Backspace empty the selected cells, and Tab stays inside a range. */
 		function sheetKeydown(event: KeyboardEvent, cell: GridCell): boolean {
 			if (fillKeydown(event, cell)) return true
-			if (!sheet() || event.altKey || event.ctrlKey || event.metaKey) return false
-			if (event.key === 'Tab') {
+			if (event.altKey || event.ctrlKey || event.metaKey) return false
+			if (event.key === 'Tab' && (sheet() || entry())) {
 				// Without a range, Tab leaves the table: a page is not a spreadsheet,
 				// and a table that keeps Tab is a trap for a person without a pointer.
+				// The entry mode goes to the next cell that takes input, and leaves after the last.
 				const bounds = rangeAround(cell)
-				if (!bounds) return false
+				const to = bounds
+					? moveFrom(cell, event.shiftKey ? 'back' : 'forward', moveLimits(), bounds, holdsCell)
+					: entry()
+						? entryMove(cell, event.shiftKey)
+						: undefined
+				if (!to) return false
 				event.preventDefault()
-				const to = moveFrom(
-					cell,
-					event.shiftKey ? 'back' : 'forward',
-					moveLimits(),
-					bounds,
-					holdsCell,
-				)
 				grid.focus(to, { reason: 'list-navigation', event })
 				return true
 			}
+			if (!sheet()) return false
 			if (event.shiftKey || (event.key !== 'Delete' && event.key !== 'Backspace')) return false
 			if (!editing() || !inBody(cell.row)) return false
 			event.preventDefault()
@@ -5425,6 +5521,9 @@ export const table = definePrimitive({
 			inBody,
 			/** Whether a cell can be edited, by its id. */
 			canEditCell: (id: string) => editableCell(id),
+			entry,
+			editorKeydown,
+			entryPress,
 			hasEditing: editing,
 			cellSelection,
 			/**
@@ -5705,6 +5804,7 @@ export const table = definePrimitive({
 					'aria-multiselectable':
 						api.selectionMode() === 'multiple' || api.cellSelection() ? 'true' : undefined,
 					'data-cell-selection': api.cellSelection() ? '' : undefined,
+					'data-entry': api.entry() ? '' : undefined,
 					'data-sheet': api.sheet() ? '' : undefined,
 					'data-formulas': api.hasFormulas() ? '' : undefined,
 					'data-sized': sized ? '' : undefined,
@@ -6228,6 +6328,7 @@ export const table = definePrimitive({
 				},
 				pointerdown: (event, { api, props, el }) => {
 					const target = event.target instanceof Element ? event.target : undefined
+					api.entryPress()
 					// A press on the resize handle resizes. It must not move focus or start a column move.
 					if (target?.closest('[data-slot="table-resizer"]')) return
 					// A press on the fill handle starts a fill, and the range under it stays.
@@ -6244,6 +6345,7 @@ export const table = definePrimitive({
 							event.preventDefault()
 							return
 						}
+						api.entryPress(event, own)
 						const ranged =
 							!props.header && event.button === 0 && api.cellSelection() && api.inBody(props.row)
 						const letter = !!props.header && event.button === 0 && api.isLetterRow(props.row)
@@ -6336,11 +6438,7 @@ export const table = definePrimitive({
 				}
 			},
 			on: {
-				keydown: (event, { api }) => {
-					api.edit.inputKeydown(event)
-					// A key in the field is text or a command of the editor, and never a move in the grid.
-					event.stopPropagation()
-				},
+				keydown: (event, { api }) => api.editorKeydown(event),
 				focusout: (event, { api, el }) => {
 					api.edit.focusout(event, el?.closest<HTMLElement>('[data-slot="table"]'))
 				},

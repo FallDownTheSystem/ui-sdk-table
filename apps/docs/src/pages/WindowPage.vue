@@ -34,6 +34,8 @@ const frame = query.get('frame')
 const pageFrame = frame === 'page' || frame === 'wide'
 // With `bars`, the page has a fixed header and footer of its own over the rows.
 const bars = query.has('bars')
+// With `entry`, the table is in the entry mode: Tab walks the cells and a press opens an editor.
+const entry = query.has('entry')
 
 const controller = createTableController()
 const size = shallowRef(SIZES[0] ?? 10000)
@@ -152,6 +154,7 @@ function togglePin(id: string, edge: 'top' | 'bottom') {
 			:has-detail="hasDetail"
 			sticky-header
 			sticky-footer
+			:entry="entry"
 			aria-label="People"
 		>
 			<template #col-name="{ row, text, expandable, expanded: open, toggleExpanded }">

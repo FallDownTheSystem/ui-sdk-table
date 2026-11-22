@@ -476,3 +476,21 @@ test('the row window switches off and on, and a row is still found', async ({ pa
 	await expect(dataRows(table).last()).toHaveAttribute('aria-rowindex', String(count + 1))
 	await expect(dataRows(table).last()).toBeInViewport()
 })
+
+test('in the entry mode Tab goes to the next row also when it is not rendered', async ({
+	page,
+}) => {
+	const table = await open(page, '&entry')
+	const first = cell(table, 2, 5)
+	await first.click()
+	await page.keyboard.press('Escape')
+	await expect(first).toBeFocused()
+	// The person scrolls far away: the focused row stays in the page, and the row after it goes.
+	await page.getByTestId('scroller').evaluate((el) => (el.scrollTop = el.scrollHeight / 2))
+	await expect(table.locator('tr[aria-rowindex="3"]')).toHaveCount(0)
+	await expect(first).toBeFocused()
+	await page.keyboard.press('Tab')
+	const next = cell(table, 3, 1)
+	await expect(next).toBeFocused()
+	await expect(next).toBeInViewport()
+})

@@ -132,10 +132,7 @@ export function sheetTable(
 		if (!ref) throw new Error('No cell is edited.')
 		const el = document.createElement('input')
 		cell(ref.rowId, ref.columnId).append(el)
-		el.addEventListener('keydown', (event) => {
-			view.api.edit.inputKeydown(event)
-			event.stopPropagation()
-		})
+		el.addEventListener('keydown', (event) => view.api.editorKeydown(event))
 		el.addEventListener('focusout', (event) => view.api.edit.focusout(event, view.root))
 		const leave = view.api.edit.bindInput(el)
 		// A renderer takes the field out when the edit ends.

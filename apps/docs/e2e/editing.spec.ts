@@ -621,9 +621,12 @@ test('Shift+Space and Control+Space take rows and columns of the range, and rows
 test('the keys of a sheet do nothing in a table', async ({ page }) => {
 	const table = await open(page)
 	await expect(table).not.toHaveAttribute('data-sheet')
+	await expect(table).not.toHaveAttribute('data-entry')
 	await page.evaluate(() => navigator.clipboard.writeText('kept'))
 	const name = cell(table, 2, 2)
 	await name.click()
+	// Without the entry mode, one press opens no editor.
+	await expect(editor(table)).toHaveCount(0)
 	await page.keyboard.press('Shift+ArrowDown')
 	await expect(selected(table)).toHaveCount(2)
 	// The range holds two rows, so a sheet would fill it down, and make it bold and italic.
@@ -678,4 +681,129 @@ test('the keys of a sheet do nothing in a table', async ({ page }) => {
 	await expect(cell(table, 3, 4)).toHaveText('2')
 	await expect(cell(table, 4, 4)).toHaveText('54')
 	await expect(selected(table)).toHaveCount(2)
+})
+
+test('in the entry mode Tab walks the cells that can be edited and leaves the table at both ends', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await page.getByLabel('Entry mode').check()
+	await expect(table).toHaveAttribute('data-entry', '')
+	const after = page.getByRole('button', { name: 'Clear the list' })
+	const first = cell(table, 2, 2)
+	// One press opens the editor, and Escape gives the cell back.
+	await first.click()
+	await expect(editor(table)).toBeFocused()
+	await expect(editor(table)).toHaveValue('Ada Adams')
+	await page.keyboard.press('Escape')
+	await expect(first).toBeFocused()
+
+	// The id and the switch of a row cannot be edited, so Tab passes over them to the next row.
+	for (const col of [3, 4, 5]) {
+		await page.keyboard.press('Tab')
+		await expect(cell(table, 2, col)).toBeFocused()
+	}
+	await page.keyboard.press('Tab')
+	await expect(cell(table, 3, 2)).toBeFocused()
+	await page.keyboard.press('Shift+Tab')
+	await expect(cell(table, 2, 5)).toBeFocused()
+	await expect(editor(table)).toHaveCount(0)
+
+	// Before the first cell, Shift+Tab leaves the table, and Tab comes back to it.
+	await first.click()
+	await page.keyboard.press('Escape')
+	await page.keyboard.press('Shift+Tab')
+	await expect(table.locator(':focus')).toHaveCount(0)
+	await page.keyboard.press('Tab')
+	await expect(first).toBeFocused()
+
+	// After the last cell, Tab leaves the table.
+	const last = cell(table, 11, 5)
+	await last.click()
+	await page.keyboard.press('Escape')
+	await page.keyboard.press('Tab')
+	await expect(after).toBeFocused()
+	await expect(log(page)).toHaveCount(0)
+})
+
+test('in the entry mode typing on a cell after Tab replaces its value, and Tab saves and moves on', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await page.getByLabel('Entry mode').check()
+	await cell(table, 2, 2).click()
+	await page.keyboard.press('Escape')
+	await page.keyboard.press('Tab')
+	await page.keyboard.press('Tab')
+	const score = cell(table, 2, 4)
+	await expect(score).toBeFocused()
+	await page.keyboard.type('50')
+	await expect(editor(table)).toHaveValue('50')
+	await page.keyboard.press('Tab')
+	await expect(score).toHaveText('50')
+	await expect(cell(table, 2, 5)).toBeFocused()
+	await expect(log(page).first()).toHaveText('tab-key: e1.score=50')
+
+	// In the editor of the last cell, Tab saves and leaves the table.
+	await cell(table, 11, 5).click()
+	await page.keyboard.press('Control+a')
+	await page.keyboard.type('2020-01-02')
+	await page.keyboard.press('Tab')
+	await expect(page.getByRole('button', { name: 'Clear the list' })).toBeFocused()
+	await expect(log(page).first()).toHaveText('tab-key: e10.joined="2020-01-02"')
+	await expect(editor(table)).toHaveCount(0)
+})
+
+test('in the entry mode a press outside the table saves, and a press with Shift or a drag selects', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await page.getByLabel('Entry mode').check()
+	await cell(table, 3, 2).click()
+	await editor(table).fill('Zed Zane')
+	await page.getByRole('heading', { name: 'Editing' }).click()
+	await expect(editor(table)).toHaveCount(0)
+	await expect(cell(table, 3, 2)).toHaveText('Zed Zane')
+	await expect(log(page).first()).toHaveText('focus-out: e2.name="Zed Zane"')
+
+	// A press with Shift stretches the range, and opens no editor.
+	await cell(table, 2, 2).click()
+	await page.keyboard.press('Escape')
+	await cell(table, 3, 4).click({ modifiers: ['Shift'] })
+	await expect(editor(table)).toHaveCount(0)
+	await expect(selected(table)).toHaveCount(6)
+
+	// A drag paints a range, and opens no editor.
+	const from = await cell(table, 5, 2).boundingBox()
+	const to = await cell(table, 6, 3).boundingBox()
+	if (!from || !to) throw new Error('The cells are not in the page.')
+	await page.mouse.move(from.x + 10, from.y + 10)
+	await page.mouse.down()
+	await page.mouse.move(to.x + 10, to.y + 10, { steps: 5 })
+	await page.mouse.up()
+	await expect(editor(table)).toHaveCount(0)
+	await expect(selected(table)).toHaveCount(4)
+})
+
+test('in the entry mode a press on another cell after a change saves it and opens the pressed cell', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await page.getByLabel('Entry mode').check()
+	const input = editor(table)
+	// A cell of the same row.
+	await cell(table, 3, 2).click()
+	await input.fill('Bea Brooks')
+	await cell(table, 3, 4).click()
+	await expect(cell(table, 3, 2)).toHaveText('Bea Brooks')
+	await expect(cell(table, 3, 4)).toHaveAttribute('data-editing', '')
+	await expect(input).toBeFocused()
+	await expect(input).toHaveValue('37')
+	// A cell of another row.
+	await input.fill('46')
+	await cell(table, 5, 2).click()
+	await expect(cell(table, 3, 4)).toHaveText('46')
+	await expect(cell(table, 5, 2)).toHaveAttribute('data-editing', '')
+	await expect(input).toBeFocused()
+	await expect(input).toHaveValue('Dan Drake')
 })

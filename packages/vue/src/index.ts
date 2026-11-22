@@ -38,6 +38,7 @@ export {
 export { createTableController } from './controller'
 export { useTableSearch, type TableSearch } from './search'
 export { useTableView } from './view'
+export { useEditDraft, type EditDraft, type EditDraftOptions } from './draft'
 export { useSelectionSummary, type SelectionSummaryOptions } from './summary'
 export {
 	aggregateName,
