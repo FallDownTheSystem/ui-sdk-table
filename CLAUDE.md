@@ -203,6 +203,13 @@ vp run build      # build the packages
 
 Run `vp check`, `vp run type-check` and `vp test` before you call work done; add `vp run test:e2e` when a page or a part changed. Unset `NODE_PATH` first if `vp check` ignores the `fmt` block.
 
+## CI and dependency updates (`.github`)
+
+- `ci.yml` runs the five checks (`check`, `type-check`, the unit tests, the browser tests, `build`) on every pull request and every push to `master`.
+- Dependabot opens its pull requests on Monday at 06:00 UTC: one for the minor and patch updates of npm, one for those of the actions, and one for each major update. The job `dependabot` of `ci.yml` merges a minor or patch update after the checks pass, and starts the deploy of the docs. A major update gets the label `needs-review` and waits for a person.
+- `dependabot.yml` ignores `@ui-sdk/*`, `vue-tsc`, the minor and major updates of `typescript`, and the `vite` alias, for the reasons under "Tooling facts that cost time". Take one of these by hand, and change the list when its reason is gone.
+- Do not bump another dependency by hand unless it cannot wait for Monday.
+
 ## Tooling facts that cost time
 
 - **Versions live in the `catalog` of `pnpm-workspace.yaml`.** UI SDK is pinned to an exact beta; do not bump it without reading what changed.

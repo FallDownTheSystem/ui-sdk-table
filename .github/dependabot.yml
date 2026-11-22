@@ -1,0 +1,60 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    ignore:
+      # UI SDK is pinned to an exact beta. A new beta is read before it is taken.
+      - dependency-name: '@ui-sdk/*'
+      # 3.3.12 to 3.3.14 break `//` inside static attributes.
+      - dependency-name: vue-tsc
+      # TypeScript 7 has no compiler API, which vue-tsc needs.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      # An alias for the Vite+ core, which follows `vite-plus`.
+      - dependency-name: vite
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      npm-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+    labels:
+      - dependencies
+      - npm
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      actions-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+      - github-actions
