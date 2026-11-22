@@ -383,6 +383,7 @@ test('a price is edited in its cell, and a price below zero is refused', async (
 
 	await price.dblclick()
 	await expect(editor).toBeFocused()
+	await expect(editor).toHaveAttribute('inputmode', 'decimal')
 	await editor.fill('-1')
 	await page.keyboard.press('Enter')
 	// The refusal keeps the editor open, with its reason, and no row changed.

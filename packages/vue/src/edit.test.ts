@@ -435,3 +435,34 @@ test('an editor from a slot knows that its value is checked, and closes when the
 	expect(cell(3, 2).find('select').exists()).toBe(false)
 	expect(edits.map((edit) => edit.edits[0]?.value)).toEqual(['Sales'])
 })
+
+test('an editor of its own gets `inputMode` for a column with `numberKeyboard`, and the field of the table gets `inputmode`', async () => {
+	const modes: (string | undefined)[] = []
+	const { cell } = setup(
+		{
+			columns: columns.map((column) =>
+				column.id === 'score' || column.id === 'name'
+					? { ...column, numberKeyboard: true }
+					: column,
+			),
+		},
+		{
+			'edit-score': (props: EditorSlotProps<Person>) => {
+				modes.push(props.inputMode)
+				return h('input', { inputmode: props.inputMode, 'aria-label': 'Score' })
+			},
+		},
+	)
+	await cell(1, 3).trigger('dblclick')
+	await nextTick()
+	expect(modes.at(-1)).toBe('decimal')
+	expect(cell(1, 3).get('input').attributes('inputmode')).toBe('decimal')
+	// The field of the table for the name, a column without a format.
+	await cell(2, 1).trigger('dblclick')
+	await nextTick()
+	expect(cell(2, 1).get('input').attributes('inputmode')).toBe('decimal')
+	// A column without the option.
+	await cell(2, 2).trigger('dblclick')
+	await nextTick()
+	expect(cell(2, 2).get('input').attributes('inputmode')).toBeUndefined()
+})

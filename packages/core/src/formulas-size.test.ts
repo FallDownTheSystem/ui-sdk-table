@@ -15,8 +15,11 @@ type Node = {
 	tmpdir: () => string
 }
 
-/** The main entry and its chunks before the glue: the build before the fix of P2, in bytes. */
-const BEFORE = 147_528
+/**
+ * The main entry and its chunks before the glue: the build before the fix of P2, in bytes,
+ * and 210 bytes of the number keyboard (`numberKeyboard`), which is no glue of the formulas.
+ */
+const BEFORE = 147_738
 const LIMIT = 12_000
 
 async function node(): Promise<Node> {

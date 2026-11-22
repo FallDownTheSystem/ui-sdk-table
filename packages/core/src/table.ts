@@ -100,7 +100,7 @@ import { stepSize, type HistoryEntry, type TableStep } from './sheet/steps'
 import { meanDecimals, type RangeSummary, summarize } from './sheet/summary'
 import { createDebounce } from './debounce'
 import { collectExport, type ExportData, type ExportOptions } from './export/data'
-import { formatValue, isNumericFormat } from './format'
+import { formatValue, isNumericFormat, type FormatName } from './format'
 import { defaultMessages, type TableMessages } from './messages'
 import {
 	cellValue,
@@ -5638,6 +5638,20 @@ export const table = definePrimitive({
 				const view = engine() ? formulaView(rowId, columnId, true) : null
 				return view ? view.text : undefined
 			},
+			/**
+			 * The keyboard of a phone for the editor of a cell, by its id: `decimal`
+			 * for a column with `numberKeyboard`, unless the field can hold a
+			 * formula or the format of the cell is no number format. The number
+			 * keyboard has no `=`, no letters and no sign of a date.
+			 */
+			inputModeOf: (id: string): 'decimal' | undefined => {
+				const cell = cellOf(id)
+				if (!cell?.column.numberKeyboard) return undefined
+				const { node, column } = cell
+				if (holdsFormula(node, column) || columnFormulaAt(node, column) !== undefined) return
+				const format = shownFormat(column, node.id)
+				return format === undefined || isNumericFormat(format as FormatName) ? 'decimal' : undefined
+			},
 			/** Whether a column is computed by a formula of the `columns` layer. */
 			isFormulaColumn: (columnId: string) =>
 				!!engine() && state().cellFormulas.columns?.[columnId] !== undefined,
@@ -6318,6 +6332,7 @@ export const table = definePrimitive({
 					'aria-errormessage': error === undefined ? undefined : `${id}-edit-error`,
 					'data-invalid': error === undefined ? undefined : '',
 					autocomplete: 'off',
+					inputmode: api.inputModeOf(key),
 				}
 			},
 			on: {

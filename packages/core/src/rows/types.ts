@@ -61,6 +61,13 @@ export type ColumnDef<Row = unknown> = {
 	 */
 	editable?: boolean | ((row: Row) => boolean)
 	/**
+	 * Whether the editor of a cell asks a phone for its number keyboard
+	 * (`inputmode="decimal"`): the cells of the column hold numbers. Off by
+	 * default. The table holds it back where the field can hold a formula, and
+	 * for a cell whose format is no number format.
+	 */
+	numberKeyboard?: boolean
+	/**
 	 * With formulas: whether a cell of the column takes a text that starts
 	 * with `=` as a formula. True by default for a cell that can be edited;
 	 * a column that must keep such a text as its value sets false.

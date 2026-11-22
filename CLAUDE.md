@@ -59,6 +59,7 @@ Follow the `ui-sdk` skill. Read `node_modules/@ui-sdk/vue/docs/llms.txt`; search
 - A check can answer with a promise. `saveCell` then gives back a promise of a function that reports, and only `createCellEdit` runs it, while the edit still waits. Do not report an edit from inside the promise.
 - At the answer, read the row again with `model.rowById`. The owner can replace the row objects during a check.
 - A paste is all or nothing. Refuse the whole paste before any cell changes.
+- `numberKeyboard` of a column gives the field of the editor `inputmode="decimal"`, and the `inputMode` slot prop, through `inputModeOf` in `table.ts`. It is held back for a field that can hold a formula (`holdsFormula`, `columnFormulaAt`) and for a cell whose resolved format is no number format. Never `type="number"`.
 - A range from the state can hold header rows. `selectedCells()` cuts it to the body rows; use it, not `range.bounds`, for a copy, a paste or an edit.
 
 ## Sheet behaviors (`behaviors/write.ts`, `behaviors/history.ts`, `packages/core/src/sheet`, option `sheet`)

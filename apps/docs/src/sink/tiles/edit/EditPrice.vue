@@ -16,6 +16,8 @@ const columns: ColumnDef<Product>[] = [
 		id: 'price',
 		header: 'Price',
 		format: 'currency',
+		// A phone shows its number keyboard in the editor of this column.
+		numberKeyboard: true,
 		formatOptions: euro,
 		aggregate: 'mean',
 		schema: check((value) =>
@@ -26,6 +28,7 @@ const columns: ColumnDef<Product>[] = [
 		id: 'stock',
 		header: 'In stock',
 		format: 'integer',
+		numberKeyboard: true,
 		aggregate: 'sum',
 		schema: check((value) =>
 			Number.isInteger(value) && Number(value) >= 0 ? undefined : 'Stock is a whole number.',

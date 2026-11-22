@@ -497,6 +497,8 @@ export type EditorSlotProps<Row> = {
 	cancel: () => void
 	/** With formulas: the formula of the cell as a person reads it, such as `=C2*D2`. A save of a text that starts with `=` sets a formula. */
 	formula: string | undefined
+	/** `decimal` when a field of numbers should ask a phone for its number keyboard (`numberKeyboard` of the column), else `undefined`. Put it on the field as `inputmode`. */
+	inputMode: 'decimal' | undefined
 }
 
 export type RowHeaderSlotProps<Row> = {
@@ -1074,6 +1076,7 @@ const TableImpl = defineComponent(
 					save: (value: unknown, event?: Event) => api.saveEdit(value, event),
 					cancel: () => api.cancelEdit(),
 					formula: api.editorFormula(node.id, column.id),
+					inputMode: api.inputModeOf(id),
 				})
 			}
 			return [
