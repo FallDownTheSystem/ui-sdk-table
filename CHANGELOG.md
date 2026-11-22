@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.1.3...v0.2.0) (2026-11-22)
+
+
+### Features
+
+* an entry mode for cell editing, and useEditDraft ([5b8d521](https://github.com/FallDownTheSystem/ui-sdk-table/commit/5b8d5215bcdb406a4e05523a18f2c9bca5389aa6))
+
+
+### Documentation
+
+* add the guides of Build on it ([c9f6f80](https://github.com/FallDownTheSystem/ui-sdk-table/commit/c9f6f80efa2e1d011c2de2ea359e5930cd81884c))
+* give the entry example the look of the other controls ([b99259c](https://github.com/FallDownTheSystem/ui-sdk-table/commit/b99259c0f86a7c23cca4dcc65d3049e2bb38e60e))
+
 ## [0.1.3](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.1.2...v0.1.3) (2026-11-22)
 
 
