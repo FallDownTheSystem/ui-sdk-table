@@ -228,9 +228,8 @@ Press Edit, then press a day: its editor opens. Type Sunday and press Tab: the d
 
 ## Names
 
-- **Options:** `editable`, `entry`, `onCellEdit` (`@cell-edit`); column keys `editable`, `parse`, `schema`, `numberKeyboard`.
-- **Controller:** `editCell`, `startEdit`, `cancelEdit`.
-- **Slots:** `#editor`, `#edit-{column id}`.
-- **Exports:** `applyEdits`, `cellValue`, `emptyValue`, `useEditDraft`, and the types `EditDraft`, `EditDraftOptions`, `CellEdit`, `TableEditDetails`, `TableEditReason`, `StandardSchemaV1`, `EditorSlotProps`.
+- **Exports:** `applyEdits`, `cellValue`, `emptyValue`, `useEditDraft`, and the types `TableEditDetails`, `TableEditReason`, `StandardSchemaV1`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).
 
 See the [Edit tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=edit).

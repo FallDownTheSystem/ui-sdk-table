@@ -118,7 +118,8 @@ A scoped style of your component does not reach the elements that the table rend
 
 ## Names
 
-- **Slot props types:** `CellSlotProps`, `HeaderSlotProps`, `FootSlotProps`, `GroupSlotProps`, `GroupTotalSlotProps`, `DetailSlotProps`, `EditorSlotProps`, `RowHeaderSlotProps`, `LetterSlotProps`, `TableSlots`.
-- **Attribute types:** `TableAttrsProps`, `RowAttrsContext`, `CellAttrsContext`, `PartAttrs`.
+- **Attribute types:** `RowAttrsContext`, `CellAttrsContext`, `PartAttrs`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).
 
 See the [More tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=more).

@@ -92,6 +92,8 @@ Without Vue, `controller.subscribe(listener)` runs the listener after each chang
 ## Names
 
 - **Vue:** `createTableController`, `useTableView`, `useTableSearch`, `useSelectionSummary`.
-- **Types:** `TableController`, `TableView`, `CellSelectionView`, `PageUnit`.
+- **Types:** `PageUnit`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).
 
 See the [More tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=more).

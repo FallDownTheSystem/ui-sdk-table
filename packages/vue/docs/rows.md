@@ -291,10 +291,8 @@ Scroll the frame, or press Row 5,000. The table renders a few dozen rows at a ti
 
 ## Names
 
-- **Options:** `getRowId`, `getChildren`, `sortChildren`, `hasDetail`, `expanded`, `defaultExpanded`, `rowPinning`, `defaultRowPinning`, `rowWindow`, `rowHeight`, `estimatedRowHeight`, `overscan`, `stickyHeader`, `stickyFooter`.
-- **Events:** `expanded-change`, `row-pinning-change`.
-- **Controller:** `expand`, `collapse`, `toggleExpanded`, `expandAll`, `collapseAll`, `pinRow`, `scrollToRow`.
-- **Slots:** `#detail`.
-- **Types:** `DataRow`, `TableRow`, `RowPin`, `RowPinning`, `DetailSlotProps`.
+- **Types:** `TableRow`, `RowPin`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).
 
 See the [Rows tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=rows).

@@ -102,9 +102,7 @@ See the [Sheet tiles of the sink](https://falldownthesystem.github.io/ui-sdk-tab
 
 ## Names
 
-- **Options:** `columnLetters`; column key `rowHeader`.
-- **Controller:** `selectCellRows`, `selectCellColumns`.
-- **Slots:** `#row-header`, `#letter`.
 - **Attributes:** `data-row-header`, `data-corner`, `data-kind="letters"` on a row and `data-kind="letter"` on a cell.
-- **Messages:** `rowNumber`, `cornerCell`.
-- **Exports:** `rowNumberColumn`, `columnLetter`, `lettersByColumn`, and the types `RowHeaderSlotProps`, `LetterSlotProps`.
+- **Exports:** `rowNumberColumn`, `columnLetter`, `lettersByColumn`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).

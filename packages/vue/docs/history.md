@@ -114,8 +114,7 @@ See the [Sheet tiles of the sink](https://falldownthesystem.github.io/ui-sdk-tab
 
 ## Names
 
-- **Options:** `history` (`true` or `{ limit, maxCells }`).
-- **Controller:** `undo`, `redo`, `clearHistory`, `getHistory`. `undo` and `redo` throw with the reason: no history, nothing to undo, a refused report, a check that runs.
-- **View:** `canUndo`, `canRedo`.
-- **Messages:** `undone`, `redone`, `undoRefused`, `nothingToUndo`, `nothingToRedo`, `historyBusy`, `historyTooLarge`.
-- **Types:** `HistoryEntry`, `TableStepReason`.
+- `undo` and `redo` throw with the reason: no history, nothing to undo, a refused report, a check that runs.
+- **Types:** `TableStepReason`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).

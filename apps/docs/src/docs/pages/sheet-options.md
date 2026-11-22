@@ -73,11 +73,7 @@ See the [Sheet tiles of the sink](https://falldownthesystem.github.io/ui-sdk-tab
 
 ## Names
 
-- **Options:** `sheet`, `editable`, `cellSelection`, `history`, `fillHandle`, `columnAggregates`, `defaultColumnAggregates`; column key `numberKeyboard`.
-- **Events:** `column-aggregates-change`, `update:column-aggregates`.
-- **Controller:** `clearCells`, `cutCells` (returns the text), `selectAllCells`, `selectCellRows(from, to?)`, `selectCellColumns(from, to?)`, `setColumnAggregate`.
-- **View:** `canUndo`, `canRedo`, `activeCell`, `cellSelection`, `columnAggregates`.
-- **Slot props:** `selectColumn` in `#header`; `mode`, `typed` and `inputMode` in `#editor` and `#edit-{id}`; `aggregate` and `setAggregate` in `#foot`, `aggregate` in `#group-total`.
 - **Attributes:** `data-sheet`, `data-aggregate`.
-- **Messages:** `cellsCleared`, `cellsCut`, `clearRefused`, `clearNowhere`, `aggregateLabel`, `totalLabel`.
 - **Exports:** `emptyValue`, `aggregateName`, and the types `ColumnAggregates`, `AggregateName`, `TableStepReason`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).

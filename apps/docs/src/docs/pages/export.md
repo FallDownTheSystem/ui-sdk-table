@@ -32,8 +32,8 @@ With `manualPage`, the table has one page of a server, so each set of rows is of
 
 ## Names
 
-- **Controller:** `exportData`.
-- **Column keys:** `exportable`, `exportValue`.
-- **Export entry:** `toCsv`, `toXlsx`, `downloadCsv`, `downloadXlsx`, `downloadFile`, `zip`, `XLSX_TYPE`, and the types `CsvOptions`, `XlsxOptions`, `XlsxFormulas`, `ExportData`, `ExportRow`, `ExportColumn`, `ExportCell`, `ExportOptions`.
+- **Export entry:** `toCsv`, `toXlsx`, `downloadCsv`, `downloadXlsx`, `downloadFile`, `zip`, `XLSX_TYPE`, and the type `XlsxFormulas`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).
 
 See the [More tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=more).

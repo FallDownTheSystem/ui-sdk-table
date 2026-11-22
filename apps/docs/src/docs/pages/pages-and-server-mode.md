@@ -33,9 +33,8 @@ A manual stage keeps the state: the sort, the filter and the page are requests t
 
 ## Names
 
-- **Options:** `page`, `defaultPage`, `manualSort`, `manualFilter`, `manualPage`, `rowCount`, `loading`, `totals`, `facets`.
-- **Events:** `page-change`.
-- **Controller:** `setPage`, `setPageSize`, `nextPage`, `previousPage`, `firstPage`, `lastPage`.
-- **Types:** `PageState`, `PageUnit`, `ColumnFacetsSource`, `TableTotalsSource`.
+- **Types:** `PageUnit`, `ColumnFacetsSource`, `TableTotalsSource`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).
 
 See the [Rows tiles](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=rows) and the [Server tiles](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=server) of the sink.

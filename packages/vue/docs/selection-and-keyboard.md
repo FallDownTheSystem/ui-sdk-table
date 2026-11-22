@@ -111,10 +111,6 @@ With `cellSelection`, a person selects a range of cells: Shift with an arrow, or
 
 The cells of a range have `data-selected` and `data-range-edge`. The state is `cellRange`. [Range, copy and paste](./range-copy-and-paste.md) covers the rest.
 
-## Names
-
-- **Options:** `selection`, `canSelect`, `selected`, `defaultSelected`, `cellSelection`.
-- **Events:** `selected-change`.
-- **Controller:** `select`, `toggleSelected`, `selectRows`, `deselectRows`, `selectAll`, `clearSelection`, `selectCells`, `clearCellSelection`, `copyCells`.
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).
 
 See the [Rows tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=rows).
