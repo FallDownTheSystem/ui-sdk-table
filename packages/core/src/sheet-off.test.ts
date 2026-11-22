@@ -39,6 +39,9 @@ describe('a table without `sheet` and without `history`', () => {
 				const event = press(cell('a', 'name'), key, init)
 				expect([key, event.defaultPrevented]).toEqual([key, false])
 			}
+			// Without `entry`, one press opens no editor, and the root shows no mode.
+			cell('a', 'price').click()
+			expect(view.root.hasAttribute('data-entry')).toBe(false)
 			const { event, data } = clipboard('cut')
 			cell('a', 'name').dispatchEvent(event)
 			expect(event.defaultPrevented).toBe(false)

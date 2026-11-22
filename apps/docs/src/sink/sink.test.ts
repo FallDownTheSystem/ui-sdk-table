@@ -64,6 +64,8 @@ const NOT_SHOWN: Record<string, string> = {
 	defaultColumnWidths: 'The resize tile starts with the widths of the columns.',
 	defaultRowPinning: 'The pin tile pins through the controller.',
 	defaultCellRange: 'The range tile starts with no range.',
+	entry:
+		'The example with Edit, Save and Cancel on the Editing page of the docs shows it; the sink tiles are built by their own round.',
 	inputSearch: '`useTableSearch` calls it for the field of the search tile.',
 	flushSearch: '`useTableSearch` calls it for the field of the search tile.',
 	nextPage: 'The page tiles go to a page by its number, with `setPage`.',

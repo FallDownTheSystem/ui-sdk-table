@@ -421,6 +421,48 @@ test('Editing: a price saves with Enter, and a price below zero keeps the editor
 	await expect(price).toHaveText('7.00')
 })
 
+test('Editing: in the entry mode Tab walks the cells, and Save and Cancel act on the draft', async ({
+	page,
+}) => {
+	await page.goto('/?page=cell-editing')
+	const example = page.locator('[data-example="cell-editing/entry"]')
+	const table = grid(page, 'cell-editing/entry', 'Shifts')
+	const day = table.locator('td[data-column="day"]').first()
+	const hours = table.locator('td[data-column="hours"]').first()
+	// Out of the mode, a press opens no editor.
+	await day.click()
+	await expect(table.locator('[data-slot="table-editor"]')).toHaveCount(0)
+
+	await example.getByRole('button', { name: 'Edit' }).click()
+	await expect(table).toHaveAttribute('data-entry', '')
+	await day.click()
+	await page.keyboard.press('ControlOrMeta+a')
+	await page.keyboard.type('Sunday')
+	await page.keyboard.press('Tab')
+	await expect(hours).toBeFocused()
+	await page.keyboard.type('7')
+	await page.keyboard.press('Tab')
+	await expect(day).toHaveText('Sunday')
+	await expect(hours).toHaveText('7.00')
+	await expect(day).toHaveClass(/changed/)
+	await expect(example.getByText('2 changed')).toBeVisible()
+
+	await example.getByRole('button', { name: 'Cancel' }).click()
+	await expect(day).toHaveText('Monday')
+	await expect(hours).toHaveText('8.00')
+	await expect(table).not.toHaveAttribute('data-entry')
+
+	await example.getByRole('button', { name: 'Edit' }).click()
+	await day.click()
+	await page.keyboard.press('ControlOrMeta+a')
+	await page.keyboard.type('Sunday')
+	await page.keyboard.press('Tab')
+	await example.getByRole('button', { name: 'Save' }).click()
+	await expect(example.getByRole('status')).toHaveText('Saved 1 cell.')
+	await expect(day).toHaveText('Sunday')
+	await expect(day).not.toHaveClass(/changed/)
+})
+
 test('Export: the CSV holds the text of the screen and the totals, without the id', async ({
 	page,
 }) => {

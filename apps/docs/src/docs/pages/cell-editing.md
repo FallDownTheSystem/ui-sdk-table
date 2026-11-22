@@ -23,7 +23,7 @@ The table never writes a row. It reports each edit through `@cell-edit`, and the
 | Escape in the editor | Closes it and puts the value back |
 | A press elsewhere | Saves |
 
-The arrows in the editor move the caret. Without an editor, Tab leaves the table.
+The arrows in the editor move the caret. Without an editor, Tab leaves the table; in the [entry mode](./cell-editing.md#an-entry-mode-with-save-and-cancel) it goes to the next cell that can be edited.
 
 ## Check a value
 
@@ -44,17 +44,38 @@ A check can answer with a promise. The editor then waits (`data-checking`), and 
 
 `controller.editCell(rowId, columnId, value)` gives a cell a value with the check of its column, and reports it with the reason `imperative`. It throws with the reason when the value is refused. `startEdit` opens the editor of a cell in view, and `cancelEdit` closes it.
 
+## An entry mode with Save and Cancel
+
+`entry` turns the table into a form for many cells at once: a person moves with Tab and types. Turn it on and off from your own Edit button; while it is on, cells can be edited as with `editable`, unless `editable` is false or a column says otherwise.
+
+<Example name="cell-editing/entry" caption="Press Edit, press a day, type Sunday and press Tab: the hours open the next cell. Type 7 and press Tab, then Save. Cancel puts every cell back." />
+
+- **Tab and Shift+Tab** on a cell and in the editor go to the next and the previous cell that can be edited, in reading order and across the rows. They pass over a cell that cannot be edited, a group row and a column that leads. From the last such cell Tab leaves the table, and from the first Shift+Tab: the table is never a trap. Inside a selected range of more than one cell, Tab walks the range.
+- **One press** on a cell that can be edited opens its editor. A press with Shift, Control, Command or Alt, and a drag, keep their meaning, also with `cell-selection`.
+- **A character** on a cell replaces its value, and Tab, Enter or a press elsewhere saves it, as without the mode.
+- The root has `data-entry`, so a style can show which cells take input: `[data-entry] [data-editable]`.
+
+`useEditDraft(rows, { getRowId? })` holds the edits until a person saves them. It never changes one of your row objects.
+
+- `rows` is the list to pass to the table: your rows, with the values of the draft in new objects.
+- `onCellEdit` is the `@cell-edit` listener. It takes every report: an edit, a paste, a fill, a clear and an undo.
+- `count` is how many cells differ from your rows, and `changed(rowId, columnId)` says whether one does, for a mark through `cellAttrs`. A cell set back to its first value no longer differs.
+- `save()` gives the edits against your rows, one for each cell that differs, and empties the draft: pass them to `applyEdits`, or to your server. `cancel()` empties the draft.
+- **New rows while a draft is open:** the draft is kept by row id and column id and stays over the new rows. A cell whose new value is the value of the draft no longer differs, and a cell of a row that is gone counts no more and is not saved. Pass the `getRowId` of the table when it has one.
+- **Formulas:** the draft holds values only. A formula that a person types goes into the `cellFormulas` state of the table at once, as without a draft, and `cancel()` does not take it back. For a table with `formulas`, keep the formulas in a `v-model:cell-formulas` of your own and put the old state back on Cancel.
+
 ## Attributes
 
+- `data-entry` on the root in the entry mode.
 - `data-editable` on a cell that can be edited, `data-editing` while its editor is open, `data-checking` while a check runs.
 - The editor is `[data-slot='table-editor']`, with `aria-invalid` and `data-invalid` after a refusal. Its name is "Edit Price" (message `editCell`).
 - The reason of a refusal is `[data-slot='table-edit-error']`, which the editor names with `aria-errormessage`.
 
 ## Names
 
-- **Options:** `editable`, `onCellEdit` (`@cell-edit`); column keys `editable`, `parse`, `schema`, `numberKeyboard`.
+- **Options:** `editable`, `entry`, `onCellEdit` (`@cell-edit`); column keys `editable`, `parse`, `schema`, `numberKeyboard`.
 - **Controller:** `editCell`, `startEdit`, `cancelEdit`.
 - **Slots:** `#editor`, `#edit-{column id}`.
-- **Exports:** `applyEdits`, `cellValue`, `emptyValue`, and the types `CellEdit`, `TableEditDetails`, `TableEditReason`, `StandardSchemaV1`, `EditorSlotProps`.
+- **Exports:** `applyEdits`, `cellValue`, `emptyValue`, `useEditDraft`, and the types `EditDraft`, `EditDraftOptions`, `CellEdit`, `TableEditDetails`, `TableEditReason`, `StandardSchemaV1`, `EditorSlotProps`.
 
 See the [Edit tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=edit).

@@ -134,6 +134,7 @@ const log = shallowRef<string[]>([])
 const commits = shallowRef(0)
 const locked = shallowRef(false)
 const selectable = shallowRef(false)
+const entry = shallowRef(false)
 
 function onCellEdit(edits: readonly CellEdit<Person>[], details: TableEditDetails) {
 	if (locked.value) {
@@ -164,6 +165,7 @@ const focusOnMount = (el: unknown) => {
 	</p>
 	<div class="toolbar">
 		<label><input v-model="selectable" type="checkbox" /> Row selection</label>
+		<label><input v-model="entry" type="checkbox" /> Entry mode</label>
 		<label><input v-model="locked" type="checkbox" /> Refuse every edit</label>
 		<label><input v-model="slow" type="checkbox" /> Check names on a slow server</label>
 		<button type="button" @click="controller.editCell('e2', 'score', 99)">
@@ -197,6 +199,7 @@ const focusOnMount = (el: unknown) => {
 			:selection="selectable ? 'multiple' : undefined"
 			editable
 			cell-selection
+			:entry="entry"
 			aria-label="People"
 			@cell-edit="onCellEdit"
 			@cell-range-commit="commits++"

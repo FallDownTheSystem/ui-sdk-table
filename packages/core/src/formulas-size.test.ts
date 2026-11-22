@@ -17,9 +17,10 @@ type Node = {
 
 /**
  * The main entry and its chunks before the glue: the build before the fix of P2, in bytes,
- * and 210 bytes of the number keyboard (`numberKeyboard`), which is no glue of the formulas.
+ * 210 bytes of the number keyboard (`numberKeyboard`) and 1,008 bytes of the entry mode
+ * (`entry`), which are no glue of the formulas.
  */
-const BEFORE = 147_738
+const BEFORE = 148_746
 const LIMIT = 12_000
 
 async function node(): Promise<Node> {
