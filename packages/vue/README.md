@@ -368,7 +368,7 @@ const bar = useFormulaBar(controller)
 </template>
 ```
 
-`useFormulaBar(controller)` gives `address` (`D7`), `text` (the draft, else the formula as a person reads it, else the value as the field of the cell shows it), `error` (why the last commit was refused), `dirty`, `ready` (a cell is active), `input(text)`, `commit()` (saves through `editCell`, so a text with `=` is a formula and any other text a value; returns whether it saved) and `cancel()`. A draft stays with the cell where it started, also when the active cell moves. After a commit or a cancel, give focus back to the active cell (`[data-active]`).
+`useFormulaBar(controller)` gives `address` (`D7`), `text` (the draft, else the formula as a person reads it, else the value as the field of the cell shows it), `error` (why the last commit was refused, in the words for a person), `dirty`, `ready` (a cell is active), `input(text)`, `commit()` (saves through `editCell`, so a text with `=` is a formula and any other text a value; returns whether it saved) and `cancel()`. A draft stays with the cell where it started, also when the active cell moves. After a commit or a cancel, give focus back to the active cell (`[data-active]`).
 
 ### An Excel file with formulas
 
@@ -413,6 +413,24 @@ A function whose name Excel has behaves as in Excel, with its arguments and edge
 - **Slot props:** `formula` in `#cell` and `#col-{id}` (`{ text, error?: { code, message } }`), in `#editor` and `#edit-{id}` (the formula as a person reads it; a save of a text with `=` sets a formula), and in `#header` (the formula of a computed column).
 - **Attributes:** `data-formulas` on the table; `data-formula` on a cell with a formula of its own; `data-formula-error` (`div0`, `value`, `ref`, `name`, `num`, `na`, `cycle`) with the words of the error as `aria-description`; `data-formula-column` on the header and the cells of a computed column.
 - **Messages:** `formulaIssue(issue)`, `formulaError(code)`, `recalculated({ cells })`. Without them, the English words of the engine (`describeFormulaIssue`).
+- **Words of a refusal.** `editCell`, `setCellFormula` and `setColumnFormula` throw an `Error` whose `message` is for a developer or an agent: it names the column, the row and the text (`Column "total" refuses "=SUMM(B2)" for row "l2": No function …`). Its `cause` is a text with the words for a person, the words that the editor of the cell shows. A control beside the table shows the `cause`; `useFormulaBar().error` does that already.
+
+  ```ts
+  try {
+  	controller.setColumnFormula('band', text)
+  } catch (error) {
+  	shown.value = error instanceof Error && typeof error.cause === 'string' ? error.cause : String(error)
+  }
+  ```
+
+- **Own words for one kind of issue.** `messages.formulaIssue` gets the issue as data (`code` and its fields) and decides for every kind; `describeFormulaIssue` of the formulas entry gives the words of the engine for the rest. They reach the editor, the formula bar and the `cause` of a refusal alike:
+
+  ```ts
+  const messages = {
+  	formulaIssue: (issue: FormulaIssue) =>
+  		issue.code === 'unknownFunction' ? `No function ${issue.name}.` : describeFormulaIssue(issue),
+  }
+  ```
 - **Exports of the formulas entry:** `createFormulaEngine`, `formulaColumn`, `compileRowFormula`, `parseFormula`, `printFormula`, `formulaShows`, `formulaSigns`, `describeFormulaIssue`, `FORMULA_FUNCTIONS`, `setFormulas`, `revertFormulas`, `pruneFormulas`, `formulaAt`, `excelFormulas`, `EXCEL_FUNCTIONS`, `useFormulaBar`. Of the export entry: the `formula` option of `toXlsx` and the type `XlsxFormulas`.
 
 ### What a styled table needs

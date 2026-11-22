@@ -8,7 +8,7 @@ export type FormulaBar = {
 	address: ComputedRef<string>
 	/** The text of the field: the draft while a person types, else the formula or the value of the cell. */
 	text: ComputedRef<string>
-	/** Why the last commit was refused, or `''`. */
+	/** Why the last commit was refused, in the words for a person, or `''`. */
 	error: ComputedRef<string>
 	/** Whether the text is a draft that is not saved. */
 	dirty: ComputedRef<boolean>
@@ -34,6 +34,13 @@ export function useFormulaBar(controller: TableController): FormulaBar {
 	const view = shallowRef<FormulaView | null>(null)
 	const draft = shallowRef<{ at: FormulaView; text: string } | null>(null)
 	const error = shallowRef('')
+	// A refusal carries the words for a person as its `cause`; its message is for a developer.
+	const refusal = (reason: unknown) =>
+		reason instanceof Error
+			? typeof reason.cause === 'string'
+				? reason.cause
+				: reason.message
+			: String(reason)
 	const read = () => {
 		const next: ReturnType<TableController['getView']> | undefined = controller.getView()
 		view.value = next?.formula ?? null
@@ -67,13 +74,13 @@ export function useFormulaBar(controller: TableController): FormulaBar {
 							draft.value = null
 						},
 						(reason: unknown) => {
-							error.value = reason instanceof Error ? reason.message : String(reason)
+							error.value = refusal(reason)
 						},
 					)
 					return false
 				}
 			} catch (reason) {
-				error.value = reason instanceof Error ? reason.message : String(reason)
+				error.value = refusal(reason)
 				return false
 			}
 			draft.value = null

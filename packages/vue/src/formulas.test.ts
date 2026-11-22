@@ -578,3 +578,56 @@ test('a new locale of the table reaches the view and the formula bar, with no ot
 	expect(bar?.text.value).toBe('=ROUND(A1*1,5; 1)')
 	scope.stop()
 })
+
+test('the formula bar shows the words for a person of a refused formula and of a value that a schema refuses', async () => {
+	const { controller } = owned(start(), shared)
+	await nextTick()
+	const scope = effectScope()
+	const bar = scope.run(() => useFormulaBar(controller))
+	if (!bar) throw new Error('No bar.')
+	controller.selectCells({ rowId: 'a', columnId: 'total' })
+	await nextTick()
+	bar.input('=SUMM(A1)')
+	expect(bar.commit()).toBe(false)
+	expect(bar.error.value).toMatch(/^No function `SUMM`\. Functions: ABS/)
+	expect(bar.error.value).not.toContain('refuses')
+	scope.stop()
+
+	// A schema of the column refuses a value.
+	const positive = {
+		'~standard': {
+			version: 1,
+			vendor: 'test',
+			validate: (value: unknown) =>
+				typeof value === 'number' && value >= 0
+					? { value }
+					: { issues: [{ message: 'The price must be 0 or more.' }] },
+		},
+	} as const
+	const checked = createTableController()
+	const wrapper = mount(
+		() =>
+			h(Table<Sum>, {
+				rows: start(),
+				columns: sumColumns.map((column) =>
+					column.id === 'price' ? { ...column, schema: positive } : column,
+				),
+				controller: checked,
+				formulas: engine,
+				sheet: true,
+				'aria-label': 'Checked',
+			}),
+		{ attachTo: document.body },
+	)
+	wrappers.push(wrapper)
+	await nextTick()
+	const other = effectScope()
+	const priced = other.run(() => useFormulaBar(checked))
+	if (!priced) throw new Error('No bar.')
+	checked.selectCells({ rowId: 'a', columnId: 'price' })
+	await nextTick()
+	priced.input('-1')
+	expect(priced.commit()).toBe(false)
+	expect(priced.error.value).toBe('The price must be 0 or more.')
+	other.stop()
+})

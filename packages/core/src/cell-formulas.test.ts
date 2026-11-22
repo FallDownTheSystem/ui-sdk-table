@@ -109,6 +109,35 @@ describe('a formula of a cell', () => {
 		}
 	})
 
+	test('a refused formula carries the words for a person as its cause, and the message stays for a developer', () => {
+		const { view } = setup()
+		const thrown = (run: () => unknown) => {
+			try {
+				run()
+			} catch (error) {
+				return error as Error
+			}
+			throw new Error('Nothing was thrown.')
+		}
+		try {
+			const edit = thrown(() => view.api.editCell('a', 'total', '=SUMM(C1)'))
+			expect(edit.cause).toMatch(/^No function `SUMM`\. Functions: ABS/)
+			expect(edit.message).toBe(
+				`Column "total" refuses "=SUMM(C1)" for row "a": ${String(edit.cause)}`,
+			)
+			const set = thrown(() => view.api.setCellFormula('a', 'total', '=SUMM(C1)'))
+			expect(set.cause).toBe(edit.cause)
+			expect(set.message).toBe(`The formula "=SUMM(C1)" cannot be set: ${String(edit.cause)}`)
+			// A circle is found in the report, after the formula was read.
+			void view.api.editCell('a', 'total', '=E2')
+			const circle = thrown(() => view.api.setCellFormula('b', 'total', '=E1+1'))
+			expect(circle.cause).toBe('The formula would read its own cell: E2 reads E1 reads E2.')
+			expect(circle.message).toBe(`The formula "=E1+1" cannot be set: ${String(circle.cause)}`)
+		} finally {
+			view.unmount()
+		}
+	})
+
 	test('a refusal of each kind names what is valid, and a circle names its path', () => {
 		const { view, reports } = setup()
 		try {

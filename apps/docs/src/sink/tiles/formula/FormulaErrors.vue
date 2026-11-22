@@ -44,7 +44,9 @@ function circle() {
 		controller.setCellFormula('a', 'spent', '=D1*2')
 		said.value = 'Set.'
 	} catch (error) {
-		said.value = error instanceof Error ? error.message : String(error)
+		// A refusal carries the words for a person as its cause.
+		said.value =
+			error instanceof Error && typeof error.cause === 'string' ? error.cause : String(error)
 	}
 }
 </script>

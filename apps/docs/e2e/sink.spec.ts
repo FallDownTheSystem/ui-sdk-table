@@ -486,6 +486,7 @@ test('the tiles of formulas: a typed formula, a refused circle, a period, a deci
 	)
 	await errors.getByRole('button', { name: 'Make B1 read D1' }).click()
 	await expect(errors.getByRole('status')).toContainText('B1 reads D1 reads B1')
+	await expect(errors.getByRole('status')).not.toContainText('cannot be set')
 
 	// The period of a date: as many groups as the sales have weeks, months or quarters.
 	const period = tile(page, 'formula-period')
@@ -505,7 +506,7 @@ test('the tiles of formulas: a typed formula, a refused circle, a period, a deci
 	// A formula of a column that cannot be read is refused, and the one before stays.
 	const own = tile(page, 'formula-own')
 	await own.getByRole('button', { name: 'Broken' }).click()
-	await expect(own.getByRole('status')).toContainText('ends too soon')
+	await expect(own.getByRole('status')).toHaveText('The formula ends too soon.')
 	await expect(cell(tableOf(page, 'formula-own'), 'Hall', 'area')).toHaveText('7.28')
 	await own.getByRole('button', { name: 'IF' }).click()
 	await expect(cell(tableOf(page, 'formula-own'), 'Hall', 'area')).toHaveText('0.00')

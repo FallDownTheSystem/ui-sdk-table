@@ -315,6 +315,7 @@ test('a formula of a column that the table holds: set it, group by it, change it
 	await field.fill('=[Custom]+1')
 	await field.press('Enter')
 	await expect(page.getByTestId('custom-issue')).toContainText('reads that column itself')
+	await expect(page.getByTestId('custom-issue')).not.toContainText('cannot be set')
 	await expect(page.getByTestId('custom-stored')).toHaveText('=IF([qty]>20, "many", "few")')
 })
 
@@ -626,7 +627,7 @@ test('the formula bar follows the active cell, a formula typed there lands in th
 
 	await bar.fill('=SUMM(1)')
 	await bar.press('Enter')
-	await expect(page.getByTestId('bar-error')).toContainText('No function `SUMM`')
+	await expect(page.getByTestId('bar-error')).toHaveText(/^No function `SUMM`\. Functions: /)
 	await expect(bar).toBeFocused()
 	await bar.press('Escape')
 	await expect(bar).toHaveValue('=B2*C2')

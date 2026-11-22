@@ -50,7 +50,9 @@ function save() {
 		controller.setColumnFormula('area', draft.value.trim() === '' ? null : draft.value)
 		issue.value = ''
 	} catch (error) {
-		issue.value = error instanceof Error ? error.message : String(error)
+		// A refusal carries the words for a person as its cause.
+		issue.value =
+			error instanceof Error && typeof error.cause === 'string' ? error.cause : String(error)
 	}
 }
 function undo() {

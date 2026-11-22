@@ -105,6 +105,24 @@ describe('a formula of a column', () => {
 		}
 	})
 
+	test('a refusal carries the words for a person as its cause, and the message stays for a developer', () => {
+		const { view } = setup()
+		try {
+			let thrown: Error | undefined
+			try {
+				view.api.setColumnFormula('total', '=[price]*')
+			} catch (error) {
+				thrown = error as Error
+			}
+			expect(thrown?.cause).toBe('The formula ends too soon.')
+			expect(thrown?.message).toBe(
+				'The formula "=[price]*" of column "total" cannot be set: The formula ends too soon.',
+			)
+		} finally {
+			view.unmount()
+		}
+	})
+
 	test('is refused with the words that say why, and nothing changes', () => {
 		const { view, told } = setup()
 		try {

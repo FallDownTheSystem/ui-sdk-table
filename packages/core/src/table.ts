@@ -3780,7 +3780,8 @@ export const table = definePrimitive({
 			if (text !== null) {
 				const parsed = found.parse(text, at, formulaSheet)
 				if ('issues' in parsed) {
-					throw new Error(`The formula "${text}" cannot be set: ${entryRefusal(parsed)}`)
+					const why = entryRefusal(parsed)
+					throw new Error(`The formula "${text}" cannot be set: ${why}`, { cause: why })
 				}
 				formula = parsed.formula
 			}
@@ -3792,7 +3793,11 @@ export const table = definePrimitive({
 				'imperative',
 			)
 			if (refused === true) throw new Error(message('editRefused')())
-			if (refused) throw new Error(`The formula "${String(text)}" cannot be set: ${refused}`)
+			if (refused) {
+				throw new Error(`The formula "${String(text)}" cannot be set: ${refused}`, {
+					cause: refused,
+				})
+			}
 		}
 
 		function readColumnFormula(columnId: string) {
@@ -4159,6 +4164,7 @@ export const table = definePrimitive({
 				if (refused) {
 					throw new Error(
 						`The formula "${String(formula)}" of column "${String(columnId)}" cannot be set: ${refused}`,
+						{ cause: refused },
 					)
 				}
 			},
@@ -4708,6 +4714,8 @@ export const table = definePrimitive({
 					if (result === true) return
 					throw new Error(
 						`Column "${columnId}" refuses ${String(JSON.stringify(value))} for row "${rowId}": ${result}`,
+						// The words for a person, as the editor of the cell shows them.
+						{ cause: result },
 					)
 				}
 				const result = saveCell(cell.node, cell.column, input, 'imperative')
