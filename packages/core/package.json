@@ -1,6 +1,6 @@
 {
 	"name": "ui-sdk-table-core",
-	"version": "0.2.3",
+	"version": "0.2.4",
 	"description": "Framework-free table primitive, behaviors and row helpers built on @ui-sdk/core.",
 	"keywords": [
 		"data-grid",

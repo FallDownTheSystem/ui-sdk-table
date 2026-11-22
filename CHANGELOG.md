@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.4](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.3...v0.2.4) (2026-11-22)
+
+
+### Features
+
+* hold formulas in the edit draft ([ea06c4b](https://github.com/FallDownTheSystem/ui-sdk-table/commit/ea06c4b34d3bd7ce4d78780fdfff1d33dc787ebf))
+
+
+### Documentation
+
+* turn off spellcheck in the formula writer, and start the help of a suggestion at the line start ([94607ab](https://github.com/FallDownTheSystem/ui-sdk-table/commit/94607ab580060daf37c01aa5811deac7e56a36e5))
+
 ## [0.2.3](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.2...v0.2.3) (2026-11-22)
 
 
