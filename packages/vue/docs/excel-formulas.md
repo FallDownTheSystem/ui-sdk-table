@@ -1,0 +1,112 @@
+# An Excel file with formulas
+
+Download a sheet as an Excel file whose cells keep their formulas, where Excel computes them the same way.
+
+Use it for a sheet with formulas that a person goes on with in a spreadsheet. Without it, the file holds the results only.
+
+```vue title="file.vue"
+<script setup lang="ts">
+import { Button } from '@ui-sdk/vue/button'
+import {
+	applyEdits,
+	createTableController,
+	rowNumberColumn,
+	Table,
+	type CellEdit,
+	type CellFormulas,
+	type ColumnDef,
+} from 'ui-sdk-table-vue'
+import { createFormulaEngine, excelFormulas } from 'ui-sdk-table-vue/formulas'
+import { shallowRef } from 'vue'
+
+type Month = { id: string; month: string; income: number; costs: number; profit?: unknown }
+
+const rows = shallowRef<Month[]>([
+	{ id: 'm1', month: 'January', income: 8200, costs: 5100, profit: 3100 },
+	{ id: 'm2', month: 'February', income: 7600, costs: 5400, profit: 2200 },
+	{ id: 'm3', month: 'March', income: 9100, costs: 5050, profit: 4050 },
+])
+
+const columns: ColumnDef<Month>[] = [
+	rowNumberColumn<Month>(),
+	{ id: 'month', header: 'Month', editable: false },
+	{ id: 'income', header: 'Income', format: 'integer' },
+	{ id: 'costs', header: 'Costs', format: 'integer' },
+	{ id: 'profit', header: 'Profit', format: 'integer' },
+]
+
+const formulas = shallowRef<CellFormulas>({
+	cells: {
+		m1: { profit: '=[income]-[costs]' },
+		m2: { profit: '=[income]-[costs]' },
+		m3: { profit: '=[income]-[costs]' },
+	},
+})
+
+const engine = createFormulaEngine()
+const controller = createTableController()
+
+async function download() {
+	const { downloadXlsx } = await import('ui-sdk-table-vue/export')
+	// `excelFormulas()` writes a formula into the file where it means the same in Excel.
+	await downloadXlsx(controller.exportData(), 'profit', { formula: excelFormulas() })
+}
+</script>
+
+<template>
+	<div>
+		<Button @click="download">Download Excel</Button>
+	</div>
+	<Table
+		v-model:cell-formulas="formulas"
+		:formulas="engine"
+		:rows="rows"
+		:columns="columns"
+		:controller="controller"
+		locale="en-US"
+		sheet
+		column-letters
+		aria-label="Profit by month"
+		@cell-edit="(edits: readonly CellEdit<Month>[]) => (rows = applyEdits(rows, edits))"
+	/>
+</template>
+```
+
+Press Download Excel. In profit.xlsx, each cell under Profit holds the formula of its row, such as B2-C2, with its result beside it.
+
+## Turn it on
+
+```ts
+const { downloadXlsx } = await import('ui-sdk-table-vue/export')
+await downloadXlsx(controller.exportData(), 'profit', { formula: excelFormulas() })
+```
+
+- `excelFormulas()` of the formulas entry is the `formula` option of `toXlsx` and `downloadXlsx`.
+- A cell with a formula, of its own or of its column, gets the formula of the file (`<f>`) with its result beside it, when the formula means the same in Excel (below).
+- The addresses are places in the file. A sorted or filtered export keeps the formulas that read their own row.
+- An error of a formula is an error cell of the file. `#CYCLE!` stays a text.
+- A CSV holds the results.
+- `ExportCell.formula`, `ExportRow.id` and `ExportData.document` carry the formulas to a writer of your own.
+
+## Dates of the `period` format
+
+With or without the option, a column with the format `period` whose unit is `day`, `month` or `year` is a date cell with a pattern when a spreadsheet shows the pattern as the screen does: `Nov 21, 2026`, `November 2026` and `2026` in `en-US`. Else it is its text. A week, a quarter, an hour and a day of the week are texts.
+
+## When a formula goes into the file
+
+A cell gets the formula of the file only when the whole formula means the same in Excel:
+
+- every cell that it reads is in the file and holds there the value that it holds in the table: no day, no cell written as its text;
+- a range is one column whose rows are in the file in the order of the document and next to each other;
+- each function is in `EXCEL_FUNCTIONS`.
+
+Else the cell holds its result, as without the option. A file without the option holds the same bytes as the file of a table without formulas.
+
+See the [Formula tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=formula) and the page [Export](./export.md).
+
+## Names
+
+- **Options of `toXlsx` and `downloadXlsx`:** `formula`, with `excelFormulas()` of the formulas entry.
+- **Exports of the formulas entry:** `excelFormulas`, `EXCEL_FUNCTIONS`.
+- **Exports of the export entry:** the type `XlsxFormulas`.
+- **Fields of the data:** `ExportCell.formula`, `ExportRow.id`, `ExportData.document`.

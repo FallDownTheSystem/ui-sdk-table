@@ -78,7 +78,7 @@ The text of a cell in a file is the text of the screen. An Excel cell is a numbe
 ## The writers
 
 - `toCsv(data, options)` returns the text. Its options: `separator` (a comma), `lineEnd` (`\r\n`), `header` (true), `bom` (true, so Excel reads UTF-8), `escapeFormulas` (true: a text that a spreadsheet would read as a formula gets a `'` before it).
-- `toXlsx(data, options)` returns the bytes of the file. Its options: `sheetName`, `freezeHeader` (true), `compress` (true), and `formula` for a table with formulas: see the page "An Excel file with formulas" of the group "Data sheet".
+- `toXlsx(data, options)` returns the bytes of the file. Its options: `sheetName`, `freezeHeader` (true), `compress` (true), and `formula` for a table with formulas: see [An Excel file with formulas](./excel-formulas.md).
 - `downloadCsv(data, filename, options)` and `downloadXlsx(data, filename, options)` save a file in the browser.
 
 With `manualPage`, the table has one page of a server, so each set of rows is of that page.

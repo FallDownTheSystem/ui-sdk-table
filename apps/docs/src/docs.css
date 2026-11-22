@@ -694,6 +694,62 @@ a {
 		touch-action: none;
 	}
 
+	.example-preview :is(tr[data-kind='letters'] > th, th[data-row-header]) {
+		background: var(--row-fill, var(--tint));
+		color: var(--ink-2);
+		font-size: 12px;
+		font-weight: 500;
+		text-align: center;
+		cursor: default;
+	}
+
+	.example-preview tr[data-kind='letters'] > th[data-selected] {
+		--row-fill: var(--picked);
+		color: var(--ink);
+	}
+
+	.example-preview [data-bold] {
+		font-weight: 700;
+	}
+
+	.example-preview [data-italic] {
+		font-style: italic;
+	}
+
+	.example-preview [data-align='center'] {
+		text-align: center;
+	}
+
+	.example-preview [data-color='alert'] {
+		color: var(--alert);
+	}
+
+	.example-preview [data-color='accent'] {
+		color: var(--accent-line);
+	}
+
+	.example-preview [data-fill='accent'] {
+		--row-fill: #dbeafe;
+	}
+
+	.example-preview [data-fill='alert'] {
+		--row-fill: #fee2e2;
+	}
+
+	/* A cell with a formula of its own has a small mark in its corner. */
+	.example-preview td[data-formula]::before {
+		position: absolute;
+		inset-block-start: 0;
+		inset-inline-start: 0;
+		border-block-start: 6px solid var(--accent-line);
+		border-inline-end: 6px solid transparent;
+		content: '';
+	}
+
+	.example-preview [data-formula-error] {
+		color: var(--alert);
+	}
+
 	.example-preview :is(button, input, select):not([data-slot^='table']) {
 		font: inherit;
 	}

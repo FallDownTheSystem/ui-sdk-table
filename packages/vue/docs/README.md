@@ -26,6 +26,17 @@ Start with [llms.txt](./llms.txt): what the library is and the conventions every
 - [Export](./export.md): Write the rows of the table to a CSV or an Excel file, with the text that the screen shows.
 - [Agents](./agents.md): Let an agent find a table on the page, read it and act on it, with the same actions that a person has.
 
+## Data sheet
+
+- [The sheet options](./sheet-options.md): Turn a table into a data sheet: cells that a person types into, ranges, undo and a fill handle.
+- [Range, copy and paste](./range-copy-and-paste.md): Let a person select a block of cells, copy it, paste into it and read its sum.
+- [Fill](./fill.md): Let a person drag the corner of a range to fill more cells, with a series where the values have one step.
+- [History](./history.md): Let a person take a change back with Control+Z and put it on again with Control+Y.
+- [Formats](./formats.md): Let a person make cells bold, give them a colour, or show a number as a percentage, and save that with the document.
+- [Row numbers and letters](./row-numbers-and-letters.md): Give a sheet a column of row numbers and a row of column letters, where a person selects whole rows and columns.
+- [Formulas](./sheet-formulas.md): Compute values with formulas as in a spreadsheet: a computed column, or a formula in one cell.
+- [An Excel file with formulas](./excel-formulas.md): Download a sheet as an Excel file whose cells keep their formulas, where Excel computes them the same way.
+
 ## Source and licence
 
 The format of these pages, the layout of `llms.txt` and parts of the text of Introduction, Installation and First table follow the docs of UI SDK (`@ui-sdk/vue/docs`, https://ui-sdk.dev), which are licensed under the Apache License 2.0.
