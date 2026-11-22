@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.3](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.2...v0.2.3) (2026-11-22)
+
+
+### Features
+
+* add the primitives for a formula writer ([f0cb4ea](https://github.com/FallDownTheSystem/ui-sdk-table/commit/f0cb4ea5fe73cc5d9981977b77a418362e683bdb))
+
+
+### Documentation
+
+* add the ui-sdk-table skill ([e07cc0e](https://github.com/FallDownTheSystem/ui-sdk-table/commit/e07cc0e22aa36791d1f14e6a87caa621645cf3e6))
+
 ## [0.2.2](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.1...v0.2.2) (2026-11-22)
 
 
