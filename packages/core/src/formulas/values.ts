@@ -10,7 +10,14 @@ import { isDay, toText } from '../rows/columns'
 
 /** The cells of a range, in the order of the document: the rows, and in each row the columns. */
 export class FormulaRange {
-	constructor(readonly values: readonly unknown[]) {}
+	constructor(
+		readonly values: readonly unknown[],
+		/** How many columns each row of the range has. */
+		readonly columns = 1,
+	) {}
+	get rows(): number {
+		return this.columns ? this.values.length / this.columns : 0
+	}
 }
 
 export const isEmpty = (value: unknown): value is null | undefined | '' =>

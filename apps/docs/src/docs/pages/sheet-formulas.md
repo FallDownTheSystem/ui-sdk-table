@@ -90,11 +90,13 @@ A draft stays with the cell where it started, also when the active cell moves. A
 | --- | --- |
 | Operators | `+ - * / ^`, a leading `-`, `%` after a number, `&` (joins texts), `= <> < <= > >=` |
 | Numbers | `SUM`, `AVERAGE`, `MIN`, `MAX`, `COUNT`, `COUNTA`, `ROUND`, `ROUNDUP`, `ROUNDDOWN`, `FLOOR`, `CEILING`, `ABS`, `INT`, `MOD` |
-| Conditions | `IF`, `IFS`, `SWITCH`, `AND`, `OR`, `NOT`, `IFERROR`, `ISBLANK`, `ISNUMBER`, `ISTEXT`, `ISERROR` |
-| Texts | `CONCAT`, `LEN`, `LEFT`, `RIGHT`, `MID`, `UPPER`, `LOWER`, `TRIM` |
+| Conditions | `IF`, `IFS`, `SWITCH`, `AND`, `OR`, `NOT`, `IFERROR`, `IFNA`, `ISBLANK`, `ISNUMBER`, `ISTEXT`, `ISERROR` |
+| Ranges with criteria | `COUNTIF`, `COUNTIFS`, `SUMIF`, `SUMIFS`, `AVERAGEIF`, `AVERAGEIFS`, `COUNTBLANK` |
+| Lookups | `XLOOKUP`, `VLOOKUP`, `INDEX`, `MATCH` |
+| Texts | `CONCAT`, `TEXTJOIN`, `LEN`, `LEFT`, `RIGHT`, `MID`, `UPPER`, `LOWER`, `TRIM`, `SUBSTITUTE`, `FIND`, `SEARCH`, `VALUE`, `TEXT` |
 | Periods of a date | `DAYOF`, `WEEKOF(d, [type])`, `MONTHOF`, `QUARTEROF`, `YEAROF`, `HOUROF` |
 | Parts of a date | `YEAR`, `QUARTER`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `WEEKDAY(d, [type])`, `ISOWEEKNUM`, `ISOYEAR` |
-| Date math | `DATE(year, month, day)`, `DAYS(end, start)`, `DATEADD(date, count, unit)` |
+| Date math | `DATE(year, month, day)`, `DAYS(end, start)`, `DATEADD(date, count, unit)`, `EOMONTH(date, months)`, `TODAY()`, `NOW()` |
 
 A function whose name Excel has behaves as in Excel, with its arguments and edges: `MONTH` gives 1 to 12, `WEEKDAY` counts from Sunday by default and takes the types of Excel, `IF`, `IFS`, `SWITCH`, `AND`, `OR` and `IFERROR` read only the arguments they need. The differences:
 
@@ -102,7 +104,12 @@ A function whose name Excel has behaves as in Excel, with its arguments and edge
 - A day is a text `YYYY-MM-DD` and a moment a `Date`, not a serial number: `DATE(2026, 11, 21)` gives `2026-11-21`, and `DAYS` and the parts read both kinds. A date before 1900 gives `#NUM!`, and a year under 1900 gets 1900 added, as in Excel.
 - The date functions read the clock of a zone (above); Excel has no zone.
 - `#CYCLE!` is not in Excel: a circle that comes with the `cell-formulas` of the owner. Excel stores such a formula and warns; here an entry that makes a circle is refused.
-- No other sheets, names, arrays, lookups, `SUMIF`, `TODAY()` or `NOW()`.
+- **Criteria** of `COUNTIF` and its family are those of Excel: `5`, `">5"`, `"<>done"`, `""` for the empty cells, `"a*"` and `"?"` as wildcards and `~` before one of them; capital and small letters are the same, and a criterion of a number takes a text of that number. A date is no number here, so a day text in a criterion (`">2026-01-31"`) compares with the days of a range, and a number never takes a date. The ranges of one call have the same rows and columns: `SUMIF` and `AVERAGEIF` give `#VALUE!` where Excel would stretch a smaller range of values.
+- **Lookups** give one cell. A result that Excel spills into the cells beside it, such as `XLOOKUP` with results of two columns or `INDEX` with a row or a column 0 of a range of more than one, is `#VALUE!`. A value matches a cell of its own kind only. `MATCH` and `VLOOKUP` with an approximate match, and `XLOOKUP` with the search `2` or `-2`, give what Excel gives on sorted data; Excel searches such data in halves, and on data that is not sorted it can give another cell, where these look at every cell. A lookup of an empty value is `#N/A`.
+- **`VALUE`** reads a text as a formula reads a number: `12.5`, `-3`, `1e3`, with spaces around it. It reads no comma of thousands, no currency, no percent and no date, in any locale: those are `#VALUE!`.
+- **`TEXT`** knows these codes, the same in every locale. A number: `0`, `#`, the decimal point, a comma between the digits (thousands, as in `#,##0.00`) and `%`. A date: `yy`, `yyyy`, `m` to `mmmmm`, `d` to `dddd` (the months and days in English), `h`, `hh`, `m` and `mm` after an hour or before a second (the minutes), `s`, `ss` and `AM/PM`. Both take text in quotes, a character after `\`, a space and the characters `$-+()/:` (and `.` and `,` in a date); `General` gives the plain text. Any other code is `#VALUE!`: no colours, no sections with `;`, no `E+`, no comma at the end. A date with a number code and a number with a date code are `#VALUE!`, because a date is no number here. A half goes away from zero.
+- **`TODAY()` and `NOW()`** hold the moment when they were computed: after an entry, after rows came or went, or at `controller.recalculate()`. Nothing computes them on a timer and a render does not. `TODAY()` is the day in the zone of the formula (`timeZone` of the engine), `NOW()` a `Date`. A test passes a clock: `createFormulaEngine({ now: () => Date.UTC(2026, 10, 22) })`.
+- **Left out:** `FILTER`, `UNIQUE`, `SORT`, `SORTBY`, `SEQUENCE` and `TRANSPOSE` give a list that Excel spills into the cells beside the formula; a cell of the table holds one value and the rows belong to the owner. `SUBTOTAL` skips the rows that a filter hides; a formula reads places of the document and never the view, and the footer, `getTotals` and the selection summary already follow the filter. No other sheets, names or arrays.
 
 
 ## What a styled table needs

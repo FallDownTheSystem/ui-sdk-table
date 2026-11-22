@@ -141,6 +141,13 @@ Each value is the median of 9 runs (5 for a parse), in milliseconds, on the clou
 | Slice 5: the same with a new index of readers | not estimated | 378 |
 | Slice 5: `follow`, 1,000 ranges of 50 rows and 50,000 changed cells | not estimated | 129 |
 | Slice 5: `follow`, a running sum over 5,000 rows (12.5 million reads), refused by `maxReads` | not estimated | 5.1 |
+| Functions of the list (2026-11-22): one cell `=SUM([price@*])` over 50,000 rows, the reference | not estimated | 14.8 |
+| One cell `=SUMIF([qty@*], ">5", [price@*])` over 50,000 rows | not estimated | 17.8 |
+| One cell `=SUMIFS([price@*], [qty@*], ">5", [qty@*], "<10")` | not estimated | 24.4 |
+| One cell `=COUNTIF([qty@*], 12)` | not estimated | 10.8 |
+| One cell `XLOOKUP` that finds nothing, exact (every row read) | not estimated | 17.9 |
+| One cell `MATCH` with an approximate match over data that is not sorted | not estimated | 11.1 |
+| `TEXT([price], "#,##0.00")` as a formula of a column, 50,000 rows | not estimated | 124 |
 | Slice 6: the mount of a table without formulas, for the line below | not estimated | 60.1 |
 | Slice 6: the mount with 50,010 formula cells | nothing more than the line above | 39.1 (nothing is computed; the line above warms the code up) |
 | Slice 6: `getView` after a move of the active cell, a table without formulas | not estimated | 0.27 |

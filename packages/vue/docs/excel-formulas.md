@@ -100,6 +100,8 @@ A cell gets the formula of the file only when the whole formula means the same i
 - a range is one column whose rows are in the file in the order of the document and next to each other;
 - each function is in `EXCEL_FUNCTIONS`.
 
+A function that came after Excel 2007 (`CONCAT`, `IFS`, `SWITCH`, `IFNA`, `TEXTJOIN`) is written with the prefix `_xlfn.` that the file format asks for. `SUMIF`, `AVERAGEIF`, the lookups, `VALUE`, `TEXT`, `TODAY`, `NOW`, `EOMONTH` and the date functions go as their result: Excel stretches a smaller range of `SUMIF`, searches sorted data in halves, reads its own locale in `VALUE` and `TEXT`, computes `TODAY` and `NOW` again when it opens the file, and has no day text.
+
 Else the cell holds its result, as without the option. A file without the option holds the same bytes as the file of a table without formulas.
 
 See the [Formula tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=formula) and the page [Export](./export.md).

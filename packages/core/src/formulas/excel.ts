@@ -10,7 +10,11 @@ import { STORED_SIGNS } from './tokens'
  * arguments, results and edges. A formula with any other function goes into
  * a file as its result: the periods, the parts of a date and the date math
  * read a zone or a day text that Excel does not have, and `FLOOR` and
- * `CEILING` differ between versions of Excel.
+ * `CEILING` differ between versions of Excel. `SUMIF` and `AVERAGEIF`
+ * stretch a smaller range of values in Excel, and the lookups search sorted
+ * data in halves there: those differ on some data. `VALUE` and `TEXT` read
+ * the locale of Excel, and `TODAY` and `NOW` are computed again when Excel
+ * opens the file.
  */
 export const EXCEL_FUNCTIONS: ReadonlySet<string> = new Set([
 	'SUM',
@@ -44,7 +48,20 @@ export const EXCEL_FUNCTIONS: ReadonlySet<string> = new Set([
 	'UPPER',
 	'LOWER',
 	'TRIM',
+	'IFNA',
+	'COUNTIF',
+	'COUNTIFS',
+	'SUMIFS',
+	'AVERAGEIFS',
+	'COUNTBLANK',
+	'TEXTJOIN',
+	'SUBSTITUTE',
+	'FIND',
+	'SEARCH',
 ])
+
+/** The functions that came after Excel 2007: a file names them with this prefix, or Excel reads no function. */
+const NEWER: ReadonlySet<string> = new Set(['CONCAT', 'IFS', 'SWITCH', 'IFNA', 'TEXTJOIN'])
 
 // Excel knows every error code of the engine but this one.
 const NOT_IN_EXCEL = '#CYCLE!'
@@ -156,7 +173,7 @@ export function excelFormulas(): XlsxFormulas {
 						return print(node.left) + node.op + print(node.right)
 					case 'call':
 						if (!EXCEL_FUNCTIONS.has(node.name)) fail()
-						return `${node.name}(${node.args.map(print).join(',')})`
+						return `${NEWER.has(node.name) ? '_xlfn.' : ''}${node.name}(${node.args.map(print).join(',')})`
 					case 'group':
 						return `(${print(node.inner)})`
 				}

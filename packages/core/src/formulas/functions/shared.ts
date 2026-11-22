@@ -24,6 +24,8 @@ export type FormulaContext = {
 	time: (date: string | Date) => number
 	/** The zone of a date that is no reference to a column: the `timeZone` of the formula, or local time. */
 	zone: string | undefined
+	/** The clock of `TODAY` and `NOW`, in milliseconds since 1970. */
+	now: () => number
 }
 
 /** The arguments of one call. A function reads only the ones it needs. */
@@ -41,6 +43,8 @@ export type FormulaFunction = {
 	max: number
 	/** The arguments come in pairs. */
 	even?: boolean
+	/** One argument, then the others in pairs. */
+	odd?: boolean
 	/** The arguments, as a person reads them: `number, digits`. */
 	args: string
 	/** One line that says what the function gives. */
@@ -74,6 +78,17 @@ export function eachArg(
 		if (stop !== undefined) return stop
 	}
 	return undefined
+}
+
+/**
+ * A range argument: a range, or a reference to one cell as a range of that
+ * cell. A value that is no reference is `#VALUE!`, and an error stays.
+ */
+export function rangeArg(args: FormulaArgs, index: number): FormulaRange | FormulaError {
+	const value = args.value(index)
+	if (value instanceof FormulaRange) return value
+	if (args.column(index)) return new FormulaRange([value])
+	return isFormulaError(value) ? value : '#VALUE!'
 }
 
 /** A number argument, or the error that stops the call. */

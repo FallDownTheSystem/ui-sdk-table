@@ -15,7 +15,7 @@ const DAY = 86_400_000
 const HOUR = 3_600_000
 
 /** A date as the fields of its calendar day, with the clock of a moment. */
-type Read = {
+export type Read = {
 	year: number
 	month: number
 	day: number
@@ -38,7 +38,7 @@ const DATE_FORMATS: ReadonlySet<string> = new Set(['date', 'time', 'datetime'])
 const ISO_MOMENT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/
 
 /** Reads a date argument, or gives `null` for an empty one and the error for a value that is no date. */
-function readDate(args: FormulaArgs, index: number): Read | null | FormulaError {
+export function readDate(args: FormulaArgs, index: number): Read | null | FormulaError {
 	const value = args.value(index)
 	if (isFormulaError(value)) return value
 	if (isEmpty(value)) return null
@@ -87,6 +87,20 @@ function utcDay(year: number, month: number, day: number): number {
 	const date = new Date(0)
 	date.setUTCFullYear(year, month - 1, day)
 	return date.getTime()
+}
+
+/** The fields of a date on the clock, rounded to the second as Excel shows a time. 0 is Sunday. */
+export function clockParts(read: Read) {
+	const wall = new Date(Math.round((dayNumber(read) * DAY + read.clock) / 1000) * 1000)
+	return {
+		year: wall.getUTCFullYear(),
+		month: wall.getUTCMonth() + 1,
+		day: wall.getUTCDate(),
+		weekday: wall.getUTCDay(),
+		hour: wall.getUTCHours(),
+		minute: wall.getUTCMinutes(),
+		second: wall.getUTCSeconds(),
+	}
 }
 
 /** The number of a calendar day, counted from 1970-01-01. */
@@ -167,6 +181,37 @@ function typeArg<T>(args: FormulaArgs, table: Readonly<Record<number, T>>): T | 
 const UNITS = ['year', 'quarter', 'month', 'week', 'day', 'hour', 'minute'] as const
 
 export const DATE_FUNCTIONS: Record<string, FormulaFunction> = {
+	TODAY: {
+		min: 0,
+		max: 0,
+		args: '',
+		help: 'The day of now in the zone of the formula. It holds the day when it was computed; recalculate() computes it again.',
+		call: (args) => {
+			const date = new Date(wallTime(args.context.now(), args.context.zone))
+			return dayText(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate())
+		},
+	},
+	NOW: {
+		min: 0,
+		max: 0,
+		args: '',
+		help: 'The moment of now. It holds the moment when it was computed; recalculate() computes it again.',
+		call: (args) => new Date(args.context.now()),
+	},
+	EOMONTH: {
+		min: 2,
+		max: 2,
+		args: 'date, months',
+		help: 'The last day of the month a count of months after the date, or before it with a negative count.',
+		call: (args) => {
+			const read = readDate(args, 0)
+			if (read === null) return null
+			if (typeof read === 'string') return read
+			const months = countArg(args, 1, 0)
+			if (typeof months !== 'number') return months
+			return dayText(read.year, read.month + months + 1, 0)
+		},
+	},
 	DAYOF: ofDate('The day of the date, as a day: a group of the same days.', (read) =>
 		dayText(read.year, read.month, read.day),
 	),

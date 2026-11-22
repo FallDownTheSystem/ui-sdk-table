@@ -225,6 +225,34 @@ describe('an Excel file with formulas', () => {
 		}
 	})
 
+	test('a function after Excel 2007 has the prefix of the file, and SUMIF, a lookup and TEXT go as the result', async () => {
+		const view = setup(
+			{
+				a: { note: '=TEXTJOIN("-", TRUE, A1:A3)' },
+				b: { note: '=COUNTIFS(B1:B3, ">1", C1:C3, "<5")&IFNA(1, 0)' },
+				c: {
+					note: '=SUMIF(B1:B3, ">1")',
+					item: '=VLOOKUP("Nut", A1:B3, 2, FALSE)',
+					total: '=TEXT(4, "0.0")',
+				},
+			},
+			{},
+			{ a: { note: 'Bolt-Nut-Washer' }, b: { note: '11' }, c: { note: 6.5 } },
+		)
+		try {
+			const cells = await cellsOf(view)
+			expect(cells.get('E2')?.formula).toBe('_xlfn.TEXTJOIN("-",TRUE,A2:A4)')
+			expect(cells.get('E3')?.formula).toBe('COUNTIFS(B2:B4,">1",C2:C4,"<5")&_xlfn.IFNA(1,0)')
+			expect(['E4', 'A4', 'D4'].map((at) => cells.get(at)?.formula)).toEqual([
+				undefined,
+				undefined,
+				undefined,
+			])
+		} finally {
+			view.unmount()
+		}
+	})
+
 	test('an error of a formula is an error of the file, and a formula that reads it passes it on', async () => {
 		const view = setup(
 			{ a: { total: '=[price]/0' }, b: { note: '=ISERROR([total@a])' } },
