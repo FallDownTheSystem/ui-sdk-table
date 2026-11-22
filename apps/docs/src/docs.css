@@ -105,6 +105,12 @@ a {
 	font-size: 14px;
 }
 
+/* The fill of a link goes 10px past its text on each side. The sidebar scrolls, so that room is its own padding: a link outside it would be cut at the start and would give a scrollbar at the end. */
+.sidebar {
+	margin-inline: -10px;
+	padding-inline: 10px;
+}
+
 .menu-button {
 	display: none;
 }

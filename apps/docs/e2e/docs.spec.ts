@@ -34,6 +34,27 @@ test('the page in view has aria-current in the sidebar, and only it', async ({ p
 	await expect(sidebar.getByRole('link', { name: 'Proofs' })).toHaveCount(0)
 })
 
+test('the sidebar and "On this page" show no scrollbar while the window has room for them', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 1440, height: 900 })
+	await page.goto('/?page=installation')
+	for (const name of ['.sidebar', '.toc']) {
+		const sizes = await page.locator(name).evaluate((el) => ({
+			sideways: el.scrollWidth - el.clientWidth,
+			down: el.scrollHeight - el.clientHeight,
+		}))
+		expect(sizes, name).toEqual({ sideways: 0, down: 0 })
+	}
+	// The fill of the link of the page in view is whole: the sidebar cuts nothing of it.
+	const cut = await page.locator('.sidebar a[aria-current]').evaluate((link) => {
+		const inside = link.getBoundingClientRect()
+		const frame = link.closest('.sidebar')?.getBoundingClientRect()
+		return !frame || inside.left < frame.left || inside.right > frame.right
+	})
+	expect(cut).toBe(false)
+})
+
 test('Tab goes through the bar, the sidebar and the page in the order of the screen', async ({
 	page,
 }) => {
