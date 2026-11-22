@@ -20,9 +20,9 @@ import { table, type TableEditDetails, type TableOptions } from './table'
 type Person = { id: string; name: string; team: string; score: number }
 
 const people = (): Person[] => [
-	{ id: 'a', name: 'Aino', team: 'Design', score: 70 },
-	{ id: 'b', name: 'Eero', team: 'Platform', score: 20 },
-	{ id: 'c', name: 'Helmi', team: 'Design', score: 45 },
+	{ id: 'a', name: 'Alice', team: 'Design', score: 70 },
+	{ id: 'b', name: 'Edward', team: 'Platform', score: 20 },
+	{ id: 'c', name: 'Hannah', team: 'Design', score: 45 },
 ]
 
 const atLeastZero: StandardSchemaV1 = {
@@ -200,8 +200,8 @@ describe('values of an edit', () => {
 		const name: ColumnDef<Row> = { id: 'name' }
 		const score: ColumnDef<Row> = { id: 'points', key: 'score' }
 		const first: Row[] = [
-			{ id: 'a', name: 'Aino', score: 1 },
-			{ id: 'b', name: 'Eero', score: 2 },
+			{ id: 'a', name: 'Alice', score: 1 },
+			{ id: 'b', name: 'Edward', score: 2 },
 		]
 		const edit = (row: Row, column: ColumnDef<Row>, value: unknown): CellEdit<Row> => ({
 			rowId: row.id,
@@ -276,19 +276,19 @@ describe('values of an edit', () => {
 		const name = columns[0] as ColumnDef<Person>
 		const score: ColumnDef<Person> = { id: 'points', key: 'score' }
 		const next = applyEdits(rows, [
-			{ rowId: 'a', columnId: 'name', row: a, column: name, value: 'Anna', previous: 'Aino' },
+			{ rowId: 'a', columnId: 'name', row: a, column: name, value: 'Anna', previous: 'Alice' },
 			{ rowId: 'a', columnId: 'points', row: a, column: score, value: 1, previous: 70 },
-			{ rowId: 'c', columnId: 'name', row: c, column: name, value: 'Hilla', previous: 'Helmi' },
+			{ rowId: 'c', columnId: 'name', row: c, column: name, value: 'Holly', previous: 'Hannah' },
 		])
 		expect(next).toEqual([
 			{ id: 'a', name: 'Anna', team: 'Design', score: 1 },
 			b,
-			{ id: 'c', name: 'Hilla', team: 'Design', score: 45 },
+			{ id: 'c', name: 'Holly', team: 'Design', score: 45 },
 		])
 		expect(next[1]).toBe(b)
 		expect(next).not.toBe(rows)
 		// The caller's rows are as they were.
-		expect(a).toEqual({ id: 'a', name: 'Aino', team: 'Design', score: 70 })
+		expect(a).toEqual({ id: 'a', name: 'Alice', team: 'Design', score: 70 })
 	})
 })
 
@@ -309,7 +309,7 @@ describe('cell editing', () => {
 			expect(cell('a', 'name').hasAttribute('data-editing')).toBe(true)
 			expect(cell('b', 'name').hasAttribute('data-editing')).toBe(false)
 			const input = field()
-			expect(input.value).toBe('Aino')
+			expect(input.value).toBe('Alice')
 			expect(document.activeElement).toBe(input)
 
 			input.value = 'Anna'
@@ -323,13 +323,13 @@ describe('cell editing', () => {
 					row: rows[0],
 					column: columns[0],
 					value: 'Anna',
-					previous: 'Aino',
+					previous: 'Alice',
 				},
 			])
 			expect(edits[0]?.edits[0]?.row).toBe(rows[0])
 			expect(edits[0]?.details).toMatchObject({ reason: 'enter-key', source: 'keyboard' })
 			// The table does not write the value: the row is the caller's.
-			expect(rows[0]?.name).toBe('Aino')
+			expect(rows[0]?.name).toBe('Alice')
 			// Focus is back on the cell, so the arrow keys go on from it.
 			expect(document.activeElement).toBe(cell('a', 'name'))
 		} finally {
@@ -439,7 +439,7 @@ describe('cell editing', () => {
 			expect(view.state.active).toEqual({ row: 2, col: 0 })
 
 			await view.keys('Enter')
-			field().value = 'Eemeli'
+			field().value = 'Eddie'
 			await view.keys('Shift+Tab')
 			expect(edits).toHaveLength(2)
 			expect(document.activeElement).toBe(cell('a', 'score'))
@@ -488,10 +488,10 @@ describe('cell editing', () => {
 
 			view.api.startEdit('b', 'name')
 			expect(document.activeElement).toBe(cell('b', 'name'))
-			field().value = 'Eemeli'
+			field().value = 'Eddie'
 			view.api.startEdit('c', 'name')
 			expect(view.state.editing).toBe(cellKey('c', 'name'))
-			expect(edits[1]?.edits[0]).toMatchObject({ rowId: 'b', value: 'Eemeli' })
+			expect(edits[1]?.edits[0]).toMatchObject({ rowId: 'b', value: 'Eddie' })
 			view.api.cancelEdit()
 			expect(view.state.editing).toBeNull()
 		} finally {
@@ -519,7 +519,7 @@ describe('cell editing', () => {
 			cell('a', 'name').focus()
 			await view.keys('Enter')
 			const input = field()
-			input.value = 'Eero'
+			input.value = 'Edward'
 			await view.keys('Enter')
 			expect(view.state.editing).toBe(cellKey('a', 'name'))
 			answer(false)
@@ -545,7 +545,7 @@ describe('cell editing', () => {
 			cell('b', 'name').focus()
 			await view.keys('Enter')
 			field()
-			view.api.setSearch('Aino')
+			view.api.setSearch('Alice')
 			expect(view.state.editing).toBeNull()
 		} finally {
 			view.unmount()
@@ -747,18 +747,18 @@ describe('cell range', () => {
 			view.api.selectCells({ rowId: 'a', columnId: 'name' }, { rowId: 'b', columnId: 'score' })
 			expect(view.state.cellRange).toEqual({ anchor: { row: 1, col: 0 }, end: { row: 2, col: 2 } })
 			expect(view.changes.at(-1)).toMatchObject({ key: 'cellRange', reason: 'imperative' })
-			expect(view.api.copyCells()).toBe('Aino\tDesign\t70\nEero\tPlatform\t20')
+			expect(view.api.copyCells()).toBe('Alice\tDesign\t70\nEdward\tPlatform\t20')
 
 			const { event, data } = copyEvent('copy')
 			cell('a', 'name').dispatchEvent(event)
-			expect(data.get('text/plain')).toBe('Aino\tDesign\t70\nEero\tPlatform\t20')
+			expect(data.get('text/plain')).toBe('Alice\tDesign\t70\nEdward\tPlatform\t20')
 			expect(event.defaultPrevented).toBe(true)
 			expect(view.announced.at(-1)).toBe('6 cells copied.')
 
 			view.api.clearCellSelection()
 			expect(view.state.cellRange).toBeNull()
 			// Without a range, the active cell alone.
-			expect(view.api.copyCells()).toBe('Aino')
+			expect(view.api.copyCells()).toBe('Alice')
 
 			expect(() => view.api.selectCells({ rowId: 'z', columnId: 'name' })).toThrow(
 				'No row "z" to select. Rows: a, b, c.',
@@ -777,16 +777,16 @@ describe('cell range', () => {
 		try {
 			view.api.selectCells({ rowId: 'b', columnId: 'name' })
 			// Three columns and two rows of text. The team column cannot be edited, so it is skipped.
-			void view.api.pasteCells('Eemeli\tSales\t21\nHilla\tSales\t46\n')
+			void view.api.pasteCells('Eddie\tSales\t21\nHolly\tSales\t46\n')
 			expect(edits).toHaveLength(1)
 			expect(edits[0]?.details.reason).toBe('paste')
 			expect(edits[0]?.edits.map((edit) => [edit.rowId, edit.columnId, edit.value])).toEqual([
-				['b', 'name', 'Eemeli'],
+				['b', 'name', 'Eddie'],
 				['b', 'score', 21],
-				['c', 'name', 'Hilla'],
+				['c', 'name', 'Holly'],
 				['c', 'score', 46],
 			])
-			expect(rows[1]).toEqual({ id: 'b', name: 'Eero', team: 'Platform', score: 20 })
+			expect(rows[1]).toEqual({ id: 'b', name: 'Edward', team: 'Platform', score: 20 })
 			// The cells that the paste covers are the range now.
 			expect(view.state.cellRange).toEqual({ anchor: { row: 2, col: 0 }, end: { row: 3, col: 2 } })
 			expect(view.announced.at(-1)).toBe('4 cells changed.')
@@ -799,7 +799,7 @@ describe('cell range', () => {
 			expect(edits).toHaveLength(1)
 
 			// One value fills every selected cell. The owner of this test keeps its
-			// rows, and after the turn the table reads them again: Eero has 20.
+			// rows, and after the turn the table reads them again: Edward has 20.
 			await view.settle()
 			view.api.selectCells({ rowId: 'a', columnId: 'score' }, { rowId: 'c', columnId: 'score' })
 			void view.api.pasteCells('20')
@@ -1233,7 +1233,7 @@ describe('edges of a range and of a paste', () => {
 			view.api.edit.start(cellKey('b', 'name'))
 			view.api.cancelEdit()
 			expect(view.state.active).toEqual({ row: 2, col: 0 })
-			expect(view.api.copyCells()).toBe('Eero')
+			expect(view.api.copyCells()).toBe('Edward')
 			void view.api.pasteCells('Zed')
 			expect(edits[0]?.edits.map((edit) => edit.rowId)).toEqual(['b'])
 		} finally {
@@ -1281,7 +1281,7 @@ test('a range from the owner that starts in the header selects its body cells on
 	})
 	try {
 		expect(cell('a', 'name').getAttribute('aria-selected')).toBe('true')
-		expect(view.api.copyCells()).toBe('Aino\nEero')
+		expect(view.api.copyCells()).toBe('Alice\nEdward')
 		void view.api.pasteCells('Zed')
 		expect(edits[0]?.edits.map((edit) => edit.rowId)).toEqual(['a', 'b'])
 	} finally {

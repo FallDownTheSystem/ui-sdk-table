@@ -13,11 +13,11 @@ type Person = {
 }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', team: 'Design', score: 70, joined: '2024-03-01', tags: ['lead'] },
-	{ id: 'b', name: 'Eero', team: 'Platform', score: 20, joined: '2023-01-15', tags: [] },
+	{ id: 'a', name: 'Alice', team: 'Design', score: 70, joined: '2024-03-01', tags: ['lead'] },
+	{ id: 'b', name: 'Edward', team: 'Platform', score: 20, joined: '2023-01-15', tags: [] },
 	{
 		id: 'c',
-		name: 'Helmi',
+		name: 'Hannah',
 		team: 'Design',
 		score: 45,
 		joined: '2025-06-30',
@@ -76,9 +76,9 @@ describe('what a control beside the table reads', () => {
 				'tags',
 			])
 
-			view.api.setSearch('ai')
+			view.api.setSearch('al')
 			expect(view.api.getView()).toMatchObject({ rowCount: 1, pageCount: 1, selectable: ['a'] })
-			expect(view.api.getView().filter).toEqual({ search: 'ai' })
+			expect(view.api.getView().filter).toEqual({ search: 'al' })
 		} finally {
 			view.unmount()
 		}
@@ -206,7 +206,7 @@ describe('what a control beside the table reads', () => {
 				{ value: 'new', count: 1, text: 'new' },
 			])
 
-			view.api.setSearch('aino')
+			view.api.setSearch('alice')
 			expect(view.api.getFacets('team').values).toEqual([
 				{ value: 'Design', count: 1, text: 'Design' },
 			])
@@ -234,7 +234,7 @@ describe('what a control beside the table reads', () => {
 	test('a value that the filter names stays in the list when no row holds it any more', () => {
 		const view = setup({ defaultFilter: { columns: { team: ['Platform', 'Sales'] } } })
 		try {
-			view.api.setSearch('aino')
+			view.api.setSearch('alice')
 			// Only a Design row passes the search. The two chosen values stay, with no row.
 			expect(view.api.getFacets('team').values).toEqual([
 				{ value: 'Design', count: 1, text: 'Design' },
@@ -653,7 +653,7 @@ describe('what a review of the controls found', () => {
 				pageUnit: 'parents',
 				dataRowCount: 4,
 			})
-			grouped.api.setSearch('Aino')
+			grouped.api.setSearch('Alice')
 			expect(grouped.api.getView()).toMatchObject({ rowCount: 1, dataRowCount: 1 })
 		} finally {
 			for (const view of [flat, grouped, mixed, tree]) view.unmount()

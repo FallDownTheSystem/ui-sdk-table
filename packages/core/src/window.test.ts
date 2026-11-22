@@ -74,9 +74,9 @@ describe('row pinning', () => {
 
 	test('`pinRow` pins, moves and frees a row, and refuses what cannot be pinned', () => {
 		const tree: Person[] = [
-			{ id: 'a', name: 'Aino', score: 1, reports: [{ id: 'a1', name: 'Eero', score: 2 }] },
-			{ id: 'b', name: 'Helmi', score: 3 },
-			{ id: 'c', name: 'Onni', score: 4 },
+			{ id: 'a', name: 'Alice', score: 1, reports: [{ id: 'a1', name: 'Edward', score: 2 }] },
+			{ id: 'b', name: 'Hannah', score: 3 },
+			{ id: 'c', name: 'Oliver', score: 4 },
 		]
 		const view = setup(tree, { getChildren: (row) => row.reports }, ['a', 'b', 'c'])
 		try {
@@ -166,8 +166,8 @@ describe('row pinning', () => {
 
 	test('a row with child rows is never pinned, and a row in both edges can move', () => {
 		const tree: Person[] = [
-			{ id: 'a', name: 'Aino', score: 1, reports: [{ id: 'a1', name: 'Eero', score: 2 }] },
-			{ id: 'b', name: 'Helmi', score: 3 },
+			{ id: 'a', name: 'Alice', score: 1, reports: [{ id: 'a1', name: 'Edward', score: 2 }] },
+			{ id: 'b', name: 'Hannah', score: 3 },
 		]
 		const view = setup(
 			tree,
@@ -286,8 +286,8 @@ describe('detail rows and other rows that open', () => {
 
 	test('a row that shows as one that can open, opens', () => {
 		const tree: Person[] = [
-			{ id: 'a', name: 'Aino', score: 1, reports: [{ id: 'a1', name: 'Eero', score: 2 }] },
-			{ id: 'b', name: 'Helmi', score: 3 },
+			{ id: 'a', name: 'Alice', score: 1, reports: [{ id: 'a1', name: 'Edward', score: 2 }] },
+			{ id: 'b', name: 'Hannah', score: 3 },
 		]
 		const everyRow = () => true
 		const view = setup(
@@ -311,7 +311,7 @@ describe('detail rows and other rows that open', () => {
 
 	test('a data row cannot have the id of a detail row', () => {
 		const rows: Person[] = [
-			{ id: 'a', name: 'Aino', score: 1 },
+			{ id: 'a', name: 'Alice', score: 1 },
 			{ id: detailRowId('a'), name: 'Odd', score: 2 },
 		]
 		expect(() => {

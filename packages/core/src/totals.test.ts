@@ -31,10 +31,10 @@ const person = (
 })
 
 const people: Person[] = [
-	person('a', 'Aino', 'Design', 'Finland', 70),
-	person('b', 'Eero', 'Platform', 'Sweden', 20),
-	person('c', 'Helmi', 'Design', 'Sweden', 45),
-	person('d', 'Onni', 'Design', 'Finland', 5),
+	person('a', 'Alice', 'Design', 'Finland', 70),
+	person('b', 'Edward', 'Platform', 'Sweden', 20),
+	person('c', 'Hannah', 'Design', 'Sweden', 45),
+	person('d', 'Oliver', 'Design', 'Finland', 5),
 ]
 
 const columns: ColumnDef<Person>[] = [
@@ -291,7 +291,7 @@ describe('one implementation for the totals of the footer, a group and an export
 	test('in a filtered table, the three agree, and a pinned row that the filter refuses is in none', () => {
 		const view = setup({
 			defaultFilter: { columns: { country: 'Sweden' } },
-			// Aino is pinned and is in Finland: she is in view, and not in a total.
+			// Alice is pinned and is in Finland: she is in view, and not in a total.
 			defaultRowPinning: { top: ['a'] },
 		})
 		try {
@@ -330,8 +330,8 @@ describe('one implementation for the totals of the footer, a group and an export
 
 	test('child rows count in the total of their group and of the footer, open or not', () => {
 		const tree: Person[] = [
-			{ ...person('a', 'Aino', 'Design', 'Finland', 70), reports: [people[2] as Person] },
-			person('b', 'Eero', 'Platform', 'Sweden', 20),
+			{ ...person('a', 'Alice', 'Design', 'Finland', 70), reports: [people[2] as Person] },
+			person('b', 'Edward', 'Platform', 'Sweden', 20),
 		]
 		const view = setup({ rows: tree, getChildren: (row) => row.reports })
 		try {
@@ -341,7 +341,7 @@ describe('one implementation for the totals of the footer, a group and an export
 			expect(file.total).toEqual(view.api.totals())
 			expect(file.groups['Design (1)']).toEqual(view.api.totals(group(view, DESIGN)))
 			// A parent that stays because a child passes the filter is on the screen, so it counts.
-			view.api.setSearch('Helmi')
+			view.api.setSearch('Hannah')
 			expect(view.api.totals()).toEqual({ score: 115, hours: 5.75 })
 			expect(exported(view).total).toEqual(view.api.totals())
 		} finally {

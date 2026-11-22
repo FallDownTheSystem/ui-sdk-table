@@ -15,9 +15,9 @@ import {
 type Person = { id: string; name: string; team: string; score: number }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', team: 'Design', score: 70 },
-	{ id: 'b', name: 'Eero', team: 'Platform', score: 20 },
-	{ id: 'c', name: 'Helmi', team: 'Design', score: 45 },
+	{ id: 'a', name: 'Alice', team: 'Design', score: 70 },
+	{ id: 'b', name: 'Edward', team: 'Platform', score: 20 },
+	{ id: 'c', name: 'Hannah', team: 'Design', score: 45 },
 ]
 const columns: ColumnDef<Person>[] = [
 	{ id: 'name', header: 'Name' },

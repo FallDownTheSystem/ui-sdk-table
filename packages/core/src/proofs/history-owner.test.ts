@@ -30,8 +30,8 @@ const columns: ColumnDef<Person>[] = [
 function setup() {
 	const owner = {
 		rows: [
-			{ id: 'a', name: 'Aino', score: 70 },
-			{ id: 'b', name: 'Eero', score: 20 },
+			{ id: 'a', name: 'Alice', score: 70 },
+			{ id: 'b', name: 'Edward', score: 20 },
 		] as Person[],
 		reports: [] as CellEdit<Person>[],
 	}
@@ -73,12 +73,12 @@ test('a second edit of one cell in one turn is held against the value of the fir
 	try {
 		void view.api.editCell('a', 'name', 'Aina')
 		// Back to the value that the rows of the last render still show.
-		void view.api.editCell('a', 'name', 'Aino')
+		void view.api.editCell('a', 'name', 'Alice')
 		expect(owner.reports.map((edit) => [edit.previous, edit.value])).toEqual([
-			['Aino', 'Aina'],
-			['Aina', 'Aino'],
+			['Alice', 'Aina'],
+			['Aina', 'Alice'],
 		])
-		expect(owner.rows[0]?.name).toBe('Aino')
+		expect(owner.rows[0]?.name).toBe('Alice')
 		// The same value twice is one report.
 		void view.api.editCell('b', 'score', 5)
 		void view.api.editCell('b', 'score', 5)
@@ -93,13 +93,13 @@ test('after the turn, the table reads the rows again: an owner that kept its row
 	try {
 		void view.api.editCell('a', 'name', 'Aina')
 		await view.settle()
-		// The table still has the rows of the mount, where the name is Aino. An
+		// The table still has the rows of the mount, where the name is Alice. An
 		// owner that took the first edit at once but shows it later gets the
 		// truth of its rows: the table does not hold on to what it reported.
 		void view.api.editCell('a', 'name', 'Aina')
 		expect(owner.reports.map((edit) => [edit.previous, edit.value])).toEqual([
-			['Aino', 'Aina'],
-			['Aino', 'Aina'],
+			['Alice', 'Aina'],
+			['Alice', 'Aina'],
 		])
 	} finally {
 		view.unmount()

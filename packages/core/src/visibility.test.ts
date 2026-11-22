@@ -5,7 +5,7 @@ import { table, type TableOptions } from './table'
 
 type Person = { id: string; name: string; team: string; role: string; score: number }
 
-const people: Person[] = [{ id: 'a', name: 'Aino', team: 'Design', role: 'Lead', score: 70 }]
+const people: Person[] = [{ id: 'a', name: 'Alice', team: 'Design', role: 'Lead', score: 70 }]
 
 const columns: ColumnDef<Person>[] = [
 	{ id: 'name' },

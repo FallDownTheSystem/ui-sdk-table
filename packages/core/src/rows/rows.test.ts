@@ -35,18 +35,18 @@ type Person = {
 }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', team: 'Design', score: 70, joined: '2024-03-01', tags: ['lead'] },
+	{ id: 'a', name: 'Alice', team: 'Design', score: 70, joined: '2024-03-01', tags: ['lead'] },
 	{
 		id: 'b',
-		name: 'eero',
+		name: 'edward',
 		team: 'Platform',
 		score: 20,
 		joined: '2023-01-15',
 		tags: ['new', 'remote'],
 	},
-	{ id: 'c', name: 'Helmi 10', team: 'Design', score: null, joined: '2025-06-30' },
-	{ id: 'd', name: 'Helmi 9', team: null, score: 45, joined: '2022-11-02', tags: ['remote'] },
-	{ id: 'e', name: 'Onni', team: 'Platform', score: 90, joined: '2024-03-01' },
+	{ id: 'c', name: 'Hannah 10', team: 'Design', score: null, joined: '2025-06-30' },
+	{ id: 'd', name: 'Hannah 9', team: null, score: 45, joined: '2022-11-02', tags: ['remote'] },
+	{ id: 'e', name: 'Oliver', team: 'Platform', score: 90, joined: '2024-03-01' },
 ]
 
 const columns: ColumnDef<Person>[] = [
@@ -83,7 +83,7 @@ describe('row nodes', () => {
 
 	test('getRowId wins over the id property', () => {
 		const { rows } = createRowNodes(people, { getRowId: (row) => `p-${row.name}` })
-		expect(rows[0]?.id).toBe('p-Aino')
+		expect(rows[0]?.id).toBe('p-Alice')
 	})
 })
 
@@ -101,7 +101,7 @@ describe('filter', () => {
 	})
 
 	test('search finds text in any column, ignoring case', () => {
-		expect(ids(run({ search: 'EER' }))).toEqual(['b'])
+		expect(ids(run({ search: 'DWA' }))).toEqual(['b'])
 		expect(ids(run({ search: 'platform' }))).toEqual(['b', 'e'])
 	})
 
@@ -118,12 +118,12 @@ describe('filter', () => {
 	})
 
 	test('fuzzy search accepts a near match', () => {
-		const predicate = createRowPredicate({ search: 'ano' }, { columns, searchMode: 'fuzzy' })
+		const predicate = createRowPredicate({ search: 'alce' }, { columns, searchMode: 'fuzzy' })
 		expect(predicate && ids(filterRows(nodesOf(), predicate))).toContain('a')
 	})
 
 	test('the shape of a filter value picks the kind of match', () => {
-		expect(ids(run({ columns: { name: 'helmi' } }))).toEqual(['c', 'd'])
+		expect(ids(run({ columns: { name: 'hannah' } }))).toEqual(['c', 'd'])
 		expect(ids(run({ columns: { team: ['Design'] } }))).toEqual(['a', 'c'])
 		expect(ids(run({ columns: { tags: ['remote'] } }))).toEqual(['b', 'd'])
 		expect(ids(run({ columns: { score: { min: 45, max: 70 } } }))).toEqual(['a', 'd'])
@@ -179,15 +179,15 @@ describe('filter', () => {
 				score: 1,
 				joined: '2020-01-01',
 				reports: [
-					{ id: 'r1', name: 'Kerttu', team: 'Design', score: 2, joined: '2021-01-01' },
-					{ id: 'r2', name: 'Lauri', team: 'Design', score: 3, joined: '2021-01-01' },
+					{ id: 'r1', name: 'Kate', team: 'Design', score: 2, joined: '2021-01-01' },
+					{ id: 'r2', name: 'Liam', team: 'Design', score: 3, joined: '2021-01-01' },
 				],
 			},
 			{ id: 'solo', name: 'Solo', team: 'Growth', score: 4, joined: '2021-01-01' },
 		]
 		const list = nodesOf(tree)
 
-		const child = run({ search: 'lauri' }, list)
+		const child = run({ search: 'liam' }, list)
 		expect(ids(child)).toEqual(['boss'])
 		expect(ids(child[0]?.children ?? [])).toEqual(['r2'])
 		expect(child[0]?.row).toBe(tree[0])
@@ -420,10 +420,10 @@ describe('row model', () => {
 	test('a new search text filters again but does not sort again', () => {
 		const { state, model } = setup()
 		state.sort = [{ id: 'name' }]
-		state.filter = { search: 'e' }
+		state.filter = { search: 'a' }
 		const sorted = model.sorted()
 		const filtered = model.filtered()
-		state.filter = { search: 'el' }
+		state.filter = { search: 'han' }
 		expect(model.sorted()).toBe(sorted)
 		expect(model.filtered()).not.toBe(filtered)
 		expect(ids(model.filtered())).toEqual(['d', 'c'])

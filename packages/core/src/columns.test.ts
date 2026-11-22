@@ -7,8 +7,8 @@ import { table, type TableOptions } from './table'
 type Person = { id: string; name: string; team: string; role: string; score: number }
 
 const people: Person[] = [
-	{ id: 'a', name: 'Aino', team: 'Design', role: 'Lead', score: 70 },
-	{ id: 'b', name: 'Eero', team: 'Platform', role: 'Engineer', score: 20 },
+	{ id: 'a', name: 'Alice', team: 'Design', role: 'Lead', score: 70 },
+	{ id: 'b', name: 'Edward', team: 'Platform', role: 'Engineer', score: 20 },
 ]
 
 const flat: ColumnDef<Person>[] = [

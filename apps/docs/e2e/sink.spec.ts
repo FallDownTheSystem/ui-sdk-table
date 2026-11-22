@@ -850,7 +850,7 @@ for (const tone of TONES) {
 		await part('edit-price', '[data-slot="table-editor"]').fill('-1')
 		await page.keyboard.press('Enter')
 		await expect(part('edit-price', '[data-slot="table-edit-error"]')).toBeVisible()
-		await tableOf(page, 'more-marks').locator('tbody tr', { hasText: 'Aalto Works' }).hover()
+		await tableOf(page, 'more-marks').locator('tbody tr', { hasText: 'Alder Works' }).hover()
 
 		const pairs: Pair[] = [
 			['the title of a tile', part('columns-pin', '.tile-title'), 'text', TEXT],

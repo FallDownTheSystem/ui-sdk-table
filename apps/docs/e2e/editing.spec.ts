@@ -171,11 +171,11 @@ test('Tab saves and goes to the next cell, and focus that leaves the editor save
 	await expect(page.getByRole('button', { name: 'Clear the list' })).toBeFocused()
 
 	await cell(table, 4, 2).dblclick()
-	await page.keyboard.type('Hilla Ellis')
+	await page.keyboard.type('Holly Ellis')
 	await page.getByRole('heading', { name: 'Last edits' }).click()
 	await expect(editor(table)).toHaveCount(0)
-	await expect(cell(table, 4, 2)).toHaveText('Hilla Ellis')
-	await expect(log(page).first()).toHaveText('focus-out: e3.name="Hilla Ellis"')
+	await expect(cell(table, 4, 2)).toHaveText('Holly Ellis')
+	await expect(log(page).first()).toHaveText('focus-out: e3.name="Holly Ellis"')
 	// Focus stays where the person put it.
 	await expect(table.locator(':focus')).toHaveCount(0)
 
