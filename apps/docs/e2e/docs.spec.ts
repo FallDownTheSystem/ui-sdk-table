@@ -917,7 +917,7 @@ test('a reference page shows the members of its types, and no marker is left on 
 	await expect(page.locator('body')).not.toContainText('<Members')
 })
 
-test('A formula writer: a drag writes one range into the field, the hint marks its argument, and the list shows functions', async ({
+test('A formula writer: a drag and the arrow keys write one range into the field, the hint marks its argument, and the list shows functions', async ({
 	page,
 }) => {
 	await page.goto('/?page=formula-writer')
@@ -937,6 +937,8 @@ test('A formula writer: a drag writes one range into the field, the hint marks i
 		if (!box) throw new Error('The cell is not in view.')
 		return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
 	}
+	// Near the bottom of the window, a drag scrolls the page; the example starts at the top.
+	await example.evaluate((el) => el.scrollIntoView({ block: 'start', behavior: 'instant' }))
 	const from = await center(totals.nth(0))
 	const to = await center(totals.nth(2))
 	await page.mouse.move(from.x, from.y)
@@ -952,6 +954,18 @@ test('A formula writer: a drag writes one range into the field, the hint marks i
 	await page.keyboard.type(')')
 	await page.keyboard.press('Enter')
 	await expect(totals.last()).toHaveText('511.00')
+
+	await field.click()
+	await field.press('Control+a')
+	await page.keyboard.type('=D1+')
+	await page.keyboard.press('ArrowLeft')
+	await expect(field).toHaveValue('=D1+C4')
+	await page.keyboard.press('Shift+ArrowUp')
+	await expect(field).toHaveValue('=D1+C3:C4')
+	await expect(example.locator('p[role="status"]')).toHaveText('Picked C3:C4')
+	await expect(field).toBeFocused()
+	await expect(example.getByTestId('address')).toHaveText('D4')
+	await field.press('Escape')
 
 	await field.click()
 	await field.press('Control+a')

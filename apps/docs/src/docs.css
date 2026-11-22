@@ -830,6 +830,14 @@ a {
 		cursor: pointer;
 	}
 
+	/* The status line keeps its height, so the words of a pick never move the table under a drag. */
+	.example-preview .writer [role='status'] {
+		flex-basis: 100%;
+		min-block-size: 1.5em;
+		margin: 0;
+		line-height: 1.5;
+	}
+
 	.example-preview .writer [data-testid='hint'] {
 		flex-basis: 100%;
 		font-family: var(--mono, monospace);

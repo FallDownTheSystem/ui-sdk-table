@@ -7,6 +7,7 @@ import {
 	definePrimitive,
 	direct,
 	dispatch,
+	isComposing,
 	isRTL,
 	live,
 	matchesShortcut,
@@ -193,6 +194,30 @@ export type CellRef = {
 	rowId: string
 	/** The id of the column. */
 	columnId: string
+}
+
+/** An arrow key that moves a pick (`movePick`). */
+export type PickKey = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight'
+
+/** How `movePick` moves. */
+export type PickMoveOptions = {
+	/** Keep the first cell of the pick and move its end: a range, as Shift with an arrow. */
+	extend?: boolean
+	/** Go to the edge of the body in the direction of the key, as Control with an arrow. */
+	edge?: boolean
+	/**
+	 * Start a new pick from the cell of the field, also when a pick is there:
+	 * after the person typed a character, a key picks anew, as in a
+	 * spreadsheet.
+	 */
+	start?: boolean
+}
+
+const PICK_STEPS: Readonly<Record<PickKey, GridCell>> = {
+	ArrowUp: { row: -1, col: 0 },
+	ArrowDown: { row: 1, col: 0 },
+	ArrowLeft: { row: 0, col: -1 },
+	ArrowRight: { row: 0, col: 1 },
 }
 
 /**
@@ -446,6 +471,20 @@ export type TableController = {
 	 * where no address names a row. Needs the `formulas` option.
 	 */
 	getRangeAddress(cells?: CellPick | null): string | null
+	/**
+	 * Moves the pick of the pick mode with an arrow key, as a field that
+	 * writes a formula does it while a person points with the keys. The
+	 * first move, and a move with `start`, picks the cell next to the cell
+	 * of the field (the cell that is edited, else the active cell) in the
+	 * direction of the key; a later move takes the pick one cell further.
+	 * `extend` (Shift) keeps the first cell and grows a range, and `edge`
+	 * (Control) goes to the edge of the body. It changes `pickedCells` with
+	 * the reason `list-navigation`, scrolls the cell into view, and leaves
+	 * focus, the caret, the active cell and the selected cells where they
+	 * are. Returns the pick, or `null` without a cell to pick. Needs
+	 * `pickCells`; the text field of the table's own editor calls it itself.
+	 */
+	movePick(key: PickKey, options?: PickMoveOptions): CellPick | null
 	/**
 	 * The references of a formula text as a person types it at a cell, the
 	 * active cell by default: the place of each in the text, from `start` up
@@ -2863,6 +2902,10 @@ export const table = definePrimitive({
 
 		/** A key in the text field of the editor. */
 		function editorKeydown(event: KeyboardEvent): void {
+			if (pickKeydown(event)) {
+				event.stopPropagation()
+				return
+			}
 			// After the last cell of the entry mode, Tab saves and goes on to the
 			// root, which lets the browser take focus out of the table.
 			const left = entryLeave(event)
@@ -3357,7 +3400,43 @@ export const table = definePrimitive({
 			columnsFrom: () => letteredFrom(),
 			set: (next, details) => change('pickedCells', next, details),
 			commit: (next, details) => commit('pickedCells', next, details),
+			reveal: (cell) => {
+				const row = bodyRows()[cell.row - headerRowCount()]
+				if (row && !row.pinned && (options().rowWindow ?? false)) rowWindow.scrollTo(row.id)
+			},
 		})
+		function movePick(key: unknown, moves: PickMoveOptions = {}, event?: Event): CellPick | null {
+			if (!pickCells()) throw new Error('The pick mode is off: pass `pickCells`, then move a pick.')
+			const way = Object.hasOwn(PICK_STEPS, String(key)) ? PICK_STEPS[key as PickKey] : undefined
+			if (!way) {
+				throw new Error(
+					`No key "${String(key)}" to move a pick. Keys: ${listed(Object.keys(PICK_STEPS))}.`,
+				)
+			}
+			const editing = state().editing
+			const from = (editing === null ? undefined : placeOf(editing)) ?? state().active ?? undefined
+			return picker.move(way, from, moves, event)
+		}
+		/**
+		 * A key in the table's own editor while the pick mode is on: an arrow
+		 * moves the pick and is no move of the caret, and a typed character
+		 * ends the pick, so the next arrow picks anew from the edited cell.
+		 */
+		function pickKeydown(event: KeyboardEvent): boolean {
+			if (!pickCells() || event.altKey || isComposing(event)) return false
+			if (Object.hasOwn(PICK_STEPS, event.key)) {
+				event.preventDefault()
+				movePick(event.key, { extend: event.shiftKey, edge: event.ctrlKey || event.metaKey }, event)
+				return true
+			}
+			const typed =
+				(event.key.length === 1 && !event.ctrlKey && !event.metaKey) ||
+				event.key === 'Backspace' ||
+				event.key === 'Delete'
+			if (typed && state().pickedCells)
+				change('pickedCells', null, { reason: 'input-change', event })
+			return false
+		}
 		// A pick is of the mode: the picked cells go when it goes off.
 		context.onOptions((next) => {
 			if (!next.pickCells && state().pickedCells) {
@@ -4444,6 +4523,7 @@ export const table = definePrimitive({
 					: view.rows > 1 && view.rows === formulaSheet.rowIds().length
 				return found.rangeAddress(view.from, view.to, whole, formulaSheet) ?? null
 			},
+			movePick: (key, moves) => movePick(key, moves),
 			getFormulaReferences(text, at) {
 				const ref = formulaAt(at, 'read the references of a formula at')
 				return requireFormulas().references(String(text), ref, formulaSheet)
@@ -6790,6 +6870,7 @@ export const table = definePrimitive({
 			'evaluateFormula',
 			'getFormulaFunctions',
 			'getRangeAddress',
+			'movePick',
 			'getFormulaReferences',
 			'pinRow',
 			'scrollToRow',

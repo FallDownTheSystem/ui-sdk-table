@@ -1,6 +1,6 @@
 # A formula writer
 
-Build a field that helps a person write a formula: suggestions of functions, a hint for the argument at the caret, references picked with the pointer, and the cells of each reference in colour.
+Build a field that helps a person write a formula: suggestions of functions, a hint for the argument at the caret, references picked with the pointer or the arrow keys, and the cells of each reference in colour.
 
 Use it for a formula bar above a sheet, or for the editor of a cell. The library gives the logic and the state; the field, the list and the colours are the app's. Everything here needs the `formulas` option, except the pick mode.
 
@@ -61,6 +61,9 @@ const frame = useTemplateRef<HTMLElement>('frame')
 // the next pick replaces it, so a drag writes one reference.
 const caret = shallowRef({ start: 0, end: 0 })
 const picked = shallowRef<{ start: number; end: number } | null>(null)
+// A screen reader hears nothing when a script changes the text of a field, so
+// the status line says the address of each pick.
+const said = shallowRef('')
 
 const text = computed(() => bar.text.value)
 const help = computed(() => formulaHelp(text.value, caret.value.end, { locale: 'en-US' }))
@@ -88,6 +91,7 @@ function place(start: number, end = start) {
 }
 function typed(event: Event) {
 	picked.value = null
+	said.value = ''
 	bar.input((event.target as HTMLInputElement).value)
 	readCaret()
 }
@@ -105,10 +109,24 @@ function pick(cells: CellPick | null) {
 	const next = insertReference(text.value, picked.value ?? caret.value, address)
 	bar.input(next.text)
 	picked.value = { start: next.start, end: next.end }
+	said.value = `Picked ${address}`
 	place(next.end)
+}
+const ARROWS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'] as const
+function arrow(event: KeyboardEvent) {
+	const key = ARROWS.find((name) => name === event.key)
+	if (!key || !picking.value || event.altKey) return
+	event.preventDefault()
+	controller.movePick(key, {
+		extend: event.shiftKey,
+		edge: event.ctrlKey || event.metaKey,
+		// After a typed character, a pick starts again from the cell of the field.
+		start: picked.value === null,
+	})
 }
 function commit() {
 	picked.value = null
+	said.value = ''
 	// After the field, focus goes back to the active cell.
 	if (bar.commit()) frame.value?.querySelector<HTMLElement>('[data-active]')?.focus()
 }
@@ -154,6 +172,7 @@ const cellAttrs = computed(() => {
 			@select="readCaret"
 			@keyup="readCaret"
 			@click="readCaret"
+			@keydown="arrow"
 			@keydown.escape.prevent="bar.cancel()"
 		/>
 		<p v-if="help.call?.info" data-testid="hint">
@@ -170,7 +189,7 @@ const cellAttrs = computed(() => {
 				</button>
 			</li>
 		</ul>
-		<p role="status">{{ bar.error.value }}</p>
+		<p role="status">{{ bar.error.value || said }}</p>
 	</form>
 	<div ref="frame">
 		<Table
@@ -192,7 +211,7 @@ const cellAttrs = computed(() => {
 </template>
 ```
 
-Press the total of the Order total (D4), type =SUM( in the field, then drag from D1 to D3: the field gets D1:D3 and the three cells get a colour. Type ) and press Enter. Type =su in the field: the list shows SUM and SUBSTITUTE.
+Press the total of the Order total (D4), type =SUM( in the field, then drag from D1 to D3: the field gets D1:D3 and the three cells get a colour. Type ) and press Enter. Type =D1+ and press the Left arrow: the field gets C4, and Shift with the Up arrow makes it C3:C4. Type =su in the field: the list shows SUM and SUBSTITUTE.
 
 ## Suggest functions
 
@@ -217,6 +236,18 @@ Turn on `pick-cells` while a reference fits at the caret. While it is on, a pres
 
 It works the same for the field of the table's own editor (`[data-slot='table-editor']`), for a control in the `editor` slot, and for a field outside the table such as `useFormulaBar`. The press is prevented, so focus never leaves the field.
 
+## Pick cells with the arrow keys
+
+As in the point mode of Excel, an arrow key picks where a reference fits. The first arrow picks the cell next to the cell of the field, in its direction, and writes its address at the caret. More arrows move the pick, and the address is replaced. Shift with an arrow keeps the first cell and grows a range. Control (or Command) with an arrow goes to the edge of the body. The next character that the person types keeps the reference and ends the pick; an arrow after it, where a reference fits again, starts a new pick from the cell of the field.
+
+- The cell of the field is the cell of the open editor, else the active cell (the cell of `useFormulaBar`).
+- `controller.movePick(key, { extend, edge, start })` moves the pick. `key` is `ArrowUp`, `ArrowDown`, `ArrowLeft` or `ArrowRight`; `extend` grows a range, `edge` goes to the edge of the body, and `start` starts a new pick from the cell of the field even when a pick is there. It reports through `@picked-cells-change` as a press does, with the reason `list-navigation`, so the same listener writes the address with `insertReference`. A cell that the row window does not show is scrolled into view; focus and the caret stay. It needs `pick-cells` and throws without it.
+- A field of the app (a bar with `useFormulaBar`, a control in the `editor` slot) hears its own keys: on an arrow while the pick mode is on, it calls `preventDefault()` and `movePick`, with `start: true` after a typed character.
+- The text field of the table's own editor needs nothing: while `pick-cells` is on, the table hears its arrows and picks, and a typed character, Backspace or Delete sets `picked-cells` back to `null`, so the next arrow starts anew.
+- Keep `pick-cells` on while the reference of the last pick ends at the caret, also when `formulaHelp().reference` is false there: the next arrow must move that pick.
+
+A screen reader hears nothing when a script changes the text of a field. Say the address of each pick in a live region, such as a `role="status"` line beside the field (`Picked C3:C4`), and empty it when the person types.
+
 ## Colour the references
 
 `controller.getFormulaReferences(text, at?)` gives each reference of the text with its `start` and `end` in the text and the cells that it names by ids, from the first (`from`) to the last (`to`), and `columns` for whole columns. `at` is the cell of the formula, the active cell by default; `useFormulaBar().cell` is the cell of the bar. A reference to a column or a row that the document does not hold is left out.
@@ -236,14 +267,23 @@ Give the cells of each reference one colour through `cell-attrs`. The cells of a
 
 ## Keys
 
-The pick mode adds no key: a person picks with the pointer, and the keys of the field stay its own.
+While `pick-cells` is on, in the text field of the table's own editor:
+
+| Key | Does |
+| --- | --- |
+| An arrow | Picks the cell next to the cell of the field, or moves the pick. |
+| Shift with an arrow | Grows the pick into a range from its first cell. |
+| Control or Command with an arrow | Moves the pick to the edge of the body. |
+| A character, Backspace, Delete | Is the field's, and ends the pick. |
+
+A field of the app gets the same keys by calling `movePick`. With `pick-cells` off, every key does what it does without the pick mode.
 
 See the [Formula tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=formula).
 
 ## Names
 
 - **Options:** `pick-cells`, `picked-cells`, `default-picked-cells`; events `picked-cells-change` and `picked-cells-commit`. `CellPick` is `{ anchor, end, columns }`.
-- **Controller:** `getRangeAddress(cells?)` (`null` without cells, for a column without a letter, and with `manual-page`), `getFormulaReferences(text, at?)`, `getFormulaFunctions()`.
+- **Controller:** `movePick(key, options?)` (the types `PickKey` and `PickMoveOptions`), `getRangeAddress(cells?)` (`null` without cells, for a column without a letter, and with `manual-page`), `getFormulaReferences(text, at?)`, `getFormulaFunctions()`.
 - **Formulas entry:** `formulaHelp`, `insertReference`, `FORMULA_FUNCTIONS`; the types `FormulaHelp`, `FormulaHelpOptions`, `FormulaToken`, `FormulaTokenKind`, `FormulaReference`, `FormulaArgument`, `FormulaFunctionGroup`.
 - **Vue:** `useFormulaBar(controller).cell`.
 - **Attributes:** `data-pick`, `data-picked`, `data-pick-edge`.

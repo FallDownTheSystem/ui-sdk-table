@@ -45,7 +45,8 @@ export const tiles: TileCopy[] = [
 	{
 		id: 'formula-pick',
 		title: 'Pick a range.',
-		blurb: 'Type =SUM( in the bar, drag over cells, and the range goes into the formula in colour.',
+		blurb:
+			'Type =SUM( in the bar, drag over cells or press the arrows, and the range goes into the formula in colour.',
 		size: 'wide',
 		tone: 'plum',
 	},

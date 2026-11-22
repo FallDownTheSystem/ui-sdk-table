@@ -54,6 +54,9 @@ const frame = useTemplateRef<HTMLElement>('frame')
 // the next pick replaces it, so a drag writes one reference.
 const caret = shallowRef({ start: 0, end: 0 })
 const picked = shallowRef<{ start: number; end: number } | null>(null)
+// A screen reader hears nothing when a script changes the text of a field, so
+// the status line says the address of each pick.
+const said = shallowRef('')
 
 const text = computed(() => bar.text.value)
 const help = computed(() => formulaHelp(text.value, caret.value.end, { locale: 'en-US' }))
@@ -81,6 +84,7 @@ function place(start: number, end = start) {
 }
 function typed(event: Event) {
 	picked.value = null
+	said.value = ''
 	bar.input((event.target as HTMLInputElement).value)
 	readCaret()
 }
@@ -98,10 +102,24 @@ function pick(cells: CellPick | null) {
 	const next = insertReference(text.value, picked.value ?? caret.value, address)
 	bar.input(next.text)
 	picked.value = { start: next.start, end: next.end }
+	said.value = `Picked ${address}`
 	place(next.end)
+}
+const ARROWS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'] as const
+function arrow(event: KeyboardEvent) {
+	const key = ARROWS.find((name) => name === event.key)
+	if (!key || !picking.value || event.altKey) return
+	event.preventDefault()
+	controller.movePick(key, {
+		extend: event.shiftKey,
+		edge: event.ctrlKey || event.metaKey,
+		// After a typed character, a pick starts again from the cell of the field.
+		start: picked.value === null,
+	})
 }
 function commit() {
 	picked.value = null
+	said.value = ''
 	// After the field, focus goes back to the active cell.
 	if (bar.commit()) frame.value?.querySelector<HTMLElement>('[data-active]')?.focus()
 }
@@ -147,6 +165,7 @@ const cellAttrs = computed(() => {
 			@select="readCaret"
 			@keyup="readCaret"
 			@click="readCaret"
+			@keydown="arrow"
 			@keydown.escape.prevent="bar.cancel()"
 		/>
 		<p v-if="help.call?.info" data-testid="hint">
@@ -163,7 +182,7 @@ const cellAttrs = computed(() => {
 				</button>
 			</li>
 		</ul>
-		<p role="status">{{ bar.error.value }}</p>
+		<p role="status">{{ bar.error.value || said }}</p>
 	</form>
 	<div ref="frame">
 		<Table

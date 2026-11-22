@@ -47,6 +47,8 @@ export {
 	aggregateName,
 	table,
 	type CellRef,
+	type PickKey,
+	type PickMoveOptions,
 	type ColumnTotal,
 	type FacetOptions,
 	type GroupPathEntry,

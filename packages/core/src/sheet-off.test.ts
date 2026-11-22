@@ -70,6 +70,12 @@ describe('a table without `sheet` and without `history`', () => {
 			for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'F2']) {
 				expect([key, press(input, key).defaultPrevented]).toEqual([key, false])
 			}
+			// Without `pickCells`, Shift and Control with an arrow are the caret's too, and pick nothing.
+			for (const init of [{ shiftKey: true }, { ctrlKey: true }]) {
+				expect(press(input, 'ArrowDown', init).defaultPrevented).toBe(false)
+			}
+			expect(view.state.pickedCells).toBeNull()
+			expect(() => view.api.movePick('ArrowDown')).toThrow(/pass `pickCells`/)
 			expect(view.state.editing).not.toBeNull()
 			expect(reports).toEqual([])
 			press(input, 'Enter')
