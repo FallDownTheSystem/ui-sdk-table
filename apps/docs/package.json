@@ -23,6 +23,8 @@
 		"@vue/test-utils": "catalog:",
 		"geist": "catalog:",
 		"jsdom": "catalog:",
+		"markdown-it": "catalog:",
+		"shiki": "catalog:",
 		"vite": "catalog:",
 		"vite-plus": "catalog:"
 	}

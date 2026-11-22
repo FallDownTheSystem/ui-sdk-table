@@ -5,6 +5,7 @@
 	"description": "Vue parts for the ui-sdk-table primitive: slots, v-model and controllers.",
 	"files": [
 		"dist",
+		"docs",
 		"src"
 	],
 	"type": "module",

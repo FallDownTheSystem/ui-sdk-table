@@ -1,0 +1,277 @@
+# ui-sdk-table for Vue
+
+> ui-sdk-table-vue is a headless table for Vue, built on UI SDK. It renders a real `<table>` with the roles, the keyboard and the state of a grid, and no looks. A styled table is the work of the app.
+
+This file is the context an agent needs to build a table with ui-sdk-table-vue: what the library is and the conventions every page shares, then the pages of "Get started", then every page with one line. Read the pages of the features you use. It is generated from the docs of the repository, for this commit.
+
+## Conventions
+
+- `Table` takes `rows`, `columns` and `aria-label`. Each row has a stable `id`. The table never copies or changes a row object.
+- Each state has three props: `<key>`, `default<Key>` and the event `<key>-change` with `(value, details)`. `details.reason` says why it changed, and `details.cancel()` refuses it. `v-model:<key>` controls it.
+- An edit reaches the owner of the rows through `@cell-edit`. The table never writes a row; `applyEdits` is a helper for the owner.
+- Every cell is a slot: `#cell`, `#col-<column id>`, `#header`, `#header-<column id>`, `#foot` and more. A slot gets the row, the column, the value and the text.
+- Looks come from `data-slot` on every part and from state as `aria-*` and `data-*` attributes and a few CSS variables. The table sets no class and no inline style for state.
+- `createTableController()` gives every action and read to code outside the table: `getView()`, `getFacets()`, `getTotals()` and `subscribe()` for the controls beside a table.
+- An action that gets a wrong argument throws a message that lists the valid values.
+- The controls around a table, such as a search field, a select or a pagination, come from the design system of the app. UI SDK ships them as headless components too.
+
+The UI SDK docs for Vue are at `node_modules/@ui-sdk/vue/docs/llms.txt`.
+
+## Introduction
+
+A headless table for Vue: the logic of a data table, and no looks.
+
+`ui-sdk-table` renders a real `<table>` with the roles, the keyboard and the state of a grid. It gives sort, search, filters, groups with totals, pages, row selection, a row window for many rows, pinned and resized columns, cell editing, copy and paste, an export, and the rules of a data sheet. It gives no colours, no fonts and no toolbar.
+
+Every cell is a slot. Every state has a `v-model`. A controller gives each action to code outside the table, and to an agent.
+
+### The layers
+
+A styled table stands on three layers. Each one builds on the one under it.
+
+- [UI SDK](https://ui-sdk.dev) gives the logic primitives: focus in a grid, a range of cells, resize, inline edit, popups. It also ships the controls around a table, such as a select, a slider or a pagination.
+- This library builds the headless table on them. It holds the state, the data for the controls (`getView`, `getFacets`, `getTotals`, `subscribe`), and the attributes and CSS variables that a style reads.
+- Your app builds the styled table on this library: the looks, the toolbar, the search field, the filter controls and the column menu of its own design system.
+
+A feature that only gives looks belongs to your app. The library has the logic that the looks need.
+
+### Quick start
+
+Copy this prompt into your agent:
+
+```text prompt
+Set up ui-sdk-table in this Vue project. It needs Vue 3.5 or newer.
+
+1. Add ui-sdk-table-vue and ui-sdk-table-core from GitHub, pinned to one commit, as Installation in node_modules/ui-sdk-table-vue/docs/installation.md says. Add @ui-sdk/vue and @ui-sdk/core at the exact version that it names. If a release-age policy blocks the install, stop and ask me instead of changing it.
+2. Add a note to AGENTS.md, creating it if needed: before building a table, follow the ui-sdk skill and the ui-sdk-table skill if they are installed, and read node_modules/ui-sdk-table-vue/docs/llms.txt and node_modules/@ui-sdk/vue/docs/llms.txt.
+3. If you support skills, run: npx skills@latest add vercel-labs/ui --skill ui-sdk
+4. If you support skills, run: npx skills@latest add FallDownTheSystem/ui-sdk-table --skill ui-sdk-table
+```
+
+It installs the table and points your `AGENTS.md` at the docs that ship with the package. The skill of this library lives in `skills/ui-sdk-table` of the repository.
+
+### Set it up yourself
+
+- [Installation](./installation.md): Add the packages to your Vue app.
+- [First table](./first-table.md): Put a table on a page and give it looks.
+
+## Installation
+
+Add the packages to your Vue app.
+
+Start with an app that uses Vue 3.5 or newer and a bundler that compiles TypeScript, such as Vite.
+
+### Add the packages
+
+The packages are not on npm. An app takes them from one commit of the repository on GitHub. The repository is public, so an install needs no login.
+
+Put the same commit in three places. The steps here are for pnpm.
+
+```jsonc title="package.json"
+{
+	"dependencies": {
+		"ui-sdk-table-core": "github:FallDownTheSystem/ui-sdk-table#<commit>&path:/packages/core",
+		"ui-sdk-table-vue": "github:FallDownTheSystem/ui-sdk-table#<commit>&path:/packages/vue",
+		"@ui-sdk/core": "0.1.0-beta.13",
+		"@ui-sdk/vue": "0.1.0-beta.13"
+	}
+}
+```
+
+```yaml title="pnpm-workspace.yaml"
+overrides:
+  'ui-sdk-table-core': 'github:FallDownTheSystem/ui-sdk-table#<commit>&path:/packages/core'
+```
+
+`ui-sdk-table-vue` names the core package through the workspace of the library. An install from git cannot resolve that, so the override gives it the same commit.
+
+Then run `pnpm install`. To move to a newer commit, change it in all three places and install again.
+
+### Peer dependencies
+
+- `@ui-sdk/core` and `@ui-sdk/vue` at `0.1.0-beta.13`, the exact beta that the library is built on. Another version can break the table.
+- `vue` 3.5 or newer.
+
+The table uses the same copy of UI SDK as the controls of your app. Install UI SDK once, at the top of your app.
+
+### TypeScript source
+
+The packages ship TypeScript source: `exports` points at `src`, and there is no build. Your bundler compiles the files with the rest of your app. Your type check reads them with your own compiler options.
+
+### Entries
+
+- `ui-sdk-table-vue` holds `Table`, its parts, `createTableController` and the helpers.
+- `ui-sdk-table-vue/export` holds the CSV and Excel writers. Load it with `import()` where a person asks for a file, so a page without an export does not carry it.
+- `ui-sdk-table-vue/formulas` holds the formula engine, for a table with the `formulas` option.
+
+```ts
+const { toCsv } = await import('ui-sdk-table-vue/export')
+```
+
+### A component with the same name
+
+The export is named `Table`. An app that registers a component of its own with that name, for example by its file name, imports this one under another name:
+
+```ts
+import { Table as HeadlessTable } from 'ui-sdk-table-vue'
+```
+
+Continue with [First table](./first-table.md) to put a table on a page.
+
+## First table
+
+Put a table on a page and give it looks.
+
+If you haven't added the packages yet, start with [Installation](./installation.md).
+
+### Put a table on a page
+
+A table needs rows, columns and a name. Each row needs a stable `id`. Each column has an `id`, which is also the key of its value in the row.
+
+```vue title="people.vue"
+<script setup lang="ts">
+import { Table, type ColumnDef } from 'ui-sdk-table-vue'
+
+type Person = { id: string; name: string; team: string; score: number }
+
+const people: Person[] = [
+	{ id: 'p1', name: 'Ines Moreau', team: 'Design', score: 82 },
+	{ id: 'p2', name: 'Kofi Mensah', team: 'Platform', score: 91 },
+	{ id: 'p3', name: 'Wren Takahashi', team: 'Design', score: 77 },
+	{ id: 'p4', name: 'Hollis Grant', team: 'Support', score: 88 },
+]
+
+const columns: ColumnDef<Person>[] = [
+	{ id: 'name', header: 'Name', sortable: true },
+	{ id: 'team', header: 'Team', sortable: true },
+	{ id: 'score', header: 'Score', sortable: true },
+]
+</script>
+
+<template>
+	<Table :rows="people" :columns="columns" aria-label="People" />
+</template>
+```
+
+Press Score to sort by it. Press it again to turn the order. Press Tab to reach the table, then move between the cells with the arrow keys.
+
+`aria-label` gives the table its accessible name. A screen reader and an agent find the table by it.
+
+The table never copies or changes your row objects. It reads them, and it reports a change through an event.
+
+### Add looks
+
+The table has no looks of its own. Every element carries a `data-slot`, and its state shows as `aria-*` and `data-*` attributes. A style reads those, and no class.
+
+| Part | Attribute |
+| --- | --- |
+| The table | `data-slot="table"` |
+| A header row and a body row | `data-slot="table-header-row"`, `data-slot="table-row"` |
+| A header cell and a body cell | `data-slot="table-cell"`, in a `th` or a `td` |
+| The column of a cell | `data-column` with the column id |
+| The format of a column | `data-format` on each of its cells, such as `decimal` |
+| The sort of a column | `aria-sort` and `data-sorted` (`asc` or `desc`) on its header cell |
+
+```vue title="styled.vue"
+<script setup lang="ts">
+import { Table, type ColumnDef } from 'ui-sdk-table-vue'
+
+type Person = { id: string; name: string; team: string; score: number }
+
+const people: Person[] = [
+	{ id: 'p1', name: 'Ines Moreau', team: 'Design', score: 82.5 },
+	{ id: 'p2', name: 'Kofi Mensah', team: 'Platform', score: 91 },
+	{ id: 'p3', name: 'Wren Takahashi', team: 'Design', score: 77.25 },
+	{ id: 'p4', name: 'Hollis Grant', team: 'Support', score: 88 },
+]
+
+const columns: ColumnDef<Person>[] = [
+	{ id: 'name', header: 'Name', sortable: true },
+	{ id: 'team', header: 'Team', sortable: true },
+	{ id: 'score', header: 'Score', sortable: true, format: 'decimal' },
+]
+</script>
+
+<template>
+	<div class="people">
+		<Table
+			:rows="people"
+			:columns="columns"
+			:default-sort="[{ id: 'score', desc: true }]"
+			always-sorted
+			aria-label="People by score"
+		/>
+	</div>
+</template>
+
+<style scoped>
+/* The table renders its own elements, so the rules reach them through :deep(). */
+.people :deep([data-slot='table']) {
+	border-collapse: collapse;
+	font-size: 14px;
+}
+
+.people :deep([data-slot='table-cell']) {
+	padding: 8px 14px;
+	border-block-end: 1px solid #e3e3e8;
+	text-align: start;
+}
+
+.people :deep([data-slot='table-head'] [data-slot='table-cell']) {
+	color: #55555f;
+	font-weight: 500;
+}
+
+/* A number reads best on the end edge of its cell. */
+.people :deep([data-format='decimal']) {
+	text-align: end;
+	font-variant-numeric: tabular-nums;
+}
+
+.people :deep([data-slot='table-cell'] button) {
+	padding: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+}
+
+/* The sort shows on the header cell: `aria-sort`, and `data-sorted` with asc or desc. */
+.people :deep([data-sorted='asc'] button)::after {
+	content: ' ↑';
+}
+
+.people :deep([data-sorted='desc'] button)::after {
+	content: ' ↓';
+}
+
+.people :deep([data-slot='table-row']:hover) {
+	background: #f4f4f7;
+}
+
+/* One cell of the grid holds focus. The ring stays inside the cell. */
+.people :deep([data-slot='table-cell']:focus-visible) {
+	outline: 2px solid #3b5bdb;
+	outline-offset: -2px;
+}
+</style>
+```
+
+Press Score to turn the order, and Name to sort by name. The arrow comes from data-sorted. Hover a row, or reach a cell with Tab, to see the hover and the focus ring.
+
+`always-sorted` keeps one column in the sort: a press on it turns the order and never clears it.
+
+The rules of a scoped style reach the elements of the table through `:deep()`, because the table renders them.
+
+### Keep going
+
+- [Introduction](./introduction.md) says what the library gives and what your app builds.
+
+## Every page
+
+### Get started
+
+- [Introduction](./introduction.md): A headless table for Vue: the logic of a data table, and no looks.
+- [Installation](./installation.md): Add the packages to your Vue app.
+- [First table](./first-table.md): Put a table on a page and give it looks.

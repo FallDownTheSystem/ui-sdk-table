@@ -1,6 +1,6 @@
 # ui-sdk-table-vue
 
-The headless table for Vue: `Table`, its parts, slots, a `v-model` for each state, and `createTableController`. It renders a real `<table>` without any looks. A styled table is the work of the consumer, and is built on it.
+The headless table for Vue: `Table`, its parts, slots, a `v-model` for each state, and `createTableController`. It renders a real `<table>` without any looks. A styled table is the work of the consumer, and is built on it. The docs of the package are in `docs`: start with `docs/llms.txt`.
 
 ```vue
 <script setup lang="ts">
@@ -14,7 +14,7 @@ const columns: ColumnDef<Person>[] = [
 </script>
 
 <template>
-	<Table :rows="people" :columns="columns" label="People" />
+	<Table :rows="people" :columns="columns" aria-label="People" />
 </template>
 ```
 

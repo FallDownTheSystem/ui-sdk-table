@@ -9,7 +9,8 @@
 		"check": "vp check",
 		"type-check": "vue-tsc --build",
 		"test": "vp test",
-		"test:e2e": "pnpm --filter docs test:e2e"
+		"test:e2e": "pnpm --filter docs test:e2e",
+		"docs:write": "node apps/docs/plugins/docs/write.ts"
 	},
 	"devDependencies": {
 		"@tsconfig/node24": "^24.0.6",

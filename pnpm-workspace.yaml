@@ -9,8 +9,10 @@ catalog:
   '@vitejs/plugin-vue': ^6.0.11
   '@vue/test-utils': ^2.5.1
   jsdom: ^31.0.1
+  markdown-it: ^15.0.3
   geist: 1.9.2
   motion: ^14.14.0
+  shiki: ^4.6.0
   ssf: 0.11.2
   '@types/jsdom': ^30.0.0
   vite: npm:@voidzero-dev/vite-plus-core@latest

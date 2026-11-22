@@ -11,13 +11,13 @@ The folder borders are the design. Do not import against the arrows.
 ```
 packages/core    framework-free: table primitive, behaviors, pure row helpers   → @ui-sdk/core only
 packages/vue     Vue parts, slots, v-model, controllers                         → core, @ui-sdk/vue, vue
-apps/docs        sink page, demo pages with plain CSS, benchmark page, tests    → everything
+apps/docs        docs site, sink page, test pages with plain CSS, benchmark, tests → everything
 docs/proof       frozen feasibility proof; reference only, not built or linted
 ```
 
 - `packages/core` has no Vue import and no Vue dependency. Its `tsconfig.json` sets `types: []` for that reason.
 - The library has no styled table and no control of a toolbar. What a styled table needs is logic here: state, data for controls (`getView`, `getFacets`, `getTotals`, `subscribe`), attributes and CSS variables. A feature that only gives looks belongs to the consumer.
-- The docs pages use plain CSS and no CSS framework. The demo pages (`style.css`) use native controls; the sink page (`sink.css`) uses UI SDK components for the controls beside a table. A page loads one stylesheet (`styles` in `src/page.ts`), so the looks of one page never reach another.
+- The docs app uses plain CSS and no CSS framework. The pages of the docs use `docs.css`; the test pages (`style.css`) use native controls; the sink page (`sink.css`) uses UI SDK components for the controls beside a table. A page loads one stylesheet (`styles` in `src/page.ts`), so the looks of one page never reach another.
 - Vue is a first-class citizen: slot-based cells, `v-model` for each controlled state, Vue-idiomatic types. If the framework-free core blocks one of these, stop and say so.
 
 ## Design rules (from UI SDK)
@@ -155,9 +155,22 @@ A data sheet is the table with more options, not a second primitive and not a `S
 - The rule for a press on a header is in `toggleSort`: `multiSort` and the modifier keys of the event decide `append` when the caller gives none. Renderers pass the event and never read the keys themselves.
 - An action that asks for what the mode forbids throws with the mode and the valid values. The `sort` state of the owner is never cut to the mode.
 
+## Docs site (`apps/docs/src/docs`, `plugins/docs`, `docs.css`)
+
+The GitHub Pages site is the docs. A page is written once, as Markdown, and the same text ships in the package for an agent (`packages/vue/docs`).
+
+- A page is `src/docs/pages/<id>.md`: `# Title`, an empty line, one sentence that says what the page is for, then the text. `src/docs/nav.ts` puts it in a group; the order there is the order of the sidebar, of Previous and Next and of `llms.txt`. A group with `inline` stands whole in `llms.txt`.
+- An example is a real file, `src/docs/examples/<page>/<name>.vue`, so `vue-tsc` checks it. It holds its own data and imports only from `ui-sdk-table-vue`, `@ui-sdk/vue` and `vue`, so a reader can copy it into a new project. A page names it on a line of its own: `<Example name="<page>/<name>" caption="What to try." />`.
+- A link to another page is `[Title](./<id>.md)` or `./<id>.md#<heading>`, as in the package files; the site turns it into `?page=<id>`.
+- `plugins/docs` turns the Markdown into HTML at build time (markdown-it, Shiki), so the browser carries no Markdown parser. The site serves the package files at `docs/<file>`, which "Open as Markdown" opens.
+- Run `pnpm docs:write` after a change of a page, an example, `nav.ts`, `llms.md` or `readme.md`. It writes `packages/vue/docs`: each page with the code of its examples inline, `llms.txt` and `README.md`. `plugins/docs/docs.test.ts` fails while those files are stale, and for a link that goes nowhere.
+- `/` opens the first page of the docs. The sink and the test pages get the bar only, in the looks of their own stylesheet; the sidebar lists the test pages under "Test pages".
+- A control of the shell is a UI SDK component: the Preview and Code views are Tabs, the menu of a narrow screen is a Collapsible. Light theme only.
+- The pages copy the format of the docs of UI SDK (Apache-2.0); `readme.md` names the source and the licence.
+
 ## Sink page (`apps/docs/src/sink`, `pages/SinkPage.vue`, `sink.css`, `plugins/sink-uses.ts`)
 
-The first page of the docs app: small live tables in a grid of tiles, each with the names of the library that its code uses. It is also the first consumer of the headless API: when a tile needs a workaround, that is a finding about the library.
+A page of the docs app (`?page=sink`): small live tables in a grid of tiles, each with the names of the library that its code uses. It is also the first consumer of the headless API: when a tile needs a workaround, that is a finding about the library.
 
 - A tile is one file `tiles/<group>/<Name>.vue` and one entry in `tiles/<group>.ts`. The id is the file name in kebab-case and starts with its group (`edit-price` is `edit/EditPrice.vue`). The title has one to four words and ends with a period, and says what a person does; the blurb is one sentence. A tile reads top down: the title as its heading, the demo, then the blurb and the names. A demo starts at the top of its stage, so a filter that makes its table shorter moves nothing.
 - A tile shows one thing in a concrete scene, with one `Table` that has an `aria-label`. Tables only: no tile for a control.
@@ -179,7 +192,8 @@ The first page of the docs app: small live tables in a grid of tiles, each with 
 
 ```bash
 vp install        # install
-vp run dev        # demo app, http://localhost:5180
+vp run dev        # docs app, http://localhost:5180
+pnpm docs:write   # write packages/vue/docs from the pages and examples
 vp check [--fix]  # format, lint, type-aware lint
 vp run type-check # vue-tsc --build (authoritative for .vue files)
 vp test           # unit tests (packages/core, packages/vue, apps/docs)

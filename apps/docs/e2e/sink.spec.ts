@@ -88,8 +88,8 @@ const headerBoxes = (table: Locator) =>
 		}),
 	)
 
-test('the sink is the first page of the docs app', async ({ page }) => {
-	await page.goto('/')
+test('the sink page opens at its address', async ({ page }) => {
+	await page.goto('/?page=sink')
 	await expect(page.getByRole('heading', { level: 1, name: 'Table sink' })).toBeVisible()
 	await expect(page.getByRole('link', { name: 'Sink' })).toHaveAttribute('aria-current', 'page')
 })
@@ -229,7 +229,8 @@ test('Tab goes through the tiles as they read, and a table is one stop', async (
 	for (const id of order) await expect(tableOf(page, id)).toBeVisible()
 
 	const stops: { tile: string; part: string }[] = []
-	await page.getByRole('link', { name: 'Server' }).focus()
+	// The last stop of the bar is the stop before the first tile.
+	await page.getByRole('navigation', { name: 'Site' }).getByRole('link').last().focus()
 	for (let step = 0; step < 30; step++) {
 		await page.keyboard.press('Tab')
 		const stop = await page.evaluate(() => {
@@ -278,7 +279,8 @@ test('the keys sort a table in a tile, and the arrow keys stay inside it', async
 	await expect(header(table, 'total')).toHaveAttribute('data-sort-index', '2')
 
 	// Tab from the last page link enters the table at one cell.
-	await page.getByRole('link', { name: 'Server' }).focus()
+	// The last stop of the bar is the stop before the first tile.
+	await page.getByRole('navigation', { name: 'Site' }).getByRole('link').last().focus()
 	await page.keyboard.press('Tab')
 	await expect(header(table, 'city')).toBeFocused()
 

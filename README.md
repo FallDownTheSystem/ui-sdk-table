@@ -18,12 +18,23 @@ The styled table is the work of the consumer. The library renders elements with 
 | --- | --- |
 | `packages/core` | Framework-free: the table primitive, behaviors and pure row helpers. Depends on `@ui-sdk/core` only. |
 | `packages/vue` | Vue parts for the primitive: slots, `v-model`, controllers. |
-| `apps/docs` | The sink page, demo pages with plain CSS, the benchmark page and browser tests. |
+| `apps/docs` | The docs site: the pages of the docs, the sink page, test pages with plain CSS, the benchmark page and browser tests. |
 | `docs/proof` | A frozen copy of the feasibility proof for UI SDK behaviors on a real `<table>`. |
+
+## Docs
+
+The GitHub Pages site is the docs. `vp run dev` opens it on the Introduction. Each page is Markdown in `apps/docs/src/docs/pages`, and each example a `.vue` file in `apps/docs/src/docs/examples`. The same pages ship in the package as `packages/vue/docs`, with `llms.txt` for an agent; `pnpm docs:write` writes them after a change, and a test fails while they are stale.
+
+To add a page:
+
+1. Write `apps/docs/src/docs/pages/<id>.md`: `# Title`, an empty line, one sentence that says what the page is for, then the text.
+2. Add the id to a group in `apps/docs/src/docs/nav.ts`.
+3. For an example, write `apps/docs/src/docs/examples/<id>/<name>.vue` with its own data, and put `<Example name="<id>/<name>" caption="What to try." />` on a line of its own in the page.
+4. Run `pnpm docs:write`, then `vp test`.
 
 ## Sink page
 
-`vp run dev` opens the sink page (`?page=sink`): many small tables in a grid of tiles. Each tile is one working table that shows one thing the library does, such as "Sort by two columns." or "Totals under their columns.", and under it stand the names of the library that its code uses. Press a name to see every tile that uses it; the address keeps the choice (`?uses=sort,multiSort&mode=all`), and `?only=edit` or `?only=edit-price` shows one group or one tile.
+The sink page (`?page=sink`) shows many small tables in a grid of tiles. Each tile is one working table that shows one thing the library does, such as "Sort by two columns." or "Totals under their columns.", and under it stand the names of the library that its code uses. Press a name to see every tile that uses it; the address keeps the choice (`?uses=sort,multiSort&mode=all`), and `?only=edit` or `?only=edit-price` shows one group or one tile.
 
 The page is also the proof that a consumer can style the table: its one table style in `apps/docs/src/sink.css` is written against `data-slot`, `data-*` and `aria-*` attributes only, and works on seven tones.
 
@@ -37,7 +48,8 @@ To add a tile:
 
 ```bash
 vp install        # install dependencies
-vp run dev        # demo app on http://localhost:5180
+vp run dev        # docs app on http://localhost:5180
+pnpm docs:write   # write packages/vue/docs from the docs pages
 vp check          # format, lint and type-aware lint
 vp run type-check # vue-tsc --build
 vp test           # unit tests of the packages
