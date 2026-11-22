@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.2.0...v0.2.1) (2026-11-22)
+
+
+### Features
+
+* add 21 Excel functions to the formula engine ([2ad6c86](https://github.com/FallDownTheSystem/ui-sdk-table/commit/2ad6c8616064662fc94c8aef8ce61eaad35b0cfb))
+
+
+### Documentation
+
+* add a reference generated from the types ([5747280](https://github.com/FallDownTheSystem/ui-sdk-table/commit/57472807e2c0e43c4fc46f51ebc92d61845425bc))
+
 ## [0.2.0](https://github.com/FallDownTheSystem/ui-sdk-table/compare/v0.1.3...v0.2.0) (2026-11-22)
 
 
