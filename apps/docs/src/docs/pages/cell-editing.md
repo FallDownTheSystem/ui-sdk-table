@@ -48,20 +48,20 @@ A check can answer with a promise. The editor then waits (`data-checking`), and 
 
 `entry` turns the table into a form for many cells at once: a person moves with Tab and types. Turn it on and off from your own Edit button; while it is on, cells can be edited as with `editable`, unless `editable` is false or a column says otherwise.
 
-<Example name="cell-editing/entry" caption="Press Edit, press a day, type Sunday and press Tab: the hours open the next cell. Type 7 and press Tab, then Save. Cancel puts every cell back." />
+<Example name="cell-editing/entry" caption="Press Edit, then press a day: its editor opens. Type Sunday and press Tab: the day is saved and focus goes to the hours, where typing 7 replaces the value. Press Tab, then Save. Cancel puts every cell back." />
 
 - **Tab and Shift+Tab** on a cell and in the editor go to the next and the previous cell that can be edited, in reading order and across the rows. They pass over a cell that cannot be edited, a group row and a column that leads. From the last such cell Tab leaves the table, and from the first Shift+Tab: the table is never a trap. Inside a selected range of more than one cell, Tab walks the range.
 - **One press** on a cell that can be edited opens its editor. A press with Shift, Control, Command or Alt, and a drag, keep their meaning, also with `cell-selection`.
 - **A character** on a cell replaces its value, and Tab, Enter or a press elsewhere saves it, as without the mode.
 - The root has `data-entry`, so a style can show which cells take input: `[data-entry] [data-editable]`.
 
-`useEditDraft(rows, { getRowId? })` holds the edits until a person saves them. It never changes one of your row objects.
+`useEditDraft(rows, { getRowId? })` holds the edits until a person saves them. It never changes one of your row objects. It reads the top level of your rows only, as `applyEdits` does, and finds a row by `getRowId`, else by its `id`, else by its place: pass the `getRowId` of the table when it has one.
 
 - `rows` is the list to pass to the table: your rows, with the values of the draft in new objects.
-- `onCellEdit` is the `@cell-edit` listener. It takes every report: an edit, a paste, a fill, a clear and an undo.
+- `onCellEdit` is the `@cell-edit` listener. It takes every report: an edit, a paste, a fill, a clear and an undo. For an edit of a row that it cannot find, such as a child row of a tree, it throws with the row id, and takes nothing of that report.
 - `count` is how many cells differ from your rows, and `changed(rowId, columnId)` says whether one does, for a mark through `cellAttrs`. A cell set back to its first value no longer differs.
 - `save()` gives the edits against your rows, one for each cell that differs, and empties the draft: pass them to `applyEdits`, or to your server. `cancel()` empties the draft.
-- **New rows while a draft is open:** the draft is kept by row id and column id and stays over the new rows. A cell whose new value is the value of the draft no longer differs, and a cell of a row that is gone counts no more and is not saved. Pass the `getRowId` of the table when it has one.
+- **New rows while a draft is open:** the draft is kept by row id and column id and stays over the new rows. A cell whose new value is the value of the draft no longer differs, and a cell of a row that is gone counts no more and is not saved.
 - **Formulas:** the draft holds values only. A formula that a person types goes into the `cellFormulas` state of the table at once, as without a draft, and `cancel()` does not take it back. For a table with `formulas`, keep the formulas in a `v-model:cell-formulas` of your own and put the old state back on Cancel.
 
 ## Attributes

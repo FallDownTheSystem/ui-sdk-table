@@ -45,14 +45,39 @@ describe('the entry mode', () => {
 		}
 	})
 
-	test('one press opens the editor of a cell that can be edited, and none of a cell that cannot', async () => {
+	test('one press opens the editor of the pressed cell, also when the release is on another element; a drag and a press with Shift open none', async () => {
 		const { view, cell } = sheetTable({ entry: true })
+		// A press as a browser sends it: the pointer goes down on a cell, and the click can reach another element.
+		const press = (down: Element, init: MouseEventInit = {}, up: Element = down, moved = 0) => {
+			down.dispatchEvent(
+				new PointerEvent('pointerdown', {
+					bubbles: true,
+					button: 0,
+					clientX: 10,
+					clientY: 10,
+					...init,
+				}),
+			)
+			up.dispatchEvent(
+				new MouseEvent('click', {
+					bubbles: true,
+					button: 0,
+					clientX: 10 + moved,
+					clientY: 10,
+					...init,
+				}),
+			)
+		}
 		try {
-			cell('a', 'kind').click()
+			press(cell('a', 'kind'))
 			expect(view.state.editing).toBeNull()
-			cell('b', 'price').dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))
+			press(cell('b', 'price'), { shiftKey: true })
 			expect(view.state.editing).toBeNull()
-			cell('b', 'price').click()
+			// A drag from one cell to another ends with a click on their row.
+			press(cell('b', 'price'), {}, view.root, 120)
+			expect(view.state.editing).toBeNull()
+			// The columns moved under a still pointer, so the click went to the row: the pressed cell opens.
+			press(cell('b', 'price'), {}, cell('b', 'stock').parentElement ?? view.root)
 			expect(view.state.editing).toBe(JSON.stringify(['b', 'price']))
 		} finally {
 			view.unmount()

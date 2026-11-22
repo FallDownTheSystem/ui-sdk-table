@@ -784,3 +784,26 @@ test('in the entry mode a press outside the table saves, and a press with Shift 
 	await expect(editor(table)).toHaveCount(0)
 	await expect(selected(table)).toHaveCount(4)
 })
+
+test('in the entry mode a press on another cell after a change saves it and opens the pressed cell', async ({
+	page,
+}) => {
+	const table = await open(page)
+	await page.getByLabel('Entry mode').check()
+	const input = editor(table)
+	// A cell of the same row.
+	await cell(table, 3, 2).click()
+	await input.fill('Bea Brooks')
+	await cell(table, 3, 4).click()
+	await expect(cell(table, 3, 2)).toHaveText('Bea Brooks')
+	await expect(cell(table, 3, 4)).toHaveAttribute('data-editing', '')
+	await expect(input).toBeFocused()
+	await expect(input).toHaveValue('37')
+	// A cell of another row.
+	await input.fill('46')
+	await cell(table, 5, 2).click()
+	await expect(cell(table, 3, 4)).toHaveText('46')
+	await expect(cell(table, 5, 2)).toHaveAttribute('data-editing', '')
+	await expect(input).toBeFocused()
+	await expect(input).toHaveValue('Dan Drake')
+})

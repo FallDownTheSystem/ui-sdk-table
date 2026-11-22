@@ -19,9 +19,9 @@ const columns: ColumnDef<Shift>[] = [
 
 // The rows are yours. The draft holds the edits until Save.
 const rows = shallowRef<Shift[]>([
-	{ id: 's1', person: 'Aino', day: 'Monday', hours: 8, note: '' },
-	{ id: 's2', person: 'Eero', day: 'Tuesday', hours: 6.5, note: 'Late start' },
-	{ id: 's3', person: 'Helmi', day: 'Friday', hours: 4, note: '' },
+	{ id: 's1', person: 'Kofi', day: 'Monday', hours: 8, note: '' },
+	{ id: 's2', person: 'Ines', day: 'Tuesday', hours: 6.5, note: 'Late start' },
+	{ id: 's3', person: 'Tomas', day: 'Friday', hours: 4, note: '' },
 ])
 const draft = useEditDraft(rows)
 const editing = shallowRef(false)

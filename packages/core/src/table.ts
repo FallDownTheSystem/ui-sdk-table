@@ -2697,6 +2697,39 @@ export const table = definePrimitive({
 			return edit.end('tab-key', event)
 		}
 
+		/**
+		 * The cell of the last press in the entry mode. The click after it
+		 * opens that cell, and not the cell under the pointer then: the save of
+		 * an editor in another cell can change the widths of the columns
+		 * between the press and the release, and then the browser sends the
+		 * click to the row, or past the table when it got narrower. So the
+		 * page hears the next click. A pointer that moved is a drag, and opens nothing.
+		 */
+		let pressed: { id: string; x: number; y: number } | undefined
+		context.onDestroy(() => (pressed = undefined))
+		function entryPress(event?: PointerEvent, id?: string): void {
+			const plain =
+				event &&
+				event.button === 0 &&
+				!event.shiftKey &&
+				!event.ctrlKey &&
+				!event.metaKey &&
+				!event.altKey
+			pressed =
+				plain && id !== undefined && entry() && editableCell(id)
+					? { id, x: event.clientX, y: event.clientY }
+					: undefined
+			const page = event?.target instanceof Node ? event.target.ownerDocument : null
+			if (pressed && page) page.addEventListener('click', entryClick, { capture: true, once: true })
+		}
+		function entryClick(event: MouseEvent): void {
+			const press = pressed
+			pressed = undefined
+			if (!press || !entry()) return
+			if (Math.abs(event.clientX - press.x) > 4 || Math.abs(event.clientY - press.y) > 4) return
+			edit.start(press.id, { reason: 'imperative', event })
+		}
+
 		/** A key in the text field of the editor. */
 		function editorKeydown(event: KeyboardEvent): void {
 			// After the last cell of the entry mode, Tab saves and goes on to the
@@ -5490,6 +5523,7 @@ export const table = definePrimitive({
 			canEditCell: (id: string) => editableCell(id),
 			entry,
 			editorKeydown,
+			entryPress,
 			hasEditing: editing,
 			cellSelection,
 			/**
@@ -6294,6 +6328,7 @@ export const table = definePrimitive({
 				},
 				pointerdown: (event, { api, props, el }) => {
 					const target = event.target instanceof Element ? event.target : undefined
+					api.entryPress()
 					// A press on the resize handle resizes. It must not move focus or start a column move.
 					if (target?.closest('[data-slot="table-resizer"]')) return
 					// A press on the fill handle starts a fill, and the range under it stays.
@@ -6310,6 +6345,7 @@ export const table = definePrimitive({
 							event.preventDefault()
 							return
 						}
+						api.entryPress(event, own)
 						const ranged =
 							!props.header && event.button === 0 && api.cellSelection() && api.inBody(props.row)
 						const letter = !!props.header && event.button === 0 && api.isLetterRow(props.row)
@@ -6332,18 +6368,6 @@ export const table = definePrimitive({
 					// A press in a text field selects text or moves the caret there.
 					const field = target?.closest('input, select, textarea, [contenteditable]')
 					if (header?.leaf && !field) api.reorder.pointerdown(event, header.column.id)
-				},
-				// In the entry mode one plain press opens the editor. A drag over cells
-				// ends with a click on their row, never on a cell, so it stays a drag.
-				click: (event, { api, props, el }) => {
-					if (props.header || !api.entry() || event.button !== 0) return
-					if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return
-					if (event.target !== el && event.target instanceof Element) {
-						if (event.target.closest('a[href], button, input, select, textarea, label')) return
-					}
-					const id = api.cellIdAt(props.row, props.col)
-					if (id !== undefined && api.canEditCell(id))
-						api.edit.start(id, { reason: 'imperative', event })
 				},
 				dblclick: (event, { api, props, el }) => {
 					if (props.header) return

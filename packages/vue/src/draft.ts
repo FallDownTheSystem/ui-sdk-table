@@ -13,7 +13,11 @@ export type EditDraft<Row> = {
 	count: ComputedRef<number>
 	/** Whether a cell holds another value than the rows of the owner, by the row id and the column id. */
 	changed: (rowId: string, columnId: string) => boolean
-	/** Pass it as the `cell-edit` listener of the table. It takes every report: an edit, a paste, a fill, a clear and an undo. */
+	/**
+	 * Pass it as the `cell-edit` listener of the table. It takes every report:
+	 * an edit, a paste, a fill, a clear and an undo. It throws for an edit of a
+	 * row that is not in the rows of the owner, such as a child row.
+	 */
 	onCellEdit: (edits: readonly CellEdit<Row>[]) => void
 	/** The edits against the rows of the owner, one for each cell that differs, and an empty draft. */
 	save: () => CellEdit<Row>[]
@@ -30,6 +34,11 @@ const same = (a: unknown, b: unknown) =>
  * A draft of edits that the owner saves or cancels as a whole, for a table
  * whose cells a person fills in before a Save button. It never changes a row
  * object of the owner: a row with values of the draft is a new object.
+ *
+ * The draft reads the top level of the rows only, as `applyEdits` does, and
+ * finds a row by the `getRowId` of the table, else by its `id`, else by its
+ * place. An edit of a row that it cannot find, such as a child row of a tree,
+ * throws, so no edit is dropped without a word.
  *
  * A value is kept by its row id and its column id. When the owner passes new
  * rows, the draft stays over them, and a cell whose new value is the value of
@@ -88,6 +97,13 @@ export function useEditDraft<Row>(
 		count: computed(() => differing.value.size),
 		changed: (rowId, columnId) => differing.value.has(cellKey(rowId, columnId)),
 		onCellEdit: (edits) => {
+			for (const edit of edits) {
+				if (!owner.value.has(edit.rowId)) {
+					throw new Error(
+						`The draft has no row "${edit.rowId}" for the edit of column "${edit.columnId}": it reads the top level of the rows only. Pass the \`getRowId\` of the table to \`useEditDraft\`; the edits of child rows need code of your own.`,
+					)
+				}
+			}
 			const next = new Map(entries.value)
 			for (const edit of edits) {
 				const key = cellKey(edit.rowId, edit.columnId)

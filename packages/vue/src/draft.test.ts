@@ -81,6 +81,26 @@ test('over new rows of the owner the draft stays, a value that the owner now has
 	).toEqual([['a', 'price', 3, 5]])
 })
 
+test('an edit of a row that the draft cannot find throws with the row id, and the draft keeps what it had', () => {
+	const owner = shallowRef<Item[]>([{ id: 'a', name: 'Bolt', price: 2 }])
+	const [a] = owner.value as [Item]
+	const draft = useEditDraft(owner)
+	draft.onCellEdit([edit(a, 'price', 5)])
+	const child = { id: 'a/1', name: 'Washer', price: 1 }
+	expect(() => draft.onCellEdit([edit(a, 'name', 'Pin'), edit(child, 'price', 3)])).toThrow(
+		'The draft has no row "a/1" for the edit of column "price": it reads the top level of the rows only. Pass the `getRowId` of the table',
+	)
+	// The whole report is refused: the edit of the row that was found is not kept either.
+	expect(draft.count.value).toBe(1)
+	expect(draft.rows.value).toEqual([{ id: 'a', name: 'Bolt', price: 5 }])
+	// With the `getRowId` of the table, the draft finds the rows.
+	const coded = useEditDraft(shallowRef([{ code: 'x', price: 1 }]), { getRowId: (row) => row.code })
+	const column: ColumnDef<{ code: string; price: number }> = { id: 'price', header: 'Price' }
+	const row = { code: 'x', price: 1 }
+	coded.onCellEdit([{ rowId: 'x', columnId: 'price', row, column, value: 4, previous: 1 }])
+	expect(coded.count.value).toBe(1)
+})
+
 test('a table in the entry mode takes its edits into the draft and shows them', async () => {
 	const owner = shallowRef<Item[]>([{ id: 'a', name: 'Bolt', price: 2 }])
 	let draft!: ReturnType<typeof useEditDraft<Item>>
@@ -105,7 +125,8 @@ test('a table in the entry mode takes its edits into the draft and shows them', 
 	try {
 		expect(wrapper.find('[data-slot="table"]').attributes('data-entry')).toBe('')
 		const price = wrapper.find('td[data-column="price"]')
-		await price.trigger('click')
+		await price.trigger('pointerdown', { button: 0 })
+		await price.trigger('click', { button: 0 })
 		const input = wrapper.find('[data-slot="table-editor"]')
 		expect(input.exists()).toBe(true)
 		;(input.element as HTMLInputElement).value = '7'
