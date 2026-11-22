@@ -6,8 +6,9 @@ export default defineConfig({
 		singleQuote: true,
 		useTabs: true,
 		// Markdown is authored content. `docs/proof` is a frozen copy of the
-		// feasibility proof and stays as it was verified.
-		ignorePatterns: ['**/*.md', 'docs/proof/**'],
+		// feasibility proof and stays as it was verified. The release writes
+		// its manifest in its own format.
+		ignorePatterns: ['**/*.md', 'docs/proof/**', '.release-please-manifest.json'],
 	},
 	lint: {
 		plugins: ['eslint', 'typescript', 'unicorn', 'oxc', 'vue', 'vitest'],

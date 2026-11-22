@@ -10,7 +10,8 @@ updates:
     open-pull-requests-limit: 10
     versioning-strategy: increase
     ignore:
-      # UI SDK is pinned to an exact beta. A new beta is read before it is taken.
+      # UI SDK is pinned to an exact beta. The weekly maintenance reads what a
+      # new beta changes before it takes it.
       - dependency-name: '@ui-sdk/*'
       # 3.3.12 to 3.3.14 break `//` inside static attributes.
       - dependency-name: vue-tsc

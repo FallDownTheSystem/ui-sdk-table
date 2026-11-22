@@ -17,6 +17,9 @@ jobs:
     name: Checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The release workflow merges its pull request within seconds, and runs
+    # its own checks before it publishes.
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     steps:
       - uses: actions/checkout@v7
 

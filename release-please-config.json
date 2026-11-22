@@ -1,0 +1,33 @@
+{
+	"$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+	"release-type": "node",
+	"versioning-strategy": "always-bump-patch",
+	"include-v-in-tag": true,
+	"include-component-in-tag": false,
+	"draft": false,
+	"prerelease": false,
+	"bootstrap-sha": "6f3e64821c80d5adab9782132d694af7412ce49d",
+	"changelog-sections": [
+		{ "type": "feat", "section": "Features" },
+		{ "type": "fix", "section": "Bug Fixes" },
+		{ "type": "perf", "section": "Performance" },
+		{ "type": "deps", "section": "Dependencies" },
+		{ "type": "refactor", "section": "Refactor", "hidden": false },
+		{ "type": "docs", "section": "Documentation", "hidden": false },
+		{ "type": "chore", "section": "Miscellaneous", "hidden": false },
+		{ "type": "test", "section": "Tests", "hidden": true },
+		{ "type": "ci", "section": "CI", "hidden": true },
+		{ "type": "build", "section": "Build", "hidden": true }
+	],
+	"packages": {
+		".": {
+			"package-name": "ui-sdk-table",
+			"changelog-path": "CHANGELOG.md",
+			"exclude-paths": ["apps", "docs", ".github", ".agents"],
+			"extra-files": [
+				{ "type": "json", "path": "packages/core/package.json", "jsonpath": "$.version" },
+				{ "type": "json", "path": "packages/vue/package.json", "jsonpath": "$.version" }
+			]
+		}
+	}
+}
