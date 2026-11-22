@@ -77,12 +77,13 @@ function choose(tile: Tile, pressed: string[]) {
 	selected.value = [...kept, ...pressed.filter((name) => !kept.includes(name))]
 }
 
-// The grid says how many columns fit, and the tiles get their places from `pack`.
+// The grid says how many columns fit, and the tiles get their places from `pack`. The count comes
+// from `--columns` and not from the tracks: a tile that `pack` placed for more columns adds a track.
 const grid = useTemplateRef<HTMLElement>('grid')
 const columns = shallowRef(0)
 const measure = () => {
 	if (!grid.value) return
-	columns.value = getComputedStyle(grid.value).gridTemplateColumns.split(' ').length
+	columns.value = Number(getComputedStyle(grid.value).getPropertyValue('--columns')) || 1
 }
 let resizes: ResizeObserver | undefined
 onMounted(() => {

@@ -24,7 +24,7 @@ const columns: ColumnDef<Expense>[] = [
 
 <template>
 	<div class="demo">
-		<div class="sink-frame">
+		<div class="sink-frame scrolls">
 			<Table
 				:rows="expenses"
 				:columns="columns"

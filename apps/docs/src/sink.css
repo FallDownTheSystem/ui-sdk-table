@@ -127,6 +127,7 @@ input {
 }
 
 .sink {
+	container: sink / inline-size;
 	max-inline-size: 1480px;
 	margin-inline: auto;
 	padding: 28px 28px 120px;
@@ -177,13 +178,49 @@ input {
 	outline-offset: 2px;
 }
 
-/* The grid. A tile gets its place from `pack`, so the order in the document is the order on the screen. */
+/*
+ * The grid. A tile gets its place from `pack`, so the order in the document is the order on the screen.
+ * It has four columns, two or one, never three: a column is at least 320px, and the widths below are
+ * four and two of them with the gaps between (a container query takes no variables). `--columns`
+ * tells the page how many columns `pack` fills. A table that is wider than its tile scrolls inside its frame.
+ */
 
 .bento {
+	--columns: 1;
+	--bento-row: 460px;
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
-	grid-auto-rows: 460px;
+	grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+	grid-auto-rows: var(--bento-row);
 	gap: var(--gap);
+}
+
+/*
+ * One column: nothing stands beside a tile, so a tile grows to hold its whole table when its controls
+ * and copy wrap to more lines. A tile about scrolling keeps the rows it spans: its frame (`.scrolls`)
+ * is meant to cut its rows.
+ */
+@container sink (width < 654px) {
+	.bento {
+		grid-auto-rows: minmax(var(--bento-row), auto);
+	}
+
+	.tile:has(.sink-frame.scrolls) {
+		max-block-size: calc(
+			var(--tile-rows, 1) * var(--bento-row) + (var(--tile-rows, 1) - 1) * var(--gap)
+		);
+	}
+}
+
+@container sink (min-width: 654px) {
+	.bento {
+		--columns: 2;
+	}
+}
+
+@container sink (min-width: 1322px) {
+	.bento {
+		--columns: 4;
+	}
 }
 
 .bento-empty {
@@ -413,6 +450,7 @@ input {
 /* The tile */
 
 .tile {
+	container: tile / inline-size;
 	position: relative;
 	display: flex;
 	flex-direction: column;
@@ -458,15 +496,22 @@ input {
 /* The heading comes first: a person reads what a tile shows, then sees the table, then the longer word under it. */
 .tile-head {
 	position: relative;
-	padding: 20px 22px 0;
+	padding: 20px var(--stage-pad) 0;
 }
 
 .tile-copy {
 	position: relative;
-	padding: 0 22px 20px;
+	padding: 0 var(--stage-pad) 20px;
 	/* Whole pixels for the line box, so the stage above has a whole height and a table can scroll to its very end. */
 	font-size: 15px;
 	line-height: 21px;
+}
+
+/* A tile of the narrowest column (320px, by four or by two) gives its controls a little more room. */
+@container tile (width < 330px) {
+	.tile > * {
+		--stage-pad: 18px;
+	}
 }
 
 .tile-title,
@@ -1919,7 +1964,7 @@ input {
 
 	/* One column: the controls and the copy of a wide tile wrap to more lines, so the tile is higher. */
 	.bento {
-		grid-auto-rows: 500px;
+		--bento-row: 500px;
 	}
 
 	.sink-head {
