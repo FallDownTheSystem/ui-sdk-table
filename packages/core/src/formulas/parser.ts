@@ -256,7 +256,13 @@ export function parseTree(
 		}
 		expect(')')
 		depth--
-		if (fn && (args.length < fn.min || args.length > fn.max || (fn.even && args.length % 2))) {
+		if (
+			fn &&
+			(args.length < fn.min ||
+				args.length > fn.max ||
+				(fn.even && args.length % 2) ||
+				(fn.odd && !(args.length % 2)))
+		) {
 			fail({
 				code: 'arguments',
 				at: token.at,
@@ -264,6 +270,7 @@ export function parseTree(
 				min: fn.min,
 				max: fn.max,
 				even: fn.even,
+				odd: fn.odd,
 				given: args.length,
 			})
 		}

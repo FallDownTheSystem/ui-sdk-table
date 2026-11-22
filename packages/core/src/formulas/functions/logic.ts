@@ -109,6 +109,16 @@ export const LOGIC_FUNCTIONS: Record<string, FormulaFunction> = {
 			return isFormulaError(value) ? args.value(1) : value
 		},
 	},
+	IFNA: {
+		min: 2,
+		max: 2,
+		args: 'value, else',
+		help: 'The value, or the second value when the first is #N/A.',
+		call: (args) => {
+			const value = args.value(0)
+			return value === '#N/A' ? args.value(1) : value
+		},
+	},
 	ISBLANK: is(
 		'TRUE for a cell that holds nothing.',
 		(value, args) => value === null || value === undefined || (value === '' && !!args.column(0)),

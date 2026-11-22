@@ -345,10 +345,14 @@ describe('the issues of a formula', () => {
 	})
 
 	test('every function of the list has a name, its arguments and a line of help', () => {
-		expect(FORMULA_FUNCTIONS.length).toBe(51)
+		expect(FORMULA_FUNCTIONS.length).toBe(72)
 		for (const info of FORMULA_FUNCTIONS) {
 			expect(info.name).toMatch(/^[A-Z]+$/)
-			expect(info.args).not.toBe('')
+			// Only a function without arguments has none to list.
+			expect([info.name, info.args === '']).toEqual([
+				info.name,
+				['NOW', 'TODAY'].includes(info.name),
+			])
 			expect(info.help).toMatch(/\.$/)
 		}
 	})

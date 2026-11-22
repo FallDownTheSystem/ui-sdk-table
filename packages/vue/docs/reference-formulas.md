@@ -9,6 +9,7 @@ See [Formulas](./sheet-formulas.md) for how they work together.
 What `createFormulaEngine(options)` takes.
 
 - `timeZone?` (`string`): The zone of a date that is no reference to a column with a zone of its own (`formatOptions.timeZone`), such as a date that a function gives. Without it, local time: a result that is saved should not depend on the computer that made it, so pass one when a formula reads a moment.
+- `now?` (`() => number`): The clock of `TODAY` and `NOW`, in milliseconds since 1970: `Date.now` by default. A test passes a clock of its own.
 - `maxReads?` (`number`): The most cells that one change may read, 5,000,000 by default. A formula in each row that sums from the first row to its own reads the square of the rows; past the limit the change is refused with words.
 
 ## CellFormulas

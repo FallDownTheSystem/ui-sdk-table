@@ -3,8 +3,9 @@ import type { FormulaIssue } from '../formula/types'
 
 const list = (names: readonly string[]) => names.join(', ') || 'none'
 
-function takes(min: number, max: number, even?: boolean): string {
+function takes(min: number, max: number, even?: boolean, odd?: boolean): string {
 	if (even) return `pairs of values, at least ${min}`
+	if (odd) return `a value and then pairs of values, at least ${min}`
 	if (min === max) return `${min} ${min === 1 ? 'value' : 'values'}`
 	if (max === min + 1) return `${min} or ${max} values`
 	if (max >= 255) return `at least ${min} ${min === 1 ? 'value' : 'values'}`
@@ -40,7 +41,7 @@ export function describeFormulaIssue(issue: FormulaIssue): string {
 		case 'unknownName':
 			return `No name \`${issue.name}\`. Write a column in brackets, such as [${issue.name}], and a text in quotes, such as "${issue.name}".`
 		case 'arguments':
-			return `\`${issue.name}\` takes ${takes(issue.min, issue.max, issue.even)}, not ${issue.given}.`
+			return `\`${issue.name}\` takes ${takes(issue.min, issue.max, issue.even, issue.odd)}, not ${issue.given}.`
 		case 'otherRow':
 			return `\`${issue.name}\` names another row or a range of cells. This formula reads the cells of its own row only.`
 		case 'cycle':

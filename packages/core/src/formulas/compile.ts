@@ -23,6 +23,11 @@ export type FormulaOptions = {
 	 * computer that made it, so pass one when a formula reads a moment.
 	 */
 	timeZone?: string
+	/**
+	 * The clock of `TODAY` and `NOW`, in milliseconds since 1970: `Date.now`
+	 * by default. A test passes a clock of its own.
+	 */
+	now?: () => number
 }
 
 export type FormulaTextOptions = {
@@ -151,7 +156,7 @@ function compileNode(node: FormulaNode, columns: ReadonlyMap<string, ColumnDef<n
 				length: parts.length,
 				value: (index) => parts[index]?.(args.context),
 				column: (index) => refs[index] as ColumnDef | undefined,
-				context: { row: undefined, time: () => Number.NaN, zone: undefined },
+				context: { row: undefined, time: () => Number.NaN, zone: undefined, now: Date.now },
 			}
 			return (context) => {
 				const outer = args.context
@@ -259,7 +264,8 @@ function compileContext(
 	const byId = new Map(namedColumns(columns).map((column) => [column.id, column]))
 	const run = compileNode(tree, byId)
 	const timeZone = options.timeZone
+	const now = options.now ?? Date.now
 	const time = (date: string | Date) =>
 		date instanceof Date ? date.getTime() : (toTime(date, timeZone) ?? Number.NaN)
-	return ({ row, cell }) => resultOf(run({ row, cell, time, zone: timeZone }))
+	return ({ row, cell }) => resultOf(run({ row, cell, time, zone: timeZone, now }))
 }

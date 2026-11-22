@@ -537,3 +537,47 @@ describe.runIf(requested)('a fill and a paste of formulas with 50,000 rows', () 
 		console.table(results)
 	}, 300_000)
 })
+
+describe.runIf(requested)('the functions of ranges and lookups with 50,000 rows', () => {
+	test('median time of one cell that reads a whole column of 50,000 rows', () => {
+		const engine = createFormulaEngine()
+		const rows = lines()
+		const ids = rows.map((line) => line.id)
+		const byId = new Map(rows.map((line) => [line.id, line]))
+		const defs: ColumnDef[] = base.map((column) => ({ id: column.id, header: column.header }))
+		const sheet = {
+			columns: () => defs,
+			rowIds: () => ids,
+			row: (rowId: string) => byId.get(rowId),
+			value: (rowId: string, columnId: string) =>
+				(byId.get(rowId) as Record<string, unknown> | undefined)?.[columnId],
+			locale: () => undefined,
+		}
+		const at = { rowId: 'r0', columnId: 'total' }
+		const results: Record<string, number> = {}
+		const run = (name: string, formula: string) => {
+			expect(engine.evaluate(formula, at, sheet)).not.toBeUndefined()
+			results[name] = median(() => engine.evaluate(formula, at, sheet))
+		}
+		run('SUM([price@*]), the reference', '=SUM([price@*])')
+		run('SUMIF([qty@*], ">5", [price@*])', '=SUMIF([qty@*], ">5", [price@*])')
+		run(
+			'SUMIFS([price@*], [qty@*], ">5", [qty@*], "<10")',
+			'=SUMIFS([price@*], [qty@*], ">5", [qty@*], "<10")',
+		)
+		run('COUNTIF([qty@*], 12)', '=COUNTIF([qty@*], 12)')
+		run(
+			'XLOOKUP that finds nothing, exact (every row read)',
+			'=XLOOKUP("r49999", [qty@*], [price@*], 0)',
+		)
+		run(
+			'MATCH(5000.5, [price@*], 1), approximate over data that is not sorted',
+			'=MATCH(5000.5, [price@*], 1)',
+		)
+		const text = compileRowFormula('=TEXT([price], "#,##0.00")', base)
+		results['TEXT([price], "#,##0.00") over 50,000 rows'] = median(() => {
+			for (const row of rows) text(row)
+		})
+		console.table(results)
+	}, 120_000)
+})

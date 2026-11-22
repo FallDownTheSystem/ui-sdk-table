@@ -30,6 +30,7 @@ export type FormulaIssue =
 			min: number
 			max: number
 			even?: boolean
+			odd?: boolean
 			given: number
 	  }
 	/** A reference to another row, or a range, where only the own row can be read. */

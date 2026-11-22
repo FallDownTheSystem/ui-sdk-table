@@ -631,3 +631,34 @@ test('the formula bar shows the words for a person of a refused formula and of a
 	expect(priced.error.value).toBe('The price must be 0 or more.')
 	other.stop()
 })
+
+test('a cell with NOW gets a finite number of reports from an owner that takes each one, and none from a render alone', async () => {
+	// A clock that moves at each read, so every computation of NOW gives another moment.
+	let time = Date.UTC(2026, 10, 22)
+	const clocked = createFormulaEngine({ now: () => (time += 1000), timeZone: 'UTC' })
+	const { rows, checks, controller, settle } = owned(
+		start(),
+		{ cells: { a: { total: '=NOW()' } } },
+		undefined,
+		clocked,
+	)
+	await settle()
+	// The same rows in a new array, and a new array of new objects with the same values.
+	rows.value = [...rows.value]
+	await settle()
+	rows.value = rows.value.map((row) => ({ ...row }))
+	await settle()
+	expect(checks()).toEqual([])
+
+	// `recalculate` computes NOW again: one report, which the owner takes, and no more.
+	expect(controller.recalculate()).toBe(1)
+	for (let round = 0; round < 4; round++) await settle()
+	expect(checks()).toHaveLength(1)
+	expect(rows.value[0]?.total).toEqual(new Date(time))
+
+	// A row that comes moves the numbers of the rows, so every formula runs again, once.
+	rows.value = [...rows.value, { id: 'd', price: 1, qty: 1 }]
+	for (let round = 0; round < 4; round++) await settle()
+	expect(checks()).toHaveLength(2)
+	expect(rows.value[0]?.total).toEqual(new Date(time))
+})

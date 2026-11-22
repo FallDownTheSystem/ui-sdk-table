@@ -418,7 +418,7 @@ export function cellReader(
 					const row = maps.rowIds[number - 1] ?? ''
 					for (const id of ids) cells.push(valueOf(row, id))
 				}
-				return new FormulaRange(cells)
+				return new FormulaRange(cells, ids.length)
 			},
 		}
 		return cell
