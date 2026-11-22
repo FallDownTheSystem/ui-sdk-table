@@ -95,10 +95,8 @@ A group row holds no values. Its cells are never part of a cell range, and a cop
 
 ## Names
 
-- **Options:** `groupBy`, `defaultGroupBy`, `groupTotals`, `totals`, `canGroup`; column keys `aggregate`, `groupable`.
-- **Events:** `group-by-change`.
-- **Controller:** `setGroupBy`, `expandAll`, `collapseAll`, `getTotals`.
-- **Slots:** `#group`, `#group-total`, `#group-total-{column id}`, `#foot`, `#foot-{column id}`.
-- **Types:** `GroupRow`, `GroupPathEntry`, `AggregateName`, `AggregateFn`, `ColumnTotal`, `TableTotalsSource`.
+- **Types:** `AggregateName`, `AggregateFn`, `TableTotalsSource`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).
 
 See the [Group tiles of the sink](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=group).

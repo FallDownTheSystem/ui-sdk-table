@@ -900,3 +900,19 @@ test('A styled table for an app: the search, the box of a column and the pages w
 	await expect(table.locator('tbody tr')).toHaveCount(2)
 	await expect(example.getByRole('status')).toHaveText('Page 1 of 1')
 })
+
+test('a reference page shows the members of its types, and no marker is left on the page', async ({
+	page,
+}) => {
+	await page.goto('/?page=reference-table')
+	const props = page.locator('h2#props + ul > li')
+	await expect(props.first()).toContainText('rows?')
+	expect(await props.count()).toBeGreaterThan(50)
+	await expect(page.locator('h2#props + ul')).toContainText(
+		'defaultSort? (readonly SortRule[]): The sort at first',
+	)
+	await expect(page.locator('main, body').first()).not.toContainText('<Members')
+	await page.goto('/?page=reference-columns')
+	await expect(page.locator('h3#currencyformatoptions + p + ul')).toContainText('currencyDisplay?')
+	await expect(page.locator('body')).not.toContainText('<Members')
+})

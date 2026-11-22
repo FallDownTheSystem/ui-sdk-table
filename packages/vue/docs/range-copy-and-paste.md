@@ -95,7 +95,6 @@ See the [Sheet tiles of the sink](https://falldownthesystem.github.io/ui-sdk-tab
 
 ## Names
 
-- **Options:** `cellSelection`, `cellRange`, `defaultCellRange`.
-- **Controller:** `selectCells`, `clearCellSelection`, `selectAllCells`, `selectCellRows`, `selectCellColumns`, `copyCells`, `cutCells`, `getSelectionSummary`.
-- **View:** `activeCell`, `cellSelection`.
-- **Exports:** `useSelectionSummary`, `summarize`, and the types `RangeSummary`, `SelectionSummaryOptions`.
+- **Exports:** `useSelectionSummary`, `summarize`, and the type `SelectionSummaryOptions`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).

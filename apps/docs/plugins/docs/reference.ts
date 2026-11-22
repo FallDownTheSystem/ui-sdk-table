@@ -144,7 +144,16 @@ export function members(typeName: string): Member[] {
 	const at = symbol.declarations?.[0]
 	if (!at) throw new Error(`The type "${typeName}" has no declaration.`)
 	const type = checker.getDeclaredTypeOfSymbol(symbol)
-	const properties = type.getProperties()
+	// An interface that extends another lists only its own members; its page
+	// names the interface it extends, so a shared option has one line.
+	const properties = type
+		.getProperties()
+		.filter(
+			(property) =>
+				!ts.isInterfaceDeclaration(at) ||
+				!at.heritageClauses ||
+				property.declarations?.some((declaration) => declaration.parent === at),
+		)
 	const names = new Set(properties.map((property) => property.name))
 	// The events of the Vue table carry no comment of their own: their words
 	// are those of the callback of the core options (`sortChange` is `onSortChange`).

@@ -108,7 +108,7 @@ See the [Formula tiles of the sink](https://falldownthesystem.github.io/ui-sdk-t
 
 ## Names
 
-- **Options of `toXlsx` and `downloadXlsx`:** `formula`, with `excelFormulas()` of the formulas entry.
 - **Exports of the formulas entry:** `excelFormulas`, `EXCEL_FUNCTIONS`.
 - **Exports of the export entry:** the type `XlsxFormulas`.
-- **Fields of the data:** `ExportCell.formula`, `ExportRow.id`, `ExportData.document`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).

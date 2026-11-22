@@ -270,14 +270,10 @@ See the [Formula tiles of the sink](https://falldownthesystem.github.io/ui-sdk-t
 
 ## Names
 
-- **Options:** `formulas` (the engine), `cell-formulas` and `default-cell-formulas` (`v-model:cell-formulas`), column key `allowFormula`. `createFormulaEngine({ timeZone?, maxReads? })`: `maxReads` (5,000,000 by default) refuses one change that would read more cells, such as a running sum by ranges over 50,000 rows.
 - **Value:** `CellFormulas` is `{ columns?: { [columnId]: formula }, cells?: { [rowId]: { [columnId]: formula } } }`, in the stored form: plain data that an app saves with its document. `setFormulas`, `revertFormulas`, `pruneFormulas` and `formulaAt` of the formulas entry are the pure functions behind it.
-- **Events:** `cell-formulas-change` (`details.cancel()` refuses), `update:cell-formulas`; `cell-edit` with `CellEdit.formula` and the reason `recalculate` for a check.
-- **Controller and agent actions:** `getCellFormula`, `setCellFormula`, `getColumnFormula`, `setColumnFormula`, `getAddress`, `cellAt`, `recalculate`, `getFormulaSummary`, `evaluateFormula`, `getFormulaFunctions`. Each throws "This table has no formulas: pass `formulas`." without an engine. `getFormulaSummary(limit?)` gives each text of a column once with its count, so an agent reads 50,000 cells as one line.
-- **View:** `formulas` (the option is on), `cellFormulas`, `formula` (`FormulaView` of the active cell: `rowId`, `columnId`, `address`, `formula`, `text`, `value`, `error`, `ofColumn`).
-- **Slot props:** `formula` in `#cell` and `#col-{id}` (`{ text, error?: { code, message } }`), in `#editor` and `#edit-{id}` (the formula as a person reads it; a save of a text with `=` sets a formula), and in `#header` (the formula of a computed column).
+- **Controller:** the formula methods throw "This table has no formulas: pass `formulas`." without an engine. `getFormulaSummary(limit?)` gives each text of a column once with its count, so an agent reads 50,000 cells as one line.
+- **`FormulaView`**, the `formula` of the view for the active cell: `rowId`, `columnId`, `address`, `formula`, `text`, `value`, `error`, `ofColumn`.
 - **Attributes:** `data-formulas` on the table; `data-formula` on a cell with a formula of its own; `data-formula-error` (`div0`, `value`, `ref`, `name`, `num`, `na`, `cycle`) with the words of the error as `aria-description`; `data-formula-column` on the header and the cells of a computed column.
-- **Messages:** `formulaIssue(issue)`, `formulaError(code)`, `recalculated({ cells })`. Without them, the English words of the engine (`describeFormulaIssue`).
 - **Words of a refusal.** `editCell`, `setCellFormula` and `setColumnFormula` throw an `Error` whose `message` is for a developer or an agent: it names the column, the row and the text (`Column "total" refuses "=SUMM(B2)" for row "l2": No function …`). Its `cause` is a text with the words for a person, the words that the editor of the cell shows. A control beside the table shows the `cause`; `useFormulaBar().error` does that already.
 
   ```ts
@@ -297,3 +293,5 @@ See the [Formula tiles of the sink](https://falldownthesystem.github.io/ui-sdk-t
   }
   ```
 - **Exports of the formulas entry:** `createFormulaEngine`, `formulaColumn`, `compileRowFormula`, `parseFormula`, `printFormula`, `formulaShows`, `formulaSigns`, `describeFormulaIssue`, `FORMULA_FUNCTIONS`, `setFormulas`, `revertFormulas`, `pruneFormulas`, `formulaAt`, `excelFormulas`, `EXCEL_FUNCTIONS`, `useFormulaBar`. Of the export entry: the `formula` option of `toXlsx` and the type `XlsxFormulas`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).

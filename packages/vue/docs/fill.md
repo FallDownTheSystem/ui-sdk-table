@@ -103,8 +103,7 @@ See the [Sheet tiles of the sink](https://falldownthesystem.github.io/ui-sdk-tab
 
 ## Names
 
-- **Options:** `fillHandle` (`true`, `'vertical'`, `'horizontal'`, `false`).
-- **Controller:** `fillCells`.
 - **Attributes:** `data-filling` on the table; `data-fill-target` and `data-fill-edge` on a cell; the part `table-fill-handle`.
-- **Messages:** `cellsFilled`, `fillRefused`, `fillNowhere`, `fillOverPinned`.
 - **Exports:** `fillValues`, `fillLine`, `TableFillHandle`, and the types `FillWay`, `FillDirection`, `FillDraft`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).

@@ -145,11 +145,7 @@ See the [Sheet tiles of the sink](https://falldownthesystem.github.io/ui-sdk-tab
 
 ## Names
 
-- **Options:** `cellFormats`, `defaultCellFormats`, `formatColors`.
-- **Events:** `cell-formats-change`, `update:cell-formats`.
-- **Controller:** `formatCells`, `clearCellFormats`, `toggleCellFormat`, `getCellFormat`.
-- **View:** `cellFormats`.
-- **Slot props:** `format` in `#cell` and `#col-{id}`.
 - **Attributes:** `data-align`, `data-bold`, `data-italic`, `data-color`, `data-fill`, `data-format`.
-- **Messages:** `cellsFormatted`.
 - **Exports:** `setFormats`, `revertFormats`, `pruneFormats`, `resolveFormat`, `CELL_FORMAT_NAMES`, `CELL_ALIGNS`, `CELL_DATE_STYLES`, and the types `CellFormat`, `CellFormats`, `CellFormatPatch`, `CellFormatName`, `FormatPlace`, `FormatTarget`.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).

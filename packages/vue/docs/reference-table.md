@@ -84,6 +84,8 @@ Props are written in camel case here; a template takes them in kebab case (`defa
 - `cellAttrs?` (`(context: CellAttrsContext<Row>) => PartAttrs | undefined`): Attributes of a `th` or `td` element.
 - `sectionAttrs?` (`{ head?: PartAttrs; body?: PartAttrs; foot?: PartAttrs }`): Attributes of the `thead`, `tbody` and `tfoot` elements.
 
+`rowAttrs` and `cellAttrs` get a context with the `kind` of the row or the cell. [Attributes of rows and cells](./cells-and-slots.md#attributes-of-rows-and-cells) lists each kind with its fields.
+
 ## Events
 
 - `update:sort` (`(value: readonly SortRule[]) => void`): The new `sort`, for `v-model:sort`. It does not run when `sortChange` cancels the change.

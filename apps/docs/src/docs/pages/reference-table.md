@@ -8,6 +8,8 @@ Props are written in camel case here; a template takes them in kebab case (`defa
 
 <Members of="TableProps" />
 
+`rowAttrs` and `cellAttrs` get a context with the `kind` of the row or the cell. [Attributes of rows and cells](./cells-and-slots.md#attributes-of-rows-and-cells) lists each kind with its fields.
+
 ## Events
 
 <Members of="TableEmits" />

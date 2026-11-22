@@ -232,10 +232,9 @@ Press Northway. The colors list counts only the shoes of Northway. Press Black t
 
 ## Names
 
-- **Options:** `sort`, `defaultSort`, `filter`, `defaultFilter`, `multiSort`, `alwaysSorted`, `searchDebounce`, `searchMode`, `fuzzyThreshold`, `sortChildren`, `facets`; column keys `sortable`, `compare`, `filter`, `searchable`.
-- **Events:** `sort-change`, `filter-change`.
-- **Controller:** `sortBy`, `toggleSort`, `setSearch`, `inputSearch`, `flushSearch`, `setColumnFilter`, `clearFilters`, `clearColumnFilters`, `getFacets`.
-- **Exports:** `useTableSearch`, `createDebounce`, `sliderBounds`, `isEmptyFilter`, and the types `SortRule`, `FilterState`, `FilterKind`, `FilterMatcher`, `MultiSortMode`, `ColumnFacets`, `ColumnFacetValue`, `FacetOptions`, `TableSearch`.
+- **Exports:** `useTableSearch`, `createDebounce`, `sliderBounds`, `isEmptyFilter`, and the types `FilterKind`, `FilterMatcher`, `MultiSortMode`.
 - **Attributes:** `aria-sort`, `data-sorted` and `data-sort-index` on a header cell.
+
+Every option, event, slot, controller method and view field of this page is in the reference: [Table](./reference-table.md), [Controller](./reference-controller.md) and [View](./reference-view.md).
 
 See the [Sort tiles](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=sort) and the [Filter tiles](https://falldownthesystem.github.io/ui-sdk-table/?page=sink&only=filter) of the sink.
