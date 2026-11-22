@@ -1,11 +1,13 @@
 // The formula engine, an entry of its own, as in `ui-sdk-table-core/formulas`.
 export * from 'ui-sdk-table-core/formulas'
-import type { FormulaView, TableController } from 'ui-sdk-table-core'
+import type { CellRef, FormulaView, TableController } from 'ui-sdk-table-core'
 import { computed, getCurrentScope, onScopeDispose, shallowRef, type ComputedRef } from 'vue'
 
 export type FormulaBar = {
 	/** The address of the cell, such as `D7`, or `''` without an active cell. */
 	address: ComputedRef<string>
+	/** The cell of the field by ids: the cell of the draft, else the active cell, or `null`. A formula writer reads the references of the text at it. */
+	cell: ComputedRef<CellRef | null>
 	/** The text of the field: the draft while a person types, else the formula or the value of the cell. */
 	text: ComputedRef<string>
 	/** Why the last commit was refused, in the words for a person, or `''`. */
@@ -52,6 +54,9 @@ export function useFormulaBar(controller: TableController): FormulaBar {
 	const shown = computed(() => draft.value?.at ?? view.value)
 	return {
 		address: computed(() => shown.value?.address ?? ''),
+		cell: computed(() =>
+			shown.value ? { rowId: shown.value.rowId, columnId: shown.value.columnId } : null,
+		),
 		text: computed(() => draft.value?.text ?? view.value?.text ?? ''),
 		error: computed(() => error.value),
 		dirty: computed(() => draft.value !== null),

@@ -29,6 +29,7 @@ import { changedCells, everyFormula } from './recheck'
 import { revertFormulas, setFormulas } from './state'
 import { formulaSigns, STORED_SIGNS } from './tokens'
 import { describeFormulaError, describeFormulaIssue } from './words'
+import { referencesOf } from './writer'
 
 export type FormulaEngineOptions = FormulaOptions & {
 	/**
@@ -256,6 +257,29 @@ export function createFormulaEngine(options: FormulaEngineOptions = {}): Formula
 			return { formulas, results }
 		},
 		rowNumber: (rowId, sheet) => addressesOf(sheet).numbers.get(rowId),
+		rangeAddress(from, to, columns, sheet) {
+			const maps = addressesOf(sheet)
+			const letters = [from, to].map((place) => maps.letters.get(place.columnId))
+			const numbers = [from, to].map((place) => maps.numbers.get(place.rowId))
+			const [a, b] = letters
+			const [top, bottom] = numbers.toSorted((x = 0, y = 0) => x - y)
+			if (!a || !b || (!columns && (top === undefined || bottom === undefined))) return undefined
+			// The columns in the order of the document, as the rows are.
+			const [left, right] =
+				maps.order.indexOf(from.columnId) <= maps.order.indexOf(to.columnId) ? [a, b] : [b, a]
+			if (columns) return `${left}:${right}`
+			return left === right && top === bottom ? `${left}${top}` : `${left}${top}:${right}${bottom}`
+		},
+		references: (text, at, sheet) => {
+			const maps = addressesOf(sheet)
+			return referencesOf(
+				text,
+				formulaSigns(sheet.locale()),
+				whereOf(at.rowId, maps),
+				sheet.columns(),
+				maps.order,
+			)
+		},
 		address(place, sheet) {
 			const maps = addressesOf(sheet)
 			const letter = maps.letters.get(place.columnId)

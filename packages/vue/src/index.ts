@@ -72,6 +72,7 @@ export {
 } from 'ui-sdk-table-core'
 export type {
 	CellEdit,
+	CellPick,
 	CellRange,
 	CellRef,
 	StandardSchemaV1,
@@ -140,6 +141,8 @@ export type {
 	FormulaEngine,
 	FormulaError,
 	FormulaIssue,
+	FormulaFunctionInfo,
+	FormulaReference,
 	FormulaSheet,
 	FormatPlace,
 	FormatTarget,

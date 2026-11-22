@@ -23,12 +23,16 @@ export type {
 	FormulaChange,
 	FormulaColumns,
 	FormulaColumn,
+	FormulaArgument,
 	FormulaEngine,
 	FormulaEntry,
+	FormulaFunctionGroup,
+	FormulaFunctionInfo,
 	FormulaIssue,
 	FormulaIssueCode,
 	FormulaJoin,
 	FormulaPlace,
+	FormulaReference,
 	FormulaResult,
 	FormulaSheet,
 	FormulaSummaryLine,
@@ -38,6 +42,7 @@ export type { ExportCell, ExportColumn, ExportData, ExportOptions, ExportRow } f
 export type { RowAlign } from './behaviors/window'
 export type { CellBounds, CellRange } from './behaviors/range'
 export type { FillDirection, FillDraft } from './behaviors/fill'
+export type { CellPick } from './behaviors/pick'
 export {
 	aggregateName,
 	table,

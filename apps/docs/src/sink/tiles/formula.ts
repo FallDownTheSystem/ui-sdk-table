@@ -43,6 +43,13 @@ export const tiles: TileCopy[] = [
 		tone: 'mist',
 	},
 	{
+		id: 'formula-pick',
+		title: 'Pick a range.',
+		blurb: 'Type =SUM( in the bar, drag over cells, and the range goes into the formula in colour.',
+		size: 'wide',
+		tone: 'plum',
+	},
+	{
 		id: 'formula-file',
 		title: 'Open a saved sheet.',
 		blurb:

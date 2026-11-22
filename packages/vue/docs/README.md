@@ -35,6 +35,7 @@ Start with [llms.txt](./llms.txt): what the library is and the conventions every
 - [Formats](./formats.md): Let a person make cells bold, give them a colour, or show a number as a percentage, and save that with the document.
 - [Row numbers and letters](./row-numbers-and-letters.md): Give a sheet a column of row numbers and a row of column letters, where a person selects whole rows and columns.
 - [Formulas](./sheet-formulas.md): Compute values with formulas as in a spreadsheet: a computed column, or a formula in one cell.
+- [A formula writer](./formula-writer.md): Build a field that helps a person write a formula: suggestions of functions, a hint for the argument at the caret, references picked with the pointer, and the cells of each reference in colour.
 - [An Excel file with formulas](./excel-formulas.md): Download a sheet as an Excel file whose cells keep their formulas, where Excel computes them the same way.
 
 ## Build on it

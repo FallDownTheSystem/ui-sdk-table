@@ -916,3 +916,54 @@ test('a reference page shows the members of its types, and no marker is left on 
 	await expect(page.locator('h3#currencyformatoptions + p + ul')).toContainText('currencyDisplay?')
 	await expect(page.locator('body')).not.toContainText('<Members')
 })
+
+test('A formula writer: a drag writes one range into the field, the hint marks its argument, and the list shows functions', async ({
+	page,
+}) => {
+	await page.goto('/?page=formula-writer')
+	const example = page.locator('[data-example="formula-writer/writer"]')
+	const sheet = grid(page, 'formula-writer/writer', 'An order with a formula writer')
+	const totals = sheet.locator('td[data-column="total"]')
+	await totals.last().click()
+	await expect(example.getByTestId('address')).toHaveText('D4')
+	const field = example.getByRole('textbox', { name: 'Formula of the active cell' })
+	await field.click()
+	await page.keyboard.type('=SUM(')
+	await expect(example.getByTestId('hint').locator('strong')).toHaveText('number1')
+	await expect(sheet).toHaveAttribute('data-pick', '')
+
+	const center = async (cell: Locator) => {
+		const box = await cell.boundingBox()
+		if (!box) throw new Error('The cell is not in view.')
+		return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+	}
+	const from = await center(totals.nth(0))
+	const to = await center(totals.nth(2))
+	await page.mouse.move(from.x, from.y)
+	await page.mouse.down()
+	await page.mouse.move(to.x, to.y, { steps: 6 })
+	await page.mouse.up()
+	await expect(field).toHaveValue('=SUM(D1:D3')
+	await expect(field).toBeFocused()
+	await expect(sheet.locator('td[data-reference="0"]')).toHaveCount(3)
+	await expect(sheet.locator('td[data-picked]')).toHaveCount(3)
+	await expect(example.getByTestId('address')).toHaveText('D4')
+
+	await page.keyboard.type(')')
+	await page.keyboard.press('Enter')
+	await expect(totals.last()).toHaveText('511.00')
+
+	await field.click()
+	await field.press('Control+a')
+	await page.keyboard.type('=su')
+	await expect(example.getByRole('list', { name: 'Functions' }).getByRole('button')).toHaveText([
+		/^SUBSTITUTE/,
+		/^SUM/,
+		/^SUMIF/,
+		/^SUMIFS/,
+	])
+	await example.getByRole('button', { name: /^SUMIF / }).click()
+	await expect(field).toHaveValue('=SUMIF(')
+	await expect(field).toBeFocused()
+	await expect(example.getByTestId('hint').locator('strong')).toHaveText('range')
+})

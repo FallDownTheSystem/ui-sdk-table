@@ -34,6 +34,7 @@ export const groups: readonly { title: string; inline?: boolean; pages: readonly
 			'formats',
 			'row-numbers-and-letters',
 			'sheet-formulas',
+			'formula-writer',
 			'excel-formulas',
 		],
 	},

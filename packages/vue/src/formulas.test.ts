@@ -662,3 +662,141 @@ test('a cell with NOW gets a finite number of reports from an owner that takes e
 	expect(checks()).toHaveLength(2)
 	expect(rows.value[0]?.total).toEqual(new Date(time))
 })
+
+test('`getRangeAddress` writes the selected cells or a pick, and `getFormulaReferences` names the cells of a text', async () => {
+	const rows = [
+		{ id: 'a', price: 2, qty: 3 },
+		{ id: 'b', price: 1.5, qty: 4 },
+		{ id: 'c', price: 1, qty: 1 },
+	]
+	const controller = createTableController()
+	const picked: unknown[] = []
+	const wrapper = mount(
+		() =>
+			h(Table<Line>, {
+				rows,
+				columns,
+				controller,
+				formulas: engine,
+				cellSelection: true,
+				pickCells: true,
+				'aria-label': 'Lines',
+				onPickedCellsChange: (value: unknown) => picked.push(value),
+			}),
+		{ attachTo: document.body },
+	)
+	wrappers.push(wrapper)
+	await nextTick()
+	expect(controller.getRangeAddress()).toBeNull()
+	controller.selectCells({ rowId: 'a', columnId: 'qty' }, { rowId: 'b', columnId: 'price' })
+	await nextTick()
+	expect(controller.getRangeAddress()).toBe('A1:B2')
+	// Every row of the document is a whole column.
+	controller.selectCells({ rowId: 'a', columnId: 'qty' }, { rowId: 'c', columnId: 'qty' })
+	await nextTick()
+	expect(controller.getRangeAddress()).toBe('B:B')
+	// A pick is places in the grid: row 0 is the header row.
+	expect(
+		controller.getRangeAddress({
+			anchor: { row: 3, col: 2 },
+			end: { row: 2, col: 1 },
+			columns: false,
+		}),
+	).toBe('B2:C3')
+	expect(
+		controller.getRangeAddress({
+			anchor: { row: 1, col: 0 },
+			end: { row: 3, col: 0 },
+			columns: true,
+		}),
+	).toBe('A:A')
+	expect(
+		controller.getFormulaReferences('=SUM(A1:B2)*C3', { rowId: 'c', columnId: 'total' }),
+	).toEqual([
+		{
+			start: 5,
+			end: 10,
+			text: 'A1:B2',
+			from: { rowId: 'a', columnId: 'price' },
+			to: { rowId: 'b', columnId: 'qty' },
+			columns: false,
+		},
+		{
+			start: 12,
+			end: 14,
+			text: 'C3',
+			from: { rowId: 'c', columnId: 'total' },
+			to: { rowId: 'c', columnId: 'total' },
+			columns: false,
+		},
+	])
+	expect(wrapper.find('[role="grid"]').attributes('data-pick')).toBe('')
+	expect(() => controller.getFormulaReferences('=A1', { rowId: 'x', columnId: 'total' })).toThrow(
+		/No row "x"/,
+	)
+})
+
+test('a column formula that reads a whole column says that it reads its own row only', async () => {
+	const controller = createTableController()
+	const wrapper = mount(
+		() =>
+			h(Table<Line>, {
+				rows: [{ id: 'a', price: 2, qty: 3 }],
+				columns,
+				controller,
+				formulas: engine,
+				'aria-label': 'Lines',
+				defaultCellFormulas: { columns: { total: '=SUMIF([price@*], [price], [qty@*])' } },
+			}),
+		{ attachTo: document.body },
+	)
+	wrappers.push(wrapper)
+	await nextTick()
+	const cell = wrapper.find('td[data-column="total"]')
+	expect(cell.attributes('data-formula-error')).toBe('name')
+	expect(cell.attributes('aria-description')).toMatch(/reads the cells of its own row only/)
+	expect(controller.getColumnFormula('total')?.error).toMatch(/its own row only/)
+})
+
+test('`useFormulaBar().cell` is the cell of the bar, and a save of the editor slot with `=` sets a formula', async () => {
+	const controller = createTableController()
+	const formulas = shallowRef<CellFormulas>({})
+	const scope = effectScope()
+	const bar = scope.run(() => useFormulaBar(controller))
+	let save: ((value: unknown) => void) | undefined
+	const wrapper = mount(
+		() =>
+			h(
+				Table<Line>,
+				{
+					rows: [{ id: 'a', price: 2, qty: 3 }],
+					columns,
+					controller,
+					formulas: engine,
+					editable: true,
+					'aria-label': 'Lines',
+					cellFormulas: formulas.value,
+					'onUpdate:cellFormulas': (value: CellFormulas) => (formulas.value = value),
+				},
+				{
+					editor: (props: { save: (value: unknown) => void }) => {
+						save = props.save
+						return h('input')
+					},
+				},
+			),
+		{ attachTo: document.body },
+	)
+	wrappers.push(wrapper)
+	await nextTick()
+	expect(bar?.cell.value).toBeNull()
+	const total = wrapper.find('td[data-column="total"]')
+	;(total.element as HTMLElement).focus()
+	await total.trigger('keydown', { key: 'Enter' })
+	await nextTick()
+	expect(bar?.cell.value).toEqual({ rowId: 'a', columnId: 'total' })
+	save?.('=A1*B1')
+	await nextTick()
+	expect(formulas.value).toEqual({ cells: { a: { total: '=[price]*[qty]' } } })
+	scope.stop()
+})

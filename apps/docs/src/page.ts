@@ -92,6 +92,13 @@ export const pages: Record<string, Page> = {
 		load: () => import('./pages/ServerPage.vue'),
 		styles: plain,
 	},
+	pick: {
+		kind: 'test',
+		title: 'Pick cells',
+		load: () => import('./pages/PickPage.vue'),
+		styles: plain,
+		hidden: true,
+	},
 	proofs: {
 		kind: 'test',
 		title: 'Proofs',

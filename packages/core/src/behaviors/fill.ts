@@ -1,10 +1,5 @@
-import {
-	bindDrag,
-	createAutoScroll,
-	type CellBounds,
-	type GridCell,
-	type PrimitiveContext,
-} from '@ui-sdk/core'
+import type { CellBounds, GridCell, PrimitiveContext } from '@ui-sdk/core'
+import { cellUnder, dragCells, edgesOf } from './drag'
 
 /** A fill that a drag paints: the cells that it starts from and the cells that it would fill. */
 export type FillDraft = {
@@ -99,20 +94,13 @@ export const byFillDraft = {
 	},
 }
 
-// How far from the pointer a cell of the body is looked for when the pointer
-// is over a row that sticks to an edge of the frame, in pixels.
-const PROBE_STEP = 8
-const PROBE_REACH = 160
-
 /**
  * The fill handle of a sheet: a drag from the corner of the selected cells
  * that paints the cells to fill, along one axis, and reports the fill once
  * when the pointer lifts. It knows no value: `commit` of the caller fills.
  *
- * The drag is bound to the root of the table and not to the handle. With a
- * row window, the cell of the handle leaves the page during a long drag, and
- * a drag that is bound to an element that left would end there. `bindDrag`
- * and `createAutoScroll` of UI SDK are used in this file only.
+ * The drag is bound to the root of the table and not to the handle: with a
+ * row window, the cell of the handle leaves the page during a long drag.
  */
 export function createFillHandle<State extends object>(
 	context: Pick<PrimitiveContext<any, State, any>, 'store' | 'onDestroy'>,
@@ -144,45 +132,12 @@ export function createFillHandle<State extends object>(
 		context.store.set({ [options.draft]: next } as Partial<State>)
 	}
 
-	/** The cell of the body under a point. Over a row outside the limits, the nearest cell inside them. */
-	function cellAt(x: number, y: number, limits: CellBounds): GridCell | undefined {
-		const page = root?.ownerDocument
-		if (!page || !root) return undefined
-		const read = (top: number) => {
-			const el = page.elementFromPoint(x, top)
-			return el && root?.contains(el) ? options.placeOf(el) : undefined
-		}
-		const found = read(y)
-		if (!found) return undefined
-		if (found.row >= limits.top && found.row <= limits.bottom) return found
-		// A header or a footer that sticks covers the rows that scroll under it.
-		// The pointer means the last row that is in view at that edge.
-		const way = found.row < limits.top ? 1 : -1
-		for (let off = PROBE_STEP; off <= PROBE_REACH; off += PROBE_STEP) {
-			const near = read(y + way * off)
-			if (near && near.row >= limits.top && near.row <= limits.bottom) return near
-		}
-		return undefined
-	}
-
 	return {
 		pointerdown(event) {
 			const source = options.source()
 			if (event.button !== 0 || !source || !root) return
 			stop?.()
-			let last = { x: event.clientX, y: event.clientY }
-			const look = () => {
-				const limits = options.limits()
-				const cell = limits && cellAt(last.x, last.y, limits)
-				// A pointer outside the rows keeps the cells that it painted last.
-				if (!limits || !cell) return
-				const target = fillTarget(source, cell, limits, options.direction())
-				setDraft(target ? { source, target } : null)
-			}
-			// A pointer that rests near an edge sends no move, and the rows still go by under it.
-			const scroll = createAutoScroll({ onScroll: look })
 			const end = () => {
-				scroll.stop()
 				stop = undefined
 				const draft = draftOf(context.store.get())
 				context.store.set({
@@ -192,14 +147,17 @@ export function createFillHandle<State extends object>(
 				return draft
 			}
 			context.store.set({ [options.dragging]: true } as Partial<State>)
-			const release = bindDrag(root, event, {
+			const release = dragCells(root, event, {
 				cancelOnEscape: true,
-				onMove: ({ x, y }) => {
-					last = { x, y }
-					scroll.update(x, y)
-					look()
+				move: (x, y) => {
+					const limits = options.limits()
+					const cell = limits && root && cellUnder(root, x, y, limits, options.placeOf)
+					// A pointer outside the rows keeps the cells that it painted last.
+					if (!limits || !cell) return
+					const target = fillTarget(source, cell, limits, options.direction())
+					setDraft(target ? { source, target } : null)
 				},
-				onEnd: (up, canceled) => {
+				end: (up, canceled) => {
 					const draft = end()
 					if (draft && !canceled) options.commit(draft, { reason: 'drag', event: up })
 				},
@@ -208,29 +166,12 @@ export function createFillHandle<State extends object>(
 				release()
 				end()
 			}
-			// The page must not select text or move focus while the pointer drags.
-			// After the start of the drag: a drag does not start from a press that
-			// is already prevented.
-			event.preventDefault()
 		},
 		cellAttrs(state, cell) {
-			const target = draftOf(state)?.target
-			if (
-				!target ||
-				cell.row < target.top ||
-				cell.row > target.bottom ||
-				cell.col < target.left ||
-				cell.col > target.right
-			) {
-				return {}
-			}
-			const edges = [
-				cell.row === target.top ? 'top' : '',
-				cell.row === target.bottom ? 'bottom' : '',
-				cell.col === target.left ? 'left' : '',
-				cell.col === target.right ? 'right' : '',
-			].filter(Boolean)
-			return { 'data-fill-target': '', 'data-fill-edge': edges.join(' ') || undefined }
+			const edges = edgesOf(draftOf(state)?.target, cell)
+			return edges === undefined
+				? {}
+				: { 'data-fill-target': '', 'data-fill-edge': edges || undefined }
 		},
 		holds(cell) {
 			const source = options.source()

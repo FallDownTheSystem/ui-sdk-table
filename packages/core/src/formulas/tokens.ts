@@ -53,10 +53,11 @@ export function formulaSigns(locale: string | undefined): FormulaSigns {
 export type Token =
 	/** `raw` is the number as it was written, with `.` as the decimal sign. */
 	| { type: 'number'; value: number; raw: string; at: number; end: number }
-	| { type: 'text'; value: string; at: number; end: number }
+	/** `open` is a text without its closing `"`, in a partial reading. */
+	| { type: 'text'; value: string; at: number; end: number; open?: boolean }
 	| { type: 'error'; value: FormulaError; at: number; end: number }
 	/** The inside of `[...]`, with its escapes. */
-	| { type: 'bracket'; value: string; at: number; end: number }
+	| { type: 'bracket'; value: string; at: number; end: number; open?: boolean }
 	/** A name of a function, `TRUE`, an address such as `$B$7`, or a column such as `B`. */
 	| { type: 'word'; value: string; at: number; end: number }
 	| { type: 'operator'; value: string; at: number; end: number }
@@ -95,16 +96,21 @@ function numberShape(decimal: string): RegExp {
 /**
  * Splits the text of a formula, without its `=`, into tokens. `offset` is
  * where the text starts in the whole formula, for the places in an issue.
+ * A `partial` reading is for a text that a person is still typing: it never
+ * fails, a text or a bracket without its end runs to the end, and a sign
+ * that cannot stand there is an operator of its own.
  */
 export function tokenize(
 	text: string,
 	signs: FormulaSigns,
 	offset = 0,
+	partial = false,
 ): { tokens: Token[] } | { issues: FormulaIssue[] } {
 	const tokens: Token[] = []
 	const number = numberShape(signs.decimal)
 	let at = 0
 	const fail = (issue: FormulaIssue) => ({ issues: [issue] })
+	const last = text.length + offset
 	while (at < text.length) {
 		const char = text[at] ?? ''
 		if (/\s/.test(char)) {
@@ -117,7 +123,7 @@ export function tokenize(
 		if (digits && digits[0] !== '') {
 			const end = at + digits[0].length
 			// A decimal sign of another locale, as `1.5` where `,` is the decimal sign.
-			if (signs.decimal === ',' && /^\.\d/.test(text.slice(end))) {
+			if (!partial && signs.decimal === ',' && /^\.\d/.test(text.slice(end))) {
 				return fail({ code: 'decimalSign', at: end + offset, expected: ',' })
 			}
 			// `.5` is kept as `0.5`, so a locale with a decimal comma can write it as `0,5`.
@@ -137,6 +143,16 @@ export function tokenize(
 			let end = at + 1
 			for (;;) {
 				const close = text.indexOf('"', end)
+				if (close < 0 && partial) {
+					tokens.push({
+						type: 'text',
+						value: value + text.slice(end),
+						at: start,
+						end: last,
+						open: true,
+					})
+					return { tokens }
+				}
 				if (close < 0) return fail({ code: 'syntax', at: start, found: 'text' })
 				value += text.slice(end, close)
 				if (text[close + 1] === '"') {
@@ -154,6 +170,16 @@ export function tokenize(
 		if (char === '[') {
 			let end = at + 1
 			while (end < text.length && text[end] !== ']') end += text[end] === '\\' ? 2 : 1
+			if (end >= text.length && partial) {
+				tokens.push({
+					type: 'bracket',
+					value: text.slice(at + 1),
+					at: start,
+					end: last,
+					open: true,
+				})
+				return { tokens }
+			}
 			if (end >= text.length) return fail({ code: 'syntax', at: start, found: '[' })
 			tokens.push({
 				type: 'bracket',
@@ -167,13 +193,18 @@ export function tokenize(
 		if (char === '#') {
 			const upper = text.slice(at).toUpperCase()
 			const error = ERRORS_BY_LENGTH.find((code) => upper.startsWith(code))
-			if (!error) return fail({ code: 'syntax', at: start, found: '#' })
+			if (!error && !partial) return fail({ code: 'syntax', at: start, found: '#' })
+			if (!error) {
+				tokens.push({ type: 'operator', value: '#', at: start, end: start + 1 })
+				at++
+				continue
+			}
 			tokens.push({ type: 'error', value: error, at: start, end: start + error.length })
 			at += error.length
 			continue
 		}
 		if (char === ',' || char === ';') {
-			if (!signs.separators.includes(char)) {
+			if (!partial && !signs.separators.includes(char)) {
 				return fail({ code: 'separator', at: start, expected: signs.separators[0] ?? ';' })
 			}
 			tokens.push({ type: 'separator', value: char, at: start, end: start + 1 })
@@ -187,7 +218,7 @@ export function tokenize(
 			at += word[0].length
 			continue
 		}
-		const operator = OPERATORS.find((sign) => text.startsWith(sign, at))
+		const operator = OPERATORS.find((sign) => text.startsWith(sign, at)) ?? (partial ? char : '')
 		if (!operator) return fail({ code: 'syntax', at: start, found: char })
 		tokens.push({ type: 'operator', value: operator, at: start, end: start + operator.length })
 		at += operator.length

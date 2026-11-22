@@ -7,6 +7,9 @@ export type {
 	FormulaIssue,
 	FormulaIssueCode,
 	FormulaSheet,
+	FormulaArgument,
+	FormulaFunctionGroup,
+	FormulaReference,
 } from '../formula/types'
 export { formulaColumn, type FormulaColumnDef } from './column'
 export { createFormulaEngine, type FormulaEngineOptions } from './engine'
@@ -20,6 +23,14 @@ export {
 export { FORMULA_FUNCTIONS, type FormulaFunctionInfo } from './functions'
 export { formulaShows, type FormulaShows } from './kinds'
 export { formulaSigns, type FormulaSigns } from './tokens'
+export {
+	formulaHelp,
+	insertReference,
+	type FormulaHelp,
+	type FormulaHelpOptions,
+	type FormulaToken,
+	type FormulaTokenKind,
+} from './writer'
 export { describeFormulaIssue } from './words'
 export { formulaAt, pruneFormulas, revertFormulas, setFormulas } from './state'
 export { EXCEL_FUNCTIONS, excelFormulas } from './excel'
