@@ -24,6 +24,7 @@ The value of `cellFormulas`.
 What `useFormulaBar(controller)` gives.
 
 - `address` (`ComputedRef<string>`): The address of the cell, such as `D7`, or `''` without an active cell.
+- `cell` (`ComputedRef<CellRef | null>`): The cell of the field by ids: the cell of the draft, else the active cell, or `null`. A formula writer reads the references of the text at it.
 - `text` (`ComputedRef<string>`): The text of the field: the draft while a person types, else the formula or the value of the cell.
 - `error` (`ComputedRef<string>`): Why the last commit was refused, in the words for a person, or `''`.
 - `dirty` (`ComputedRef<boolean>`): Whether the text is a draft that is not saved.
@@ -37,3 +38,5 @@ What `useFormulaBar(controller)` gives.
 - `name` (`string`): The name of the function, such as `SUM`.
 - `args` (`string`): Its arguments as a person writes them, such as `number, ...`.
 - `help` (`string`): One line that says what it gives.
+- `group` (`FormulaFunctionGroup`): What it works with: `math`, `condition`, `lookup`, `logic`, `text` or `date`.
+- `arguments` (`readonly FormulaArgument[]`): Its arguments as a list, read from `args`.

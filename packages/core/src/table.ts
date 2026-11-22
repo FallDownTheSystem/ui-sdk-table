@@ -21,6 +21,7 @@ import { createStepHistory, type HistoryCounts, type HistoryResult } from './beh
 import { createCellWrites, type WriteInput, type WriteTarget } from './behaviors/write'
 import { createTableGrid, GRID_KEYS, type GridArea, type GridCell } from './behaviors/grid'
 import { createColumnPins } from './behaviors/pin'
+import { createCellPick, pickBounds, type CellPick } from './behaviors/pick'
 import {
 	byCellRange,
 	cellsToText,
@@ -55,8 +56,10 @@ import type {
 	CellFormulas,
 	FormulaEngine,
 	FormulaEntry,
+	FormulaFunctionInfo,
 	FormulaIssue,
 	FormulaPlace,
+	FormulaReference,
 	FormulaResult,
 	FormulaSummaryLine,
 	FormulaView,
@@ -431,8 +434,26 @@ export type TableController = {
 	getFormulaSummary(limit?: number): { lines: FormulaSummaryLine[]; more: number }
 	/** The value that a formula would give at a cell, the active cell by default. Nothing is written. */
 	evaluateFormula(formula: string, at?: CellRef): unknown
-	/** The functions of the formulas: name, arguments and one line of help. */
-	getFormulaFunctions(): readonly { name: string; args: string; help: string }[]
+	/** The functions of the formulas: name, arguments as a text and as a list, one line of help, and group. */
+	getFormulaFunctions(): readonly FormulaFunctionInfo[]
+	/**
+	 * The text that a person types for cells: `B2`, `B2:C5`, or `B:C` for
+	 * whole columns. It reads a pick of `pickedCells`, else the selected cells
+	 * (the selected range, or the active cell); selected cells are whole
+	 * columns when they hold every row of the document, and more than one.
+	 * The corners are the first and the last cell that hold values. `null`
+	 * without cells, for a column without a letter, and with `manualPage`,
+	 * where no address names a row. Needs the `formulas` option.
+	 */
+	getRangeAddress(cells?: CellPick | null): string | null
+	/**
+	 * The references of a formula text as a person types it at a cell, the
+	 * active cell by default: the place of each in the text, from `start` up
+	 * to `end`, and the cells that it names by ids, from the first to the
+	 * last. It reads a text that is not a whole formula yet. A field colours
+	 * a reference and its cells with one colour. Needs the `formulas` option.
+	 */
+	getFormulaReferences(text: string, at?: CellRef): FormulaReference[]
 	/**
 	 * Changes the format of cells: how their values become text (`format`,
 	 * `decimals`, `currency`, `dateStyle`) and how they look (`align`, `bold`,
@@ -986,6 +1007,28 @@ export type TableOptions<Row = unknown> = {
 	 */
 	entry?: boolean
 	/**
+	 * The pick mode, for a field that writes a formula: while it is on, a
+	 * press or a drag on cells of the body picks them, and a press on a letter
+	 * of `columnLetters` picks its column. A pick changes nothing else: the
+	 * active cell, the selected cells, an open editor, focus and the caret of
+	 * a field stay. The picked cells go to `pickedCells` and show
+	 * `data-picked`. An app turns it on and off, for example while the text
+	 * of its field starts with `=`, and puts the address of the pick
+	 * (`getRangeAddress`) into the text. The root shows `data-pick`.
+	 * Defaults to false.
+	 */
+	pickCells?: boolean
+	/**
+	 * The cells of the last pick, as places in the grid like `cellRange`, or
+	 * `null`. It goes back to `null` when `pickCells` goes off.
+	 */
+	pickedCells?: CellPick | null
+	defaultPickedCells?: CellPick | null
+	/** Runs for the press of a pick and for each step of its drag. */
+	onPickedCellsChange?: (value: CellPick | null, details: TableChangeDetails) => void
+	/** Runs once when a drag that changed the pick ends. */
+	onPickedCellsCommit?: (value: CellPick, details: TableCommitDetails) => void
+	/**
 	 * Runs when cells got new values: one cell from the editor or from
 	 * `editCell`, many cells from a paste. The table does not change the rows.
 	 * Put the values into your rows and pass the new rows; `applyEdits` does
@@ -1081,6 +1124,8 @@ type TableState = {
 	/** The formulas of cells and columns. Not a key of `controlled`, as `cellFormats`: an agent reads a formula with an action. */
 	cellFormulas: CellFormulas
 	cellRange: CellRange | null
+	/** The cells of the last pick of the pick mode, or `null`. */
+	pickedCells: CellPick | null
 	/**
 	 * The text of a search field that the filter does not hold yet: it waits
 	 * for a pause in the typing, or for the owner of the filter to pass it
@@ -1164,6 +1209,7 @@ const QUIET = {
 	columnResize: [],
 	rowWindow: [],
 	cellRange: [],
+	pickedCells: [],
 	editing: [],
 	editChecking: [],
 	editErrors: [],
@@ -1319,6 +1365,11 @@ export const table = definePrimitive({
 		defaultCellRange: 'value',
 		onCellRangeChange: 'callback',
 		onCellRangeCommit: 'callback',
+		pickCells: 'boolean',
+		pickedCells: 'value',
+		defaultPickedCells: 'value',
+		onPickedCellsChange: 'callback',
+		onPickedCellsCommit: 'callback',
 		manualSort: 'boolean',
 		manualFilter: 'boolean',
 		facets: 'value',
@@ -1341,7 +1392,7 @@ export const table = definePrimitive({
 		'columnAggregates',
 		'cellRange',
 	],
-	commits: ['columnWidths', 'cellRange'],
+	commits: ['columnWidths', 'cellRange', 'pickedCells'],
 	live: ['columnResize', 'fillDraft', 'filling'],
 	state: (options: TableOptions): TableState => {
 		const columnVisibility =
@@ -1378,6 +1429,7 @@ export const table = definePrimitive({
 			columnDrag: null,
 			columnResize: null,
 			cellRange: options.cellRange ?? options.defaultCellRange ?? null,
+			pickedCells: options.pickedCells ?? options.defaultPickedCells ?? null,
 			searchDraft: null,
 			searchPending: false,
 			history: NO_HISTORY,
@@ -1407,6 +1459,7 @@ export const table = definePrimitive({
 		if (options.cellFormats !== undefined) synced.cellFormats = options.cellFormats
 		if (options.cellFormulas !== undefined) synced.cellFormulas = options.cellFormulas
 		if (options.cellRange !== undefined) synced.cellRange = options.cellRange
+		if (options.pickedCells !== undefined) synced.pickedCells = options.pickedCells
 		return synced
 	},
 	api: (context) => {
@@ -3281,23 +3334,43 @@ export const table = definePrimitive({
 			return given === 'vertical' || given === 'horizontal' ? given : 'both'
 		}
 
+		// A cell says its column and its row says its place, in every renderer.
+		const placeOfElement = (el: Element): GridCell | undefined => {
+			const col = Number(el.closest('[aria-colindex]')?.getAttribute('aria-colindex'))
+			const row = Number(el.closest('[aria-rowindex]')?.getAttribute('aria-rowindex'))
+			return col >= 1 && row >= 1 ? { row: row - 1, col: col - 1 } : undefined
+		}
+		/** The rows of the body and the columns that hold values: where a fill and a pick can reach. */
+		const bodyLimits = (): CellBounds | undefined => {
+			const count = bodyRows().length
+			const top = headerRowCount()
+			const right = layout().leaves.length - 1
+			const left = firstRangeCol()
+			return count && left <= right ? { top, bottom: top + count - 1, left, right } : undefined
+		}
+
+		const pickCells = () => options().pickCells ?? false
+		const picker = createCellPick<TableState>(context, {
+			key: 'pickedCells',
+			placeOf: placeOfElement,
+			limits: bodyLimits,
+			columnsFrom: () => letteredFrom(),
+			set: (next, details) => change('pickedCells', next, details),
+			commit: (next, details) => commit('pickedCells', next, details),
+		})
+		// A pick is of the mode: the picked cells go when it goes off.
+		context.onOptions((next) => {
+			if (!next.pickCells && state().pickedCells) {
+				queueMicrotask(() => change('pickedCells', null, { reason: 'reset' }))
+			}
+		})
+
 		const fillHandle = createFillHandle<TableState>(context, {
 			draft: 'fillDraft',
 			dragging: 'filling',
 			source: () => (fillOn() ? selectedCells() : undefined),
-			// A cell says its column and its row says its place, in every renderer.
-			placeOf: (el) => {
-				const col = Number(el.closest('[aria-colindex]')?.getAttribute('aria-colindex'))
-				const row = Number(el.closest('[aria-rowindex]')?.getAttribute('aria-rowindex'))
-				return col >= 1 && row >= 1 ? { row: row - 1, col: col - 1 } : undefined
-			},
-			limits: () => {
-				const count = bodyRows().length
-				const top = headerRowCount()
-				const right = layout().leaves.length - 1
-				const left = firstRangeCol()
-				return count && left <= right ? { top, bottom: top + count - 1, left, right } : undefined
-			},
+			placeOf: placeOfElement,
+			limits: bodyLimits,
 			direction: fillDirection,
 			commit: (draft, details) => {
 				// An editor that is open in another cell with a refused value keeps the person.
@@ -3409,8 +3482,11 @@ export const table = definePrimitive({
 		})
 
 		function selectionView(): CellSelectionView | null {
-			if (!cellSelection()) return null
-			const bounds = selectedCells()
+			return cellSelection() ? cellsView(selectedCells()) : null
+		}
+
+		/** Cells of the grid by id: the first and the last cell that hold values, and how many rows and columns. */
+		function cellsView(bounds: CellBounds | undefined): CellSelectionView | null {
 			if (!bounds) return null
 			const head = headerRowCount()
 			const found = dataRowsIn(bodyRows(), bounds.top - head, bounds.bottom - head)
@@ -3810,6 +3886,17 @@ export const table = definePrimitive({
 			locale: () => options().locale,
 		}
 
+		/** A cell of the table for a formula: `at`, else the active cell. It throws for a row or a column that it does not have. */
+		function formulaAt(at: CellRef | undefined, purpose: string): FormulaPlace {
+			requireFormulas()
+			const ref = at ?? activeCellRef()
+			if (!ref) throw new Error('No cell is active: pass `{ rowId, columnId }`.')
+			return {
+				rowId: requireRow(String(ref.rowId), purpose).id,
+				columnId: formulaTarget(ref.columnId, purpose).id,
+			}
+		}
+
 		/** A column that can hold a formula: a column of the owner with cells, without the numbers of the rows. */
 		function formulaTarget(columnId: unknown, purpose: string): ColumnDef {
 			const valid = leafColumns(ownColumns()).filter((leaf) => !leaf.rowHeader)
@@ -3934,6 +4021,15 @@ export const table = definePrimitive({
 		/** Why a value is an error of a formula: the words of the app, else those of the engine. */
 		const errorText = (code: Parameters<NonNullable<TableMessages['formulaError']>>[0]) =>
 			options().messages?.formulaError?.(code) ?? requireFormulas().errorText(code)
+		/** The words of a formula of a column that cannot run, or `undefined`. */
+		const columnIssues = (columnId: string) =>
+			builtColumns()
+				?.issues.get(columnId)
+				?.map((issue) => entryRefusal({ issues: [issue] }))
+				.join(' ')
+		/** The words of an error in a cell: why the formula of its column cannot run, else why the value is an error. */
+		const cellErrorText = (columnId: string, code: Parameters<typeof errorText>[0]) =>
+			columnIssues(columnId) ?? errorText(code)
 
 		function writeCellFormula(rowId: string, columnId: string, text: string | null): void {
 			const found = requireFormulas()
@@ -3979,11 +4075,10 @@ export const table = definePrimitive({
 			const target = formulaTarget(columnId, 'read the formula of')
 			const formula = formulasNow.read().columns?.[target.id]
 			if (formula === undefined) return null
-			const issues = builtColumns()?.issues.get(target.id)
 			return {
 				formula,
 				text: found.print(formula, { columnId: target.id }, formulaSheet),
-				error: issues ? issues.map((issue) => issueText(found, issue)).join(' ') : null,
+				error: columnIssues(target.id) ?? null,
 			}
 		}
 
@@ -4299,14 +4394,12 @@ export const table = definePrimitive({
 			setColumnAggregate: (columnId, aggregate) => chooseAggregate(columnId, aggregate),
 			getColumnFormula: (columnId) => readColumnFormula(columnId),
 			getFormulaSummary: (limit) => requireFormulas().summary(formulasNow.read(), limit),
-			evaluateFormula(formula, at) {
-				const found = requireFormulas()
-				const ref = at ?? activeCellRef()
-				if (!ref) throw new Error('No cell is active: pass `{ rowId, columnId }`.')
-				const node = requireRow(String(ref.rowId), 'evaluate a formula at')
-				const target = formulaTarget(ref.columnId, 'evaluate a formula at')
-				return found.evaluateText(formula, { rowId: node.id, columnId: target.id }, formulaSheet)
-			},
+			evaluateFormula: (formula, at) =>
+				requireFormulas().evaluateText(
+					formula,
+					formulaAt(at, 'evaluate a formula at'),
+					formulaSheet,
+				),
 			getFormulaFunctions: () => requireFormulas().functions(),
 			recalculate() {
 				const found = requireFormulas()
@@ -4341,6 +4434,19 @@ export const table = definePrimitive({
 						{ cause: refused },
 					)
 				}
+			},
+			getRangeAddress(cells) {
+				const found = requireFormulas()
+				const view = cellsView(cells ? pickBounds(cells) : selectedCells())
+				if (!view || (options().manualPage ?? false)) return null
+				const whole = cells
+					? cells.columns
+					: view.rows > 1 && view.rows === formulaSheet.rowIds().length
+				return found.rangeAddress(view.from, view.to, whole, formulaSheet) ?? null
+			},
+			getFormulaReferences(text, at) {
+				const ref = formulaAt(at, 'read the references of a formula at')
+				return requireFormulas().references(String(text), ref, formulaSheet)
 			},
 			getAddress(rowId, columnId) {
 				const found = requireFormulas()
@@ -5630,7 +5736,10 @@ export const table = definePrimitive({
 					sheet() && event instanceof KeyboardEvent && event.key === 'Enter'
 						? 'enter-key'
 						: 'imperative'
-				edit.settle(saveCell(cell.node, cell.column, { value }, reason, event), { reason, event })
+				// A text with `=` from an editor of the caller is a formula, as in the text field.
+				const input =
+					engine() && typeof value === 'string' && /^'?=/.test(value) ? { text: value } : { value }
+				edit.settle(saveCell(cell.node, cell.column, input, reason, event), { reason, event })
 			},
 			onCopy,
 			onPaste,
@@ -5641,6 +5750,8 @@ export const table = definePrimitive({
 			selectColumnCells,
 			selectRowCells,
 			fillHandle,
+			picker,
+			pickCells,
 			/** Whether the fill handle sits in a cell: the end corner of the selected cells, in a table that can fill. */
 			fillHandleAt: (cell: GridCell): boolean => fillHandle.holds(cell),
 			isRowHeader,
@@ -5785,7 +5896,7 @@ export const table = definePrimitive({
 					'data-formula':
 						formulaIn(current.cellFormulas, ref.rowId, ref.columnId) === undefined ? undefined : '',
 					'data-formula-error': error?.replace(/[^A-Za-z0-9]/g, '').toLowerCase(),
-					'aria-description': error && errorText(error),
+					'aria-description': error && cellErrorText(column.id, error),
 				}
 			},
 			/** For the slot props of a cell: the formula as a person reads it, and the error with its words. */
@@ -5795,7 +5906,7 @@ export const table = definePrimitive({
 				return {
 					text: view.text,
 					...(view.error
-						? { error: { code: view.error, message: errorText(view.error) } }
+						? { error: { code: view.error, message: cellErrorText(columnId, view.error) } }
 						: undefined),
 				}
 			},
@@ -5839,7 +5950,8 @@ export const table = definePrimitive({
 			role: (_state, { api }) => (api.isTree() ? 'treegrid' : 'grid'),
 			roles: ['grid', 'treegrid'],
 			keys: { none: 'Focus stays on a cell, and the keydown of the cell handles the keys.' },
-			bind: (el, { api }) => together(api.grid.bindRoot(el), api.fillHandle.bindRoot(el)),
+			bind: (el, { api }) =>
+				together(api.grid.bindRoot(el), api.fillHandle.bindRoot(el), api.picker.bindRoot(el)),
 			// The cursor of a fill is the same over every cell, so the root says that a
 			// fill drag runs. The root hears `filling` for it: a key with an empty
 			// list in `selects` would never reach `live`.
@@ -5852,6 +5964,7 @@ export const table = definePrimitive({
 				columnResize: [],
 				rowWindow: [],
 				cellRange: [],
+				pickedCells: [],
 				editing: [],
 				editChecking: [],
 				editErrors: [],
@@ -5883,6 +5996,7 @@ export const table = definePrimitive({
 						api.selectionMode() === 'multiple' || api.cellSelection() ? 'true' : undefined,
 					'data-cell-selection': api.cellSelection() ? '' : undefined,
 					'data-entry': api.entry() ? '' : undefined,
+					'data-pick': api.pickCells() ? '' : undefined,
 					'data-sheet': api.sheet() ? '' : undefined,
 					'data-formulas': api.hasFormulas() ? '' : undefined,
 					'data-sized': sized ? '' : undefined,
@@ -6122,6 +6236,8 @@ export const table = definePrimitive({
 						}
 					},
 				},
+				// A pick wakes the cells of the places that it leaves and reaches.
+				pickedCells: byCellRange,
 				editing: ({ props, api }) => api.cellIds(props),
 				editChecking: ({ props, api }) => api.cellIds(props),
 				editErrors: ({ props, api }) => api.cellIds(props),
@@ -6243,6 +6359,9 @@ export const table = definePrimitive({
 					'data-formula-column': column && api.isFormulaColumn(column.id) ? '' : undefined,
 					...(id !== undefined && api.hasFormulas() ? api.formulaAttrs(state, id) : undefined),
 					...(ranged ? api.rangeAttrs(state, props) : undefined),
+					...(id !== undefined && !inGroup && !rowHeader && api.pickCells()
+						? api.picker.cellAttrs(state, props)
+						: undefined),
 					'data-kind': inGroup,
 					'data-row-header': rowHeader ? '' : undefined,
 					// The function of a total, for a style and for a test: in the footer and in a group row.
@@ -6406,6 +6525,27 @@ export const table = definePrimitive({
 				},
 				pointerdown: (event, { api, props, el }) => {
 					const target = event.target instanceof Element ? event.target : undefined
+					// The pick mode: a press on a cell of the body or on a letter picks, and
+					// changes nothing else. A press in a field inside the cell stays the field's.
+					if (
+						api.pickCells() &&
+						(!props.header || api.isLetterRow(props.row)) &&
+						(props.header || api.inBody(props.row)) &&
+						!(
+							target !== el &&
+							target?.closest('a[href], button, input, select, textarea, [contenteditable]')
+						)
+					) {
+						const column = api.columns()[props.col]
+						const letter = !!props.header
+						// The number of a row, a corner and the letter cell of a column that leads pick nothing.
+						if (
+							letter ? column && api.letterOf(column.id) !== undefined : !api.isRowHeader(props)
+						) {
+							api.picker.pointerdown(event, props, letter)
+						} else event.preventDefault()
+						return
+					}
 					api.entryPress()
 					// A press on the resize handle resizes. It must not move focus or start a column move.
 					if (target?.closest('[data-slot="table-resizer"]')) return
@@ -6448,7 +6588,7 @@ export const table = definePrimitive({
 					if (header?.leaf && !field) api.reorder.pointerdown(event, header.column.id)
 				},
 				dblclick: (event, { api, props, el }) => {
-					if (props.header) return
+					if (props.header || api.pickCells()) return
 					const target = event.target instanceof Element ? event.target : undefined
 					// A double press on a control inside the cell belongs to that control.
 					if (
@@ -6649,6 +6789,8 @@ export const table = definePrimitive({
 			'getFormulaSummary',
 			'evaluateFormula',
 			'getFormulaFunctions',
+			'getRangeAddress',
+			'getFormulaReferences',
 			'pinRow',
 			'scrollToRow',
 			'editCell',

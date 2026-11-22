@@ -53,6 +53,9 @@ const used = new Set(Object.values(uses).flat())
  * slot or column key of the library must get a tile or a line here.
  */
 const NOT_SHOWN: Record<string, string> = {
+	pickedCells:
+		'The pick tile hears each pick through its event; a pick is gone at the next one, so no tile holds it.',
+	defaultPickedCells: 'A pick comes from a press; no tile starts with one.',
 	getRowId: 'Every tile has rows with an `id`, which is the default.',
 	sortChildren: 'A sorted tree; the tree tile is not sorted.',
 	canGroup: 'The group tiles say it by `column.groupable`.',

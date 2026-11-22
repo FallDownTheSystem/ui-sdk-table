@@ -13,6 +13,7 @@ import {
 	type FormulaError,
 	type CellFormats,
 	type CellFormulas,
+	type CellPick,
 	type CellRange,
 	type ColumnAggregates,
 	type ColumnDef,
@@ -103,6 +104,7 @@ const MODELS = [
 	'cellFormats',
 	'cellFormulas',
 	'cellRange',
+	'pickedCells',
 ] as const
 type Model = (typeof MODELS)[number]
 
@@ -160,6 +162,7 @@ const OPTIONS = [
 	'entry',
 	'cellSelection',
 	'columnLetters',
+	'pickCells',
 	'manualSort',
 	'manualFilter',
 	'facets',
@@ -184,6 +187,7 @@ const OPTIONS = [
 	'defaultCellFormulas',
 	'formatColors',
 	'defaultCellRange',
+	'defaultPickedCells',
 ] as const
 
 // Vue must know which options are booleans, or the short form `<Table
@@ -202,6 +206,7 @@ const BOOLEANS: readonly string[] = [
 	'entry',
 	'cellSelection',
 	'columnLetters',
+	'pickCells',
 	'manualSort',
 	'manualFilter',
 	'manualPage',
@@ -399,6 +404,7 @@ export type TableEmits = {
 	'update:cellFormats': (value: CellFormats) => void
 	'update:cellFormulas': (value: CellFormulas) => void
 	'update:cellRange': (value: CellRange | null) => void
+	'update:pickedCells': (value: CellPick | null) => void
 	sortChange: (value: readonly SortRule[], details: TableChangeDetails) => void
 	filterChange: (value: FilterState, details: TableChangeDetails) => void
 	groupByChange: (value: readonly string[], details: TableChangeDetails) => void
@@ -416,6 +422,8 @@ export type TableEmits = {
 	cellFormulasChange: (value: CellFormulas, details: TableChangeDetails) => void
 	cellRangeChange: (value: CellRange | null, details: TableChangeDetails) => void
 	cellRangeCommit: (value: CellRange | null, details: TableCommitDetails) => void
+	pickedCellsChange: (value: CellPick | null, details: TableChangeDetails) => void
+	pickedCellsCommit: (value: CellPick, details: TableCommitDetails) => void
 	/** Cells got new values. Put them into the rows; `details.cancel()` refuses them. */
 	cellEdit: (edits: readonly CellEdit<any>[], details: TableEditDetails) => void
 }
@@ -713,6 +721,9 @@ const TableImpl = defineComponent(
 			onCellFormatsChange: report('cellFormats'),
 			onCellFormulasChange: report('cellFormulas'),
 			onCellRangeChange: report('cellRange'),
+			onPickedCellsChange: report('pickedCells'),
+			onPickedCellsCommit: (value: CellPick, details: TableCommitDetails) =>
+				(emit as (name: string, ...args: unknown[]) => void)('pickedCellsCommit', value, details),
 			onCellRangeCommit: (value: CellRange | null, details: TableCommitDetails) =>
 				(emit as (name: string, ...args: unknown[]) => void)('cellRangeCommit', value, details),
 			onCellEdit: (edits: readonly CellEdit[], details: TableEditDetails) =>

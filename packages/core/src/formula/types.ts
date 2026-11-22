@@ -69,6 +69,51 @@ export type CellFormulas = {
 /** A cell of the table, by ids. */
 export type FormulaPlace = { rowId: string; columnId: string }
 
+/** What a function works with, as a list of functions groups them. */
+export type FormulaFunctionGroup = 'math' | 'condition' | 'lookup' | 'logic' | 'text' | 'date'
+
+/** One argument of a function, for a hint that marks the argument at the caret. */
+export type FormulaArgument = {
+	/** Its name as `args` writes it, such as `number1` or `if not found`. */
+	name: string
+	/** Whether a call can leave it out. */
+	optional: boolean
+	/**
+	 * Whether it repeats: the arguments with `repeats` come again as a group,
+	 * as `range2, criterion2` of `COUNTIFS` do.
+	 */
+	repeats: boolean
+}
+
+export type FormulaFunctionInfo = {
+	/** The name of the function, such as `SUM`. */
+	name: string
+	/** Its arguments as a person writes them, such as `number, ...`. */
+	args: string
+	/** One line that says what it gives. */
+	help: string
+	/** What it works with: `math`, `condition`, `lookup`, `logic`, `text` or `date`. */
+	group: FormulaFunctionGroup
+	/** Its arguments as a list, read from `args`. */
+	arguments: readonly FormulaArgument[]
+}
+
+/**
+ * A reference of a formula text: its place in the text, from `start` up to
+ * `end`, and the cells that it names, from the first to the last. `columns`
+ * is true for whole columns, such as `B:B`; `from` and `to` are then the
+ * first and the last row of the document.
+ */
+export type FormulaReference = {
+	start: number
+	end: number
+	/** The text of the reference, such as `B2:C5`. */
+	text: string
+	from: FormulaPlace
+	to: FormulaPlace
+	columns: boolean
+}
+
 /**
  * What the engine reads from a table. The table gives it; a test can give a
  * plain object. Every read is by id, and the numbers and letters of the
@@ -220,7 +265,7 @@ export type FormulaEngine = {
 	 */
 	reads(formula: string, at: FormulaPlace, sheet: FormulaSheet): readonly FormulaPlace[]
 	/** The functions, for a list of a person or an agent. */
-	functions(): readonly { name: string; args: string; help: string }[]
+	functions(): readonly FormulaFunctionInfo[]
 	/**
 	 * The formulas as a short list: each text of a column once, with how many
 	 * cells hold it. It throws for a `limit` that is no whole number from 1 to 500.
@@ -310,4 +355,17 @@ export type FormulaEngine = {
 	address(place: FormulaPlace, sheet: FormulaSheet): string | undefined
 	/** The cell of an address such as `D7` or `$D$7`, or the issue. */
 	cellAt(address: string, sheet: FormulaSheet): FormulaPlace | { issues: FormulaIssue[] }
+	/**
+	 * The text of the cells from one to another as a person types it: `B2`,
+	 * `B2:C5`, or `B:C` for whole columns. `undefined` when a corner has no
+	 * address.
+	 */
+	rangeAddress(
+		from: FormulaPlace,
+		to: FormulaPlace,
+		columns: boolean,
+		sheet: FormulaSheet,
+	): string | undefined
+	/** The references of a formula text at a cell, as a person types it, with the cells that each one names. */
+	references(text: string, at: FormulaPlace, sheet: FormulaSheet): FormulaReference[]
 }

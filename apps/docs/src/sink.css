@@ -2153,6 +2153,24 @@ input {
 	--fill-left: inset 2px 0 0 var(--tile-edge);
 }
 
+/* A formula writer: the cells of each reference of the bar in a tint, and the cells of a pick in a dashed line. */
+.tile [data-slot='table'] td[data-state='accent'] {
+	--row-fill: color-mix(in oklab, var(--tile-tint) 16%, var(--tile-bg));
+}
+
+.tile [data-slot='table'] td[data-state='alert'] {
+	--row-fill: color-mix(in oklab, var(--tile-alert-tint) 16%, var(--tile-bg));
+}
+
+.tile [data-slot='table'] td[data-picked] {
+	outline: 2px dashed var(--tile-edge);
+	outline-offset: -2px;
+}
+
+.tile [data-slot='table'][data-pick] td {
+	cursor: cell;
+}
+
 .tile [data-slot='table-cell'][data-align='start'] {
 	text-align: start;
 }

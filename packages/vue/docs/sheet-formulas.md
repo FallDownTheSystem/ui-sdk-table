@@ -79,7 +79,7 @@ A column formula that a person sets at run time is state instead: `cell-formulas
 - The column is a plain column of the owner (`{ id: 'custom', header: 'Custom' }`); the formula gives it its values.
 - It is one change of `cellFormulas` and one step of the history, and it reports no value.
 - When the column of the owner can be edited, a cell of it opens with the formula of the column as a person reads it (`=[Quantity]*2`). Enter on a text with `=` sets the formula of the column, as one step that Control+Z takes back. A value is refused with words (issue `columnCell`). `editCell` still refuses a value there.
-- A formula of the owner that cannot be read, or column formulas that read each other in a circle, show an error in every row of the column.
+- A formula of the owner that cannot be read, or column formulas that read each other in a circle, show an error in every row of the column, with the words of the issue as `aria-description` (for a range or a whole column: the formula of a column reads the cells of its own row only).
 
 ## A date group with the `period` format
 
@@ -214,7 +214,7 @@ Press the price of the Desk lamp (B1) and type 49, then Enter: its total and the
 
 `useFormulaBar(controller)` gives:
 
-- `address` (`D7`) and `ready` (a cell is active);
+- `address` (`D7`), `cell` (its `rowId` and `columnId`, or `null`) and `ready` (a cell is active);
 - `text`: the draft, else the formula as a person reads it, else the value as the field of the cell shows it;
 - `error`: why the last commit was refused, in the words for a person;
 - `dirty`, `input(text)`, `cancel()`, and `commit()`, which saves through `editCell` (a text with `=` is a formula and any other text a value) and returns whether it saved.
@@ -223,7 +223,7 @@ A draft stays with the cell where it started, also when the active cell moves. A
 
 ## Functions
 
-`controller.getFormulaFunctions()` and `FORMULA_FUNCTIONS` list each with its arguments and one line of help.
+`controller.getFormulaFunctions()` and `FORMULA_FUNCTIONS` list each with its arguments (as a text in `args` and as a list in `arguments`), one line of help and its `group`. [A formula writer](./formula-writer.md) builds suggestions and a hint on them.
 
 | Group | Functions |
 | --- | --- |

@@ -784,6 +784,56 @@ a {
 		color: var(--alert);
 	}
 
+	/* A formula writer: the cells of each reference of its text get one colour, and a pick a dashed line. */
+	.example-preview td[data-reference='0'] {
+		--row-fill: #dbeafe;
+	}
+
+	.example-preview td[data-reference='1'] {
+		--row-fill: #dcfce7;
+	}
+
+	.example-preview td[data-reference='2'] {
+		--row-fill: #fef3c7;
+	}
+
+	.example-preview td[data-reference='3'] {
+		--row-fill: #fae8ff;
+	}
+
+	.example-preview td[data-picked] {
+		outline: 2px dashed var(--accent-line);
+		outline-offset: -2px;
+	}
+
+	.example-preview [data-slot='table'][data-pick] td {
+		cursor: cell;
+	}
+
+	.example-preview .writer ul {
+		display: flex;
+		flex-basis: 100%;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.example-preview .writer ul button {
+		padding: 2px 8px;
+		border: 1px solid var(--control-line);
+		border-radius: 6px;
+		background: #fff;
+		font-size: 13px;
+		cursor: pointer;
+	}
+
+	.example-preview .writer [data-testid='hint'] {
+		flex-basis: 100%;
+		font-family: var(--mono, monospace);
+	}
+
 	.example-preview :is(button, input, select):not([data-slot^='table']) {
 		font: inherit;
 	}
