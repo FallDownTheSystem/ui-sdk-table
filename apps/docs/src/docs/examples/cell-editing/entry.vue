@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Button } from '@ui-sdk/vue/button'
 import {
 	applyEdits,
 	Table,
@@ -47,11 +48,11 @@ const cellAttrs = (context: CellAttrsContext<Shift>) =>
 </script>
 
 <template>
-	<div class="bar">
-		<button v-if="!editing" type="button" @click="editing = true">Edit</button>
+	<div>
+		<Button v-if="!editing" @click="editing = true">Edit</Button>
 		<template v-else>
-			<button type="button" @click="save">Save</button>
-			<button type="button" @click="cancel">Cancel</button>
+			<Button @click="save">Save</Button>
+			<Button @click="cancel">Cancel</Button>
 			<span>{{ draft.count.value }} changed</span>
 		</template>
 	</div>
@@ -67,13 +68,6 @@ const cellAttrs = (context: CellAttrsContext<Shift>) =>
 </template>
 
 <style scoped>
-.bar {
-	display: flex;
-	gap: 8px;
-	align-items: center;
-	margin-block-end: 8px;
-}
-
 /* In the entry mode, the cells that take input show it. */
 :deep([data-entry] td[data-editable]) {
 	box-shadow: inset 0 -1px 0 #94a3b8;

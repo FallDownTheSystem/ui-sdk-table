@@ -790,7 +790,8 @@ a {
 
 	/* The controls beside a table. The examples keep plain markup; this gives them one look. */
 	.example-preview > p,
-	.example-preview > div > p {
+	.example-preview > div > p,
+	.example-preview > :is(div, nav) > span {
 		margin: 0;
 		color: var(--ink-2);
 		font-size: 14px;
